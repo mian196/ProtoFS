@@ -2850,6 +2850,7 @@ dependencies = [
 name = "protofs-tauri"
 version = "0.2.0"
 dependencies = [
+ "chrono",
  "protofs-core",
  "serde",
  "serde_json",
