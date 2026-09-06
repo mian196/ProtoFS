@@ -19,6 +19,8 @@ pub struct AuthSession {
     pub first_name: String,
     pub user_id: i64,
     pub active_drive_id: String,
+    #[serde(default)]
+    pub is_demo: bool,
 }
 
 #[derive(Clone)]
@@ -128,6 +130,7 @@ pub async fn login_verify_code(
     if phone.trim() == "demo"
         || api_id.trim().to_lowercase() == "demo"
         || phone.trim().starts_with("+1555")
+        || phone.trim().starts_with("+1 (202) 555")
         || trimmed_code == "12345"
     {
         let session = AuthSession {
@@ -139,10 +142,15 @@ pub async fn login_verify_code(
             first_name: "ProtoFS User".to_string(),
             user_id: 1049281720,
             active_drive_id: "personal".to_string(),
+            is_demo: true,
         };
 
         let mut lock = state.session.write().await;
         *lock = Some(session.clone());
+        let mut drives_lock = state.drives.write().await;
+        *drives_lock = get_demo_drives();
+        drop(drives_lock);
+
         save_auth_session(&app, &session);
         return Ok(CommandResponse::ok(session));
     }
@@ -160,6 +168,7 @@ pub async fn login_verify_code(
     // Switch engine transport to live Telegram MTProto
     state.transport.switch_to_real(real_transport).await;
 
+    let drive_id = format!("drive_{}", tg_user.id);
     let session = AuthSession {
         is_authenticated: true,
         phone: phone.clone(),
@@ -168,8 +177,28 @@ pub async fn login_verify_code(
         username: tg_user.username,
         first_name: tg_user.first_name,
         user_id: tg_user.id,
-        active_drive_id: "personal".to_string(),
+        active_drive_id: drive_id.clone(),
+        is_demo: false,
     };
+
+    // Load or initialize user's real drives
+    let mut user_drives = load_user_drives(&app, tg_user.id);
+    if user_drives.is_empty() {
+        let initial_drive = DriveMetadata {
+            id: drive_id,
+            name: "ProtoFS Cloud Drive".to_string(),
+            channel_id: 0,
+            pinned_manifest_msg_id: Some(1),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        user_drives.push(initial_drive);
+        save_user_drives(&app, tg_user.id, &user_drives);
+    }
+
+    let mut drives_lock = state.drives.write().await;
+    *drives_lock = user_drives;
+    drop(drives_lock);
 
     let mut lock = state.session.write().await;
     *lock = Some(session.clone());
@@ -304,6 +333,13 @@ pub async fn get_session_status(
                     }
                 }
             }
+            if session.is_demo {
+                let mut drives_lock = state.drives.write().await;
+                *drives_lock = get_demo_drives();
+            } else {
+                let mut drives_lock = state.drives.write().await;
+                *drives_lock = load_user_drives(&app, session.user_id);
+            }
             *lock = Some(session);
         }
     }
@@ -316,6 +352,9 @@ pub async fn logout_command(app: tauri::AppHandle) -> Result<CommandResponse<()>
     let state = app.state::<AppState>();
     let mut lock = state.session.write().await;
     *lock = None;
+
+    let mut drives_lock = state.drives.write().await;
+    drives_lock.clear();
 
     state.transport.switch_to_mock().await;
 
@@ -378,6 +417,69 @@ pub async fn delete_secure_secret_command(
     }
 }
 
+pub fn get_demo_drives() -> Vec<DriveMetadata> {
+    vec![
+        DriveMetadata {
+            id: "personal".to_string(),
+            name: "Personal Drive".to_string(),
+            channel_id: -1001928472910,
+            pinned_manifest_msg_id: Some(104),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        },
+        DriveMetadata {
+            id: "work".to_string(),
+            name: "Work Archive".to_string(),
+            channel_id: -1001982736192,
+            pinned_manifest_msg_id: Some(88),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        },
+        DriveMetadata {
+            id: "media".to_string(),
+            name: "Cinema Vault".to_string(),
+            channel_id: -1001837492817,
+            pinned_manifest_msg_id: Some(210),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        },
+    ]
+}
+
+fn get_drives_file_path(app: &tauri::AppHandle, user_id: i64) -> Option<std::path::PathBuf> {
+    if let Ok(dir) = app.path().app_data_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir.join(format!("drives_{}.json", user_id)))
+    } else if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::PathBuf::from(appdata).join("ProtoFS");
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir.join(format!("drives_{}.json", user_id)))
+    } else {
+        None
+    }
+}
+
+fn save_user_drives(app: &tauri::AppHandle, user_id: i64, drives: &[DriveMetadata]) {
+    if let Some(path) = get_drives_file_path(app, user_id) {
+        if let Ok(json) = serde_json::to_string_pretty(drives) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+}
+
+fn load_user_drives(app: &tauri::AppHandle, user_id: i64) -> Vec<DriveMetadata> {
+    if let Some(path) = get_drives_file_path(app, user_id) {
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                if let Ok(drives) = serde_json::from_str::<Vec<DriveMetadata>>(&content) {
+                    return drives;
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
 // ---------------------------------------------------------------------------
 // Drive Management IPC Commands (PRD Section 6.2)
 // ---------------------------------------------------------------------------
@@ -387,6 +489,44 @@ pub async fn get_drives_command(
     app: tauri::AppHandle,
 ) -> Result<CommandResponse<Vec<DriveMetadata>>, String> {
     let state = app.state::<AppState>();
+    let session_guard = state.session.read().await;
+    let (is_demo, user_id) = match session_guard.as_ref() {
+        Some(s) => (s.is_demo, Some(s.user_id)),
+        None => (false, None),
+    };
+    drop(session_guard);
+
+    if is_demo {
+        let drives = get_demo_drives();
+        let mut state_drives = state.drives.write().await;
+        *state_drives = drives.clone();
+        return Ok(CommandResponse::ok(drives));
+    }
+
+    if let Some(uid) = user_id {
+        let drives = load_user_drives(&app, uid);
+        if !drives.is_empty() {
+            let mut state_drives = state.drives.write().await;
+            *state_drives = drives.clone();
+            return Ok(CommandResponse::ok(drives));
+        }
+
+        // For a real account with no saved drives, create initial "ProtoFS Cloud Drive"
+        let initial_drive = DriveMetadata {
+            id: format!("drive_{}", uid),
+            name: "ProtoFS Cloud Drive".to_string(),
+            channel_id: 0,
+            pinned_manifest_msg_id: Some(1),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let initial_drives = vec![initial_drive];
+        save_user_drives(&app, uid, &initial_drives);
+        let mut state_drives = state.drives.write().await;
+        *state_drives = initial_drives.clone();
+        return Ok(CommandResponse::ok(initial_drives));
+    }
+
     let drives = state.drives.read().await;
     Ok(CommandResponse::ok(drives.clone()))
 }
@@ -411,8 +551,16 @@ pub async fn create_drive_command(
     let mut drives = state.drives.write().await;
     drives.push(new_drive.clone());
 
-    // Load initial empty drive tree into sync engine
-    let _ = state.engine.load_drive(&id, channel_id).await;
+    let session_guard = state.session.read().await;
+    if let Some(ref s) = *session_guard {
+        if !s.is_demo {
+            save_user_drives(&app, s.user_id, &drives);
+        }
+    }
+    drop(session_guard);
+
+    // Initialize in-memory drive tree in sync engine
+    let _ = state.engine.get_or_create_tree(&id).await;
 
     Ok(CommandResponse::ok(new_drive))
 }
@@ -424,13 +572,19 @@ pub async fn load_drive_command(
     channel_id: i64,
 ) -> Result<CommandResponse<Vec<VfsNode>>, String> {
     let state = app.state::<AppState>();
-    match state.engine.load_drive(&drive_id, channel_id).await {
-        Ok(tree) => {
+
+    // Only attempt remote channel scan if a valid non-zero channel ID is provided
+    if channel_id != 0 {
+        if let Ok(tree) = state.engine.load_drive(&drive_id, channel_id).await {
             let nodes: Vec<VfsNode> = tree.all_nodes().cloned().collect();
-            Ok(CommandResponse::ok(nodes))
+            return Ok(CommandResponse::ok(nodes));
         }
-        Err(e) => Ok(CommandResponse::err(e.to_string())),
     }
+
+    // Otherwise get or create the local in-memory tree for this drive
+    let tree = state.engine.get_or_create_tree(&drive_id).await;
+    let nodes: Vec<VfsNode> = tree.all_nodes().cloned().collect();
+    Ok(CommandResponse::ok(nodes))
 }
 
 #[tauri::command]

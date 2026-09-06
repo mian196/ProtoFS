@@ -36,7 +36,12 @@ class ProtoFsApp {
     if (!this.session || !this.session.is_authenticated) {
       this.renderLoginScreen();
     } else {
-      this.activeDriveId = this.session.active_drive_id || 'personal';
+      if (!this.session.is_demo) {
+        localStorage.removeItem('protofs_folders');
+        localStorage.removeItem('protofs_files');
+        localStorage.removeItem('protofs_drives');
+      }
+      this.activeDriveId = this.session.active_drive_id || (this.session.is_demo ? 'personal' : `drive_${this.session.user_id}`);
       await this.initWorkspace();
     }
   }
@@ -200,7 +205,12 @@ class ProtoFsApp {
             twoFaEl ? twoFaEl.value.trim() : undefined
           );
           this.session = session;
-          this.activeDriveId = session.active_drive_id || 'personal';
+          if (!session.is_demo) {
+            localStorage.removeItem('protofs_folders');
+            localStorage.removeItem('protofs_files');
+            localStorage.removeItem('protofs_drives');
+          }
+          this.activeDriveId = session.active_drive_id || (session.is_demo ? 'personal' : `drive_${session.user_id}`);
           await this.initWorkspace();
         } catch (err: any) {
           alert(`Verification error: ${err.message}`);

@@ -185,6 +185,11 @@ impl<T: TelegramTransport> SyncEngine<T> {
         trees.get(drive_id).cloned()
     }
 
+    pub async fn get_or_create_tree(&self, drive_id: &str) -> VfsTree {
+        let mut trees = self.trees_by_drive.write().await;
+        trees.entry(drive_id.to_string()).or_default().clone()
+    }
+
     pub async fn add_node(&self, drive_id: &str, node: VfsNode) -> Result<()> {
         let mut trees = self.trees_by_drive.write().await;
         let tree = trees.entry(drive_id.to_string()).or_default();

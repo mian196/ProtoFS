@@ -57,6 +57,7 @@ export interface AuthSession {
   first_name: string;
   user_id: number;
   active_drive_id: string;
+  is_demo?: boolean;
 }
 
 export interface SyncPair {

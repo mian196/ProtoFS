@@ -110,6 +110,9 @@ export class ProtoFsApi {
       }
     }
     localStorage.removeItem(STORAGE_KEY_SESSION);
+    localStorage.removeItem(STORAGE_KEY_DRIVES);
+    localStorage.removeItem(STORAGE_KEY_FOLDERS);
+    localStorage.removeItem(STORAGE_KEY_FILES);
   }
 
   // -------------------------------------------------------------------------
@@ -120,12 +123,26 @@ export class ProtoFsApi {
     if (isTauri()) {
       try {
         const res = await invoke<TauriCommandResponse<DriveMetadata[]>>('get_drives_command');
-        if (res.success && res.data) {
+        if (res.success && res.data && res.data.length > 0) {
           return res.data;
         }
       } catch (err) {
         console.warn('Tauri get_drives_command error, falling back:', err);
       }
+    }
+
+    const session = await this.getSessionStatus();
+    if (session && !session.is_demo) {
+      return [
+        {
+          id: `drive_${session.user_id}`,
+          name: 'ProtoFS Cloud Drive',
+          channel_id: 0,
+          pinned_manifest_msg_id: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ];
     }
 
     const cached = localStorage.getItem(STORAGE_KEY_DRIVES);
@@ -149,7 +166,6 @@ export class ProtoFsApi {
         updated_at: new Date().toISOString(),
       },
     ];
-    localStorage.setItem(STORAGE_KEY_DRIVES, JSON.stringify(defaultDrives));
     return defaultDrives;
   }
 
@@ -210,16 +226,20 @@ export class ProtoFsApi {
               });
             }
           }
-          if (folders.length > 0 || files.length > 0) {
-            return { folders, files };
-          }
+          return { folders, files };
         }
       } catch (err) {
-        console.warn('Tauri load_drive_command fallback:', err);
+        console.warn('Tauri load_drive_command error:', err);
       }
     }
 
-    // Local state fallback with rich realistic data
+    const session = await this.getSessionStatus();
+    // Real account should never see mock demo files
+    if (session && !session.is_demo) {
+      return { folders: [], files: [] };
+    }
+
+    // Local state fallback with rich realistic data for demo
     return this.getLocalDriveData(driveId);
   }
 
