@@ -48,6 +48,17 @@ export interface SearchResult {
   size_bytes?: number;
 }
 
+export interface AuthSession {
+  is_authenticated: boolean;
+  phone: string;
+  api_id: string;
+  api_hash: string;
+  username?: string;
+  first_name: string;
+  user_id: number;
+  active_drive_id: string;
+}
+
 export interface SyncPair {
   id: string;
   local_path: string;
