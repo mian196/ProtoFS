@@ -4,6 +4,8 @@ import { ThemeManager, PALETTES } from './theme';
 import type { Palette } from './theme';
 import type { DriveMetadata, FileNode, FolderNode } from './types';
 
+type MobileTab = 'files' | 'camera' | 'transfers' | 'settings';
+
 class ProtoFsApp {
   private api = new ProtoFsApi();
   private themeManager = new ThemeManager();
@@ -11,6 +13,8 @@ class ProtoFsApp {
   private activeDrive = 'personal';
   private currentFolderId = 'root';
   private activeFilter: string | null = null;
+  private isMobileMode = false;
+  private activeMobileTab: MobileTab = 'files';
 
   private drives: DriveMetadata[] = [];
   private folders: FolderNode[] = [];
@@ -47,6 +51,9 @@ class ProtoFsApp {
         </div>
 
         <div class="header-actions">
+          <button class="icon-btn" id="btnDeviceView" title="Toggle Desktop / Mobile View" aria-label="Toggle Desktop or Mobile View">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+          </button>
           <button class="icon-btn" id="btnPalette" title="Color Themes" aria-label="Choose color palette">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
           </button>
@@ -63,9 +70,9 @@ class ProtoFsApp {
       </header>
 
       <!-- Main Workspace -->
-      <div class="workspace-container">
+      <div class="workspace-container" id="workspaceContainer">
         <!-- Sidebar -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="mainSidebar">
           <div>
             <div class="sidebar-section-title">
               <span>Drives</span>
@@ -106,7 +113,7 @@ class ProtoFsApp {
         </aside>
 
         <!-- Main Explorer View -->
-        <main class="main-view">
+        <main class="main-view" id="mainView">
           <!-- Toolbar -->
           <div class="action-toolbar">
             <div class="breadcrumbs-bar" id="breadcrumbsBar"></div>
@@ -123,20 +130,67 @@ class ProtoFsApp {
           </div>
 
           <!-- Browser Viewport -->
-          <div class="browser-viewport">
-            <div id="foldersSection">
-              <div class="section-label">Folders</div>
-              <div class="folder-grid" id="foldersGrid"></div>
+          <div class="browser-viewport" id="browserViewport">
+            <!-- TAB: FILES -->
+            <div id="tabContentFiles">
+              <div id="foldersSection">
+                <div class="section-label">Folders</div>
+                <div class="folder-grid" id="foldersGrid"></div>
+              </div>
+
+              <div id="filesSection" style="margin-top: 20px;">
+                <div class="section-label">Files</div>
+                <div class="file-list" id="filesList"></div>
+              </div>
             </div>
 
-            <div id="filesSection">
-              <div class="section-label">Files</div>
-              <div class="file-list" id="filesList"></div>
+            <!-- TAB: CAMERA (Mobile) -->
+            <div id="tabContentCamera" style="display: none;">
+              <div class="camera-card" style="background: var(--bg-surface); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin-bottom: 16px;">
+                <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Camera Auto-Backup Active</h3>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">Watching /DCIM/Camera • 1,420 photos synced to Telegram</p>
+                <button class="btn-action primary" id="btnScanCamera">Scan & Sync Photos Now</button>
+              </div>
+            </div>
+
+            <!-- TAB: TRANSFERS -->
+            <div id="tabContentTransfers" style="display: none;">
+              <div class="section-label">Active Transfers</div>
+              <div class="file-list" id="transfersList">
+                <div class="file-row">
+                  <span class="file-name">Cyberpunk_2077_NightCity_4K.mp4</span>
+                  <span class="file-meta-col" style="font-family: var(--font-mono); color: var(--accent-primary);">64% • 32.5 MB/s</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB: SETTINGS -->
+            <div id="tabContentSettings" style="display: none;">
+              <div class="section-label">Account & Cache Settings</div>
+              <div style="background: var(--bg-surface); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px;">
+                <div>
+                  <strong>Telegram User:</strong> @MuzAmMaL (DC4 Connected)
+                </div>
+                <div>
+                  <strong>Local SQLite Cache Quota:</strong> 5.0 GB (Auto-evicting LRU)
+                </div>
+                <div>
+                  <strong>Client-Side Encryption:</strong> Argon2id + AES-256-GCM
+                </div>
+              </div>
             </div>
           </div>
 
+          <!-- Mobile Bottom Navigation Bar -->
+          <nav class="mobile-bottom-nav" id="mobileBottomNav" style="display: none; height: 56px; background: var(--bg-sidebar); border-top: 1px solid var(--border-subtle); align-items: center; justify-content: space-around;">
+            <button class="icon-btn active" data-tab="files" title="Files" style="width: auto; height: 100%; padding: 0 16px; border-radius: 0;">Files</button>
+            <button class="icon-btn" data-tab="camera" title="Camera" style="width: auto; height: 100%; padding: 0 16px; border-radius: 0;">Camera</button>
+            <button class="icon-btn" data-tab="transfers" title="Transfers" style="width: auto; height: 100%; padding: 0 16px; border-radius: 0;">Transfers</button>
+            <button class="icon-btn" data-tab="settings" title="Settings" style="width: auto; height: 100%; padding: 0 16px; border-radius: 0;">Settings</button>
+          </nav>
+
           <!-- Transfer Dock -->
-          <div class="transfer-dock">
+          <div class="transfer-dock" id="desktopTransferDock">
             <div class="transfer-status-text">
               <span class="transfer-dot"></span>
               <span>All files synced • MTProto DC4 Connected</span>
@@ -335,7 +389,59 @@ class ProtoFsApp {
     if (modalsRoot) modalsRoot.innerHTML = '';
   }
 
+  private switchMobileTab(tab: MobileTab) {
+    this.activeMobileTab = tab;
+    console.debug('Active mobile tab switched to:', this.activeMobileTab);
+    const tabFiles = document.getElementById('tabContentFiles');
+    const tabCamera = document.getElementById('tabContentCamera');
+    const tabTransfers = document.getElementById('tabContentTransfers');
+    const tabSettings = document.getElementById('tabContentSettings');
+
+    if (tabFiles) tabFiles.style.display = tab === 'files' ? 'block' : 'none';
+    if (tabCamera) tabCamera.style.display = tab === 'camera' ? 'block' : 'none';
+    if (tabTransfers) tabTransfers.style.display = tab === 'transfers' ? 'block' : 'none';
+    if (tabSettings) tabSettings.style.display = tab === 'settings' ? 'block' : 'none';
+
+    document.querySelectorAll('.mobile-bottom-nav .icon-btn').forEach((btn) => {
+      const t = btn.getAttribute('data-tab');
+      btn.classList.toggle('active', t === tab);
+    });
+  }
+
   private bindEvents() {
+    // Device view toggle (Desktop <-> Android)
+    document.getElementById('btnDeviceView')?.addEventListener('click', () => {
+      this.isMobileMode = !this.isMobileMode;
+      const sidebar = document.getElementById('mainSidebar');
+      const bottomNav = document.getElementById('mobileBottomNav');
+      const transferDock = document.getElementById('desktopTransferDock');
+
+      if (this.isMobileMode) {
+        if (sidebar) sidebar.style.display = 'none';
+        if (bottomNav) bottomNav.style.display = 'flex';
+        if (transferDock) transferDock.style.display = 'none';
+        this.switchMobileTab('files');
+      } else {
+        if (sidebar) sidebar.style.display = 'flex';
+        if (bottomNav) bottomNav.style.display = 'none';
+        if (transferDock) transferDock.style.display = 'flex';
+        this.switchMobileTab('files');
+      }
+    });
+
+    // Mobile navigation tabs
+    document.querySelectorAll('.mobile-bottom-nav .icon-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-tab') as MobileTab;
+        if (tab) this.switchMobileTab(tab);
+      });
+    });
+
+    // Scan Camera button
+    document.getElementById('btnScanCamera')?.addEventListener('click', () => {
+      alert('Camera scan complete: 2 new photos detected and scheduled for background upload.');
+    });
+
     // Theme toggle
     document.getElementById('btnTheme')?.addEventListener('click', () => {
       this.themeManager.toggleTheme();
