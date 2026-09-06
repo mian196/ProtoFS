@@ -1,10 +1,7 @@
 import './style.css';
 import { ProtoFsApi } from './api';
-import { ThemeManager, PALETTES } from './theme';
-import type { Palette } from './theme';
-import type { AuthSession, DriveMetadata, FileNode, FolderNode, SearchResult, SyncPair } from './types';
-
-type MobileTab = 'files' | 'camera' | 'transfers' | 'settings';
+import { ThemeManager } from './theme';
+import type { AuthSession, DriveMetadata, FileNode, FolderNode, SyncPair, TransferItem } from './types';
 
 class ProtoFsApp {
   private api = new ProtoFsApi();
@@ -14,7 +11,9 @@ class ProtoFsApp {
   private activeDriveId = 'personal';
   private currentFolderId = 'root';
   private activeFilter: string | null = null;
-  private isMobileMode = false;
+  private viewMode: 'grid' | 'list' = 'grid';
+  private selectedIds = new Set<string>();
+  private activeTransfers: TransferItem[] = [];
 
   private drives: DriveMetadata[] = [];
   private folders: FolderNode[] = [];
@@ -65,7 +64,7 @@ class ProtoFsApp {
 
           <div class="login-step-badges">
             <span class="step-badge ${this.loginStep === 'credentials' ? 'active' : ''}">1. Telegram Auth</span>
-            <span class="step-badge ${this.loginStep === 'code' ? 'active' : ''}">2. Security Code</span>
+            <span class="step-badge ${this.loginStep === 'code' ? 'active' : ''}">2. Verification Code</span>
           </div>
 
           ${
@@ -85,7 +84,7 @@ class ProtoFsApp {
 
               <button type="button" class="demo-credentials-btn" id="btnQuickDemo">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                <span>Use Quick Test / Demo Credentials</span>
+                <span>Use Quick Test / Demo Mode</span>
               </button>
 
               <div class="form-group">
@@ -95,7 +94,7 @@ class ProtoFsApp {
 
               <div class="login-info-box">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                <span>Keys are stored locally only and never sent to any external server. ProtoFS talks directly to Telegram's native MTProto servers.</span>
+                <span>Keys are stored locally only and never sent to any external server. ProtoFS connects directly to Telegram MTProto servers.</span>
               </div>
 
               <button type="submit" class="btn-primary-tg" id="btnSendCode">
@@ -109,7 +108,7 @@ class ProtoFsApp {
               <div class="form-group">
                 <label class="form-label">Verification Code</label>
                 <input type="text" class="form-input" id="inputCode" placeholder="Enter 5-digit Telegram code" required autofocus>
-                <span style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Code sent via Telegram chat to ${this.loginPhone}</span>
+                <span style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Code sent via Telegram chat to ${escapeHtml(this.loginPhone)}</span>
               </div>
 
               <div class="form-group">
@@ -225,7 +224,7 @@ class ProtoFsApp {
     const userName = this.session?.username ? `@${this.session.username}` : (this.session?.phone || 'Connected');
 
     appEl.innerHTML = `
-      <!-- Top Title Bar -->
+      <!-- Top Header Title Bar -->
       <header class="proto-header">
         <div class="brand-box">
           <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -235,18 +234,27 @@ class ProtoFsApp {
           <span class="version-pill">v0.2.0</span>
         </div>
 
-        <div class="search-container">
+        <div class="search-container" style="position: relative;">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input type="text" class="search-input" id="globalSearchInput" placeholder="Search files, folders, encrypted vaults..." aria-label="Search">
+          <input type="text" class="search-input" id="globalSearchInput" placeholder="Search files (SQLite FTS5)..." aria-label="Search" autocomplete="off">
           <span class="shortcut-hint">Ctrl+K</span>
+          <div class="search-results-dropdown hidden" id="searchDropdown"></div>
         </div>
 
         <div class="header-actions">
-          <button class="icon-btn" id="btnDeviceView" title="Toggle Desktop / Mobile View" aria-label="Toggle Desktop or Mobile View">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
-          </button>
+          <!-- View Toggle (Grid / List) -->
+          <div class="view-toggle-group">
+            <button class="btn-view-toggle ${this.viewMode === 'grid' ? 'active' : ''}" id="btnViewGrid" title="Grid View">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+            </button>
+            <button class="btn-view-toggle ${this.viewMode === 'list' ? 'active' : ''}" id="btnViewList" title="List View">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <!-- Color Themes -->
           <button class="icon-btn" id="btnPalette" title="Color Themes" aria-label="Choose color palette">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
           </button>
@@ -264,12 +272,16 @@ class ProtoFsApp {
             </div>
             <div class="account-dropdown hidden" id="accountDropdown">
               <div class="account-dropdown-header">
-                <span class="account-user-name">${this.session?.first_name || 'ProtoFS User'}</span>
-                <span class="account-user-phone">${userName}</span>
+                <span class="account-user-name">${escapeHtml(this.session?.first_name || 'ProtoFS User')}</span>
+                <span class="account-user-phone">${escapeHtml(userName)}</span>
               </div>
               <button class="account-menu-item" id="btnAccountSettings">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                <span>Encryption & Keys</span>
+                <span>Encryption Keys & Security</span>
+              </button>
+              <button class="account-menu-item" id="btnStorageDashboard">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                <span>Storage Breakdown Dashboard</span>
               </button>
               <button class="account-menu-item danger" id="btnLogout">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -286,13 +298,13 @@ class ProtoFsApp {
         <aside class="sidebar" id="mainSidebar">
           <div>
             <div class="sidebar-section-title">
-              <span>Drives</span>
-              <button class="icon-btn" id="btnNewDrive" title="New Drive" style="width:22px;height:22px;">+</button>
+              <span>DRIVES</span>
+              <button class="icon-btn" id="btnNewDrive" title="New Telegram Drive" style="width:22px;height:22px;">+</button>
             </div>
             <nav class="nav-list" id="drivesNavList"></nav>
 
             <div class="sidebar-section-title" style="margin-top: 20px;">
-              <span>Filters</span>
+              <span>QUICK ACCESS</span>
             </div>
             <nav class="nav-list">
               <button class="nav-item ${this.activeFilter === null ? 'active' : ''}" data-filter="all">
@@ -310,18 +322,23 @@ class ProtoFsApp {
               <button class="nav-item ${this.activeFilter === 'trash' ? 'active' : ''}" data-filter="trash">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                 <span>Trash</span>
+                <span class="nav-count" id="trashNavCount" style="margin-left: auto; font-size: 11px; background: var(--bg-surface-elevated); padding: 2px 6px; border-radius: 9999px;">0</span>
+              </button>
+              <button class="nav-item ${this.activeFilter === 'sync' ? 'active' : ''}" data-filter="sync">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                <span>Sync Pairs</span>
               </button>
             </nav>
           </div>
 
           <!-- Storage Card -->
-          <div class="storage-card" id="btnStorageCard">
+          <div class="storage-card" id="btnStorageCard" style="cursor: pointer;" title="Click for Storage Dashboard">
             <div class="storage-card-header">
               <span>Cloud Storage</span>
-              <span style="color: var(--accent-primary);" id="storageUsageText">Calculating...</span>
+              <span style="color: var(--accent-primary);" id="storageUsageText">Unlimited</span>
             </div>
             <div class="storage-bar">
-              <div class="storage-bar-fill" style="width: 25%;"></div>
+              <div class="storage-bar-fill" id="storageBarFill" style="width: 25%;"></div>
             </div>
             <div class="storage-sub">Telegram Channel: Unlimited Quota</div>
           </div>
@@ -329,105 +346,83 @@ class ProtoFsApp {
 
         <!-- Main Explorer View -->
         <main class="main-view" id="mainView">
-          <!-- Toolbar -->
+          <!-- Action Toolbar -->
           <div class="action-toolbar">
             <div class="breadcrumbs-bar" id="breadcrumbsBar"></div>
-            <div class="toolbar-buttons" id="toolbarButtons">
-              <button class="btn-action secondary" id="btnNewFolder">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-                <span>New Folder</span>
-              </button>
-              <button class="btn-action primary" id="btnUpload">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <span>Upload</span>
-              </button>
-            </div>
+            <div class="toolbar-buttons" id="toolbarButtons"></div>
           </div>
 
           <!-- Browser Viewport -->
           <div class="browser-viewport" id="browserViewport">
-            <!-- TAB: FILES -->
-            <div id="tabContentFiles">
-              <div id="foldersSection">
-                <div class="section-label">Folders</div>
-                <div class="folder-grid" id="foldersGrid"></div>
-              </div>
-
-              <div id="filesSection" style="margin-top: 20px;">
-                <div class="section-label" id="filesSectionLabel">Files</div>
-                <div class="file-list" id="filesList"></div>
-              </div>
+            <!-- Dynamic Sections for Folders & Files -->
+            <div id="foldersSection">
+              <div class="section-label" id="foldersSectionLabel">Folders</div>
+              <div class="folder-grid" id="foldersGrid"></div>
             </div>
 
-            <!-- TAB: CAMERA (Mobile) -->
-            <div id="tabContentCamera" style="display: none;">
-              <div class="camera-card" style="background: var(--bg-surface); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin-bottom: 16px;">
-                <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Camera Auto-Backup Active</h3>
-                <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">Syncing DCIM/Camera to Telegram Channel via Android WorkManager.</p>
-                <div style="font-size: 12px; color: var(--color-success); font-weight: 600;">1,420 Photos Synced | WiFi Only</div>
-              </div>
+            <div id="filesSection" style="margin-top: 20px;">
+              <div class="section-label" id="filesSectionLabel">Files</div>
+              <div class="files-container ${this.viewMode === 'grid' ? 'grid-mode' : 'list-mode'}" id="filesContainer"></div>
             </div>
 
-            <!-- TAB: TRANSFERS -->
-            <div id="tabContentTransfers" style="display: none;">
-              <div class="section-label">Active Transfers (MTProto Chunk Streams)</div>
-              <div id="transfersList">
-                <div class="file-row" style="cursor: default;">
-                  <div class="file-icon-box file-type-video">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect width="15" height="14" x="1" y="5" rx="2" ry="2"/></svg>
-                  </div>
-                  <div class="file-details">
-                    <span class="file-name">Cyberpunk_2077_NightCity_4K.mp4</span>
-                    <span class="file-meta">Uploading 64KB chunks | 1.84 GB | 92%</span>
-                  </div>
-                  <div class="pill-badge pill-active">92%</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- TAB: SETTINGS -->
-            <div id="tabContentSettings" style="display: none;">
-              <div class="section-label">ProtoFS Configuration</div>
-              <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 16px;">
-                <div style="margin-bottom: 12px;">
-                  <div style="font-size: 13px; font-weight: 600;">FUSE / WinFsp Mount Drive</div>
-                  <div style="font-size: 12px; color: var(--text-secondary);">Native Explorer Drive Letter (P:)</div>
-                </div>
-                <div style="margin-bottom: 12px;">
-                  <div style="font-size: 13px; font-weight: 600;">Client-Side Encryption</div>
-                  <div style="font-size: 12px; color: var(--text-secondary);">AES-256-GCM (Argon2id KDF) Enabled</div>
-                </div>
-                <div>
-                  <div style="font-size: 13px; font-weight: 600;">SQLite FTS5 Local Cache</div>
-                  <div style="font-size: 12px; color: var(--text-secondary);">WAL Mode Active | Sub-5ms Queries</div>
-                </div>
-              </div>
+            <!-- Sync Pairs View (Only visible when activeFilter === 'sync') -->
+            <div id="syncPairsSection" style="display: none;">
+              <div class="sync-pairs-grid" id="syncPairsGrid"></div>
             </div>
           </div>
-
-          <!-- Mobile Bottom Navigation -->
-          <nav class="mobile-nav" id="mobileBottomNav" style="display: none;">
-            <button class="mobile-nav-item active" data-tab="files">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
-              <span>Files</span>
-            </button>
-            <button class="mobile-nav-item" data-tab="camera">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-              <span>Camera</span>
-            </button>
-            <button class="mobile-nav-item" data-tab="transfers">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <span>Transfers</span>
-            </button>
-            <button class="mobile-nav-item" data-tab="settings">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              <span>Settings</span>
-            </button>
-          </nav>
         </main>
       </div>
 
-      <!-- Generic Dynamic Modal -->
+      <!-- Dynamic Floating Selection Action Bar -->
+      <div class="selection-floating-bar hidden" id="selectionFloatingBar">
+        <span class="selection-count-pill" id="selectionCountPill">0 selected</span>
+        <div class="selection-actions-row">
+          <button class="btn-selection-tool" id="btnSelDownload" title="Download">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download</span>
+          </button>
+          <button class="btn-selection-tool" id="btnSelPreview" title="Preview single file">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span>Preview</span>
+          </button>
+          <button class="btn-selection-tool" id="btnSelRename" title="Rename item">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            <span>Rename</span>
+          </button>
+          <button class="btn-selection-tool" id="btnSelMove" title="Move to folder">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+            <span>Move</span>
+          </button>
+          <button class="btn-selection-tool" id="btnSelPin" title="Pin / Unpin Offline">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+            <span>Pin</span>
+          </button>
+          <button class="btn-selection-tool danger" id="btnSelTrash" title="Move selected to Trash">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            <span>Trash</span>
+          </button>
+          <button class="btn-selection-tool" id="btnSelDeselect" title="Deselect All">✕</button>
+        </div>
+      </div>
+
+      <!-- Reactive Transfer Dock (Appears when active transfers exist) -->
+      <div class="reactive-transfer-dock hidden" id="reactiveTransferDock">
+        <div class="transfer-dock-header" id="transferDockHeader">
+          <div class="transfer-header-info">
+            <span class="pulse-dot"></span>
+            <span id="transferDockTitle">MTProto Stream Transfers</span>
+          </div>
+          <div class="transfer-header-controls">
+            <button class="btn-dock-icon" id="btnCollapseDock" title="Collapse / Expand">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg>
+            </button>
+            <button class="btn-dock-icon" id="btnCloseDock" title="Dismiss">✕</button>
+          </div>
+        </div>
+        <div class="transfer-dock-body" id="transferDockBody"></div>
+      </div>
+
+      <!-- Generic Dynamic Modal Dialog -->
       <div class="modal-overlay hidden" id="dynamicModalOverlay">
         <div class="modal-card" id="dynamicModalCard">
           <div class="modal-header">
@@ -454,8 +449,10 @@ class ProtoFsApp {
       this.folders = data.folders;
       this.files = data.files;
     }
-    this.syncPairs = await this.api.getSyncPairs();
+    this.syncPairs = await this.api.getSyncPairs(this.activeDriveId);
 
+    this.selectedIds.clear();
+    this.updateSelectionBar();
     this.renderDrivesNav();
     this.renderBreadcrumbs();
     this.renderContent();
@@ -498,15 +495,19 @@ class ProtoFsApp {
     const driveName = drive ? drive.name : 'Drive';
 
     if (this.activeFilter === 'trash') {
-      bar.innerHTML = `<span>${driveName}</span> <span class="crumb-sep">/</span> <span class="crumb-item active">Trash / Recycle Bin</span>`;
+      bar.innerHTML = `<span>${escapeHtml(driveName)}</span> <span class="crumb-sep">/</span> <span class="crumb-item active">Trash / Recycle Bin</span>`;
       return;
     }
     if (this.activeFilter === 'pinned') {
-      bar.innerHTML = `<span>${driveName}</span> <span class="crumb-sep">/</span> <span class="crumb-item active">Offline Pinned</span>`;
+      bar.innerHTML = `<span>${escapeHtml(driveName)}</span> <span class="crumb-sep">/</span> <span class="crumb-item active">Offline Pinned</span>`;
       return;
     }
     if (this.activeFilter === 'encrypted') {
-      bar.innerHTML = `<span>${driveName}</span> <span class="crumb-sep">/</span> <span class="crumb-item active">Encrypted Vaults</span>`;
+      bar.innerHTML = `<span>${escapeHtml(driveName)}</span> <span class="crumb-sep">/</span> <span class="crumb-item active">Encrypted Vaults</span>`;
+      return;
+    }
+    if (this.activeFilter === 'sync') {
+      bar.innerHTML = `<span>${escapeHtml(driveName)}</span> <span class="crumb-sep">/</span> <span class="crumb-item active">Sync Pairs</span>`;
       return;
     }
 
@@ -540,6 +541,8 @@ class ProtoFsApp {
         const id = (el as HTMLElement).dataset.crumbId;
         if (id) {
           this.currentFolderId = id;
+          this.selectedIds.clear();
+          this.updateSelectionBar();
           this.renderBreadcrumbs();
           this.renderContent();
         }
@@ -550,37 +553,78 @@ class ProtoFsApp {
   private renderContent() {
     const foldersSection = document.getElementById('foldersSection');
     const foldersGrid = document.getElementById('foldersGrid');
-    const filesList = document.getElementById('filesList');
+    const filesSection = document.getElementById('filesSection');
+    const filesContainer = document.getElementById('filesContainer');
     const filesSectionLabel = document.getElementById('filesSectionLabel');
+    const syncPairsSection = document.getElementById('syncPairsSection');
     const toolbarButtons = document.getElementById('toolbarButtons');
+    const trashNavCount = document.getElementById('trashNavCount');
 
-    if (!foldersGrid || !filesList) return;
+    if (!foldersGrid || !filesContainer) return;
 
-    if (this.activeFilter === 'trash') {
+    // Update trash count badge
+    const trashedTotal = this.files.filter(f => f.trashed).length;
+    if (trashNavCount) trashNavCount.textContent = String(trashedTotal);
+
+    // Update container mode
+    filesContainer.className = `files-container ${this.viewMode === 'grid' ? 'grid-mode' : 'list-mode'}`;
+
+    if (syncPairsSection) syncPairsSection.style.display = this.activeFilter === 'sync' ? 'block' : 'none';
+
+    // 1. SYNC PAIRS VIEW
+    if (this.activeFilter === 'sync') {
       if (foldersSection) foldersSection.style.display = 'none';
-      if (filesSectionLabel) filesSectionLabel.textContent = 'Trash / Recycle Bin (Soft-Deleted Items)';
+      if (filesSection) filesSection.style.display = 'none';
       if (toolbarButtons) {
         toolbarButtons.innerHTML = `
+          <button class="btn-action primary" id="btnAddSyncPair">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            <span>Add Sync Pair</span>
+          </button>
+        `;
+        document.getElementById('btnAddSyncPair')?.addEventListener('click', () => this.openAddSyncPairModal());
+      }
+      this.renderSyncPairsView();
+      return;
+    }
+
+    if (filesSection) filesSection.style.display = 'block';
+
+    // 2. TRASH VIEW
+    if (this.activeFilter === 'trash') {
+      if (foldersSection) foldersSection.style.display = 'none';
+      if (filesSectionLabel) filesSectionLabel.textContent = 'Trash / Recycle Bin (30-day retention)';
+      if (toolbarButtons) {
+        toolbarButtons.innerHTML = `
+          <button class="btn-action secondary" id="btnRestoreAll">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+            <span>Restore All</span>
+          </button>
           <button class="btn-action danger" id="btnEmptyTrash">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
             <span>Empty Trash</span>
           </button>
         `;
-        const btnEmpty = document.getElementById('btnEmptyTrash');
-        btnEmpty?.addEventListener('click', () => this.handleEmptyTrash());
+        document.getElementById('btnEmptyTrash')?.addEventListener('click', () => this.handleEmptyTrash());
+        document.getElementById('btnRestoreAll')?.addEventListener('click', async () => {
+          for (const f of this.files.filter(x => x.trashed)) {
+            await this.api.restoreNode(this.activeDriveId, f.id);
+          }
+          await this.loadWorkspaceData();
+        });
       }
 
       const trashedFiles = this.files.filter(f => f.trashed);
       if (trashedFiles.length === 0) {
-        filesList.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);">Trash is empty. Deleted files are retained for 30 days.</div>`;
+        filesContainer.innerHTML = `<div style="grid-column: 1/-1; padding: 32px; text-align: center; color: var(--text-muted);">Trash is empty. Deleted files are retained for 30 days.</div>`;
       } else {
-        filesList.innerHTML = trashedFiles.map(f => this.renderFileRow(f, true)).join('');
-        this.bindFileRowActions(true);
+        filesContainer.innerHTML = trashedFiles.map(f => this.renderFileItem(f, true)).join('');
+        this.bindFileItemEvents(true);
       }
       return;
     }
 
-    // Normal mode / other filters
+    // 3. STANDARD NAVIGATION & FILTERS
     if (toolbarButtons) {
       toolbarButtons.innerHTML = `
         <button class="btn-action secondary" id="btnNewFolder">
@@ -598,27 +642,27 @@ class ProtoFsApp {
 
     if (this.activeFilter === 'pinned') {
       if (foldersSection) foldersSection.style.display = 'none';
-      if (filesSectionLabel) filesSectionLabel.textContent = 'Offline Pinned Files (Protected from LRU Eviction)';
+      if (filesSectionLabel) filesSectionLabel.textContent = 'Offline Pinned Files (Exempt from 14-day LRU auto-eviction)';
       const pinned = this.files.filter(f => !f.trashed && f.pinned);
-      filesList.innerHTML = pinned.length
-        ? pinned.map(f => this.renderFileRow(f)).join('')
-        : `<div style="padding: 24px; text-align: center; color: var(--text-muted);">No pinned files. Pin items to keep them accessible offline.</div>`;
-      this.bindFileRowActions();
+      filesContainer.innerHTML = pinned.length
+        ? pinned.map(f => this.renderFileItem(f)).join('')
+        : `<div style="grid-column: 1/-1; padding: 32px; text-align: center; color: var(--text-muted);">No pinned files. Pin items to guarantee offline access.</div>`;
+      this.bindFileItemEvents();
       return;
     }
 
     if (this.activeFilter === 'encrypted') {
       if (foldersSection) foldersSection.style.display = 'none';
-      if (filesSectionLabel) filesSectionLabel.textContent = 'Encrypted Vault Files (AES-256-GCM 64KB Chunk Stream)';
+      if (filesSectionLabel) filesSectionLabel.textContent = 'Encrypted Vaults (AES-256-GCM 64KB STREAM Construction)';
       const enc = this.files.filter(f => !f.trashed && f.encrypted);
-      filesList.innerHTML = enc.length
-        ? enc.map(f => this.renderFileRow(f)).join('')
-        : `<div style="padding: 24px; text-align: center; color: var(--text-muted);">No encrypted files in this drive.</div>`;
-      this.bindFileRowActions();
+      filesContainer.innerHTML = enc.length
+        ? enc.map(f => this.renderFileItem(f)).join('')
+        : `<div style="grid-column: 1/-1; padding: 32px; text-align: center; color: var(--text-muted);">No encrypted files in this drive.</div>`;
+      this.bindFileItemEvents();
       return;
     }
 
-    // Default view: Show folders for current folder
+    // Default folder view: Subfolders
     if (foldersSection) foldersSection.style.display = 'block';
     if (filesSectionLabel) filesSectionLabel.textContent = 'Files';
 
@@ -629,22 +673,27 @@ class ProtoFsApp {
       foldersGrid.innerHTML = childFolders
         .map(
           f => `
-          <div class="folder-card" data-folder-id="${f.id}">
+          <div class="folder-card ${this.selectedIds.has(f.id) ? 'selected' : ''}" data-folder-id="${f.id}">
             <div class="folder-icon">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
             </div>
-            <div class="folder-title">${escapeHtml(f.name)}</div>
-            <div class="folder-meta">${escapeHtml(f.count || 'Folder')}</div>
+            <div class="folder-details">
+              <div class="folder-name">${escapeHtml(f.name)}</div>
+              <div class="folder-count">${escapeHtml(f.count || 'Folder')}</div>
+            </div>
           </div>
         `
         )
         .join('');
 
       foldersGrid.querySelectorAll('.folder-card').forEach(card => {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', e => {
+          if ((e.target as HTMLElement).tagName.toLowerCase() === 'input') return;
           const fId = (card as HTMLElement).dataset.folderId;
           if (fId) {
             this.currentFolderId = fId;
+            this.selectedIds.clear();
+            this.updateSelectionBar();
             this.renderBreadcrumbs();
             this.renderContent();
           }
@@ -655,20 +704,48 @@ class ProtoFsApp {
     // Files in current folder
     const childFiles = this.files.filter(f => !f.trashed && f.parent_id === this.currentFolderId);
     if (childFiles.length === 0) {
-      filesList.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);">No files in this folder. Click "+ Upload" to add one.</div>`;
+      filesContainer.innerHTML = `<div style="grid-column: 1/-1; padding: 32px; text-align: center; color: var(--text-muted);">Folder is empty. Click "+ Upload" to add files.</div>`;
     } else {
-      filesList.innerHTML = childFiles.map(f => this.renderFileRow(f)).join('');
-      this.bindFileRowActions();
+      filesContainer.innerHTML = childFiles.map(f => this.renderFileItem(f)).join('');
+      this.bindFileItemEvents();
     }
   }
 
-  private renderFileRow(f: FileNode, isTrash = false): string {
-    const iconClass = `file-type-${f.type}`;
+  // -------------------------------------------------------------------------
+  // FILE ITEM RENDERING (GRID & LIST MODES)
+  // -------------------------------------------------------------------------
+
+  private renderFileItem(f: FileNode, isTrash = false): string {
+    const isSelected = this.selectedIds.has(f.id);
     const iconSvg = getFileIconSvg(f.type);
 
+    if (this.viewMode === 'grid') {
+      return `
+        <div class="file-card-grid ${isSelected ? 'selected' : ''}" data-file-id="${f.id}">
+          <div class="file-card-top">
+            <input type="checkbox" class="file-card-checkbox" data-file-id="${f.id}" ${isSelected ? 'checked' : ''}>
+            <div class="file-card-badges">
+              ${f.encrypted ? `<span class="file-badge encrypted" title="AES-256-GCM Encrypted">🔒</span>` : ''}
+              ${f.pinned ? `<span class="file-badge pinned" title="Pinned Offline">📌</span>` : ''}
+            </div>
+          </div>
+          <div class="file-card-icon-area file-type-${f.type}">
+            ${iconSvg}
+          </div>
+          <div class="file-card-title" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+          <div class="file-card-meta">
+            <span>${f.size}</span>
+            <span>${f.date}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    // List mode row
     return `
-      <div class="file-row" data-file-id="${f.id}">
-        <div class="file-icon-box ${iconClass}">${iconSvg}</div>
+      <div class="file-row ${isSelected ? 'selected' : ''}" data-file-id="${f.id}">
+        <input type="checkbox" class="file-checkbox" data-file-id="${f.id}" ${isSelected ? 'checked' : ''}>
+        <div class="file-icon-box file-type-${f.type}">${iconSvg}</div>
         <div class="file-details">
           <span class="file-name">${escapeHtml(f.name)}</span>
           <span class="file-meta">${f.size} • ${f.date} ${f.encrypted ? '• 🔒 Encrypted' : ''} ${f.pinned ? '• 📌 Pinned' : ''}</span>
@@ -677,7 +754,7 @@ class ProtoFsApp {
           ${
             isTrash
               ? `
-            <button class="btn-icon-subtle btn-restore-file" data-id="${f.id}" title="Restore File">
+            <button class="btn-icon-subtle btn-restore-file" data-id="${f.id}" title="Restore">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
             </button>
             <button class="btn-icon-subtle btn-delete-file-perm" data-id="${f.id}" title="Delete Permanently" style="color: var(--color-danger);">
@@ -701,7 +778,43 @@ class ProtoFsApp {
     `;
   }
 
-  private bindFileRowActions(isTrash = false) {
+  private bindFileItemEvents(isTrash = false) {
+    // Checkbox toggling
+    document.querySelectorAll('.file-checkbox, .file-card-checkbox').forEach(cb => {
+      cb.addEventListener('change', e => {
+        e.stopPropagation();
+        const fId = (cb as HTMLElement).dataset.fileId;
+        if (fId) {
+          if ((cb as HTMLInputElement).checked) {
+            this.selectedIds.add(fId);
+          } else {
+            this.selectedIds.delete(fId);
+          }
+          this.updateSelectionBar();
+          this.renderContent();
+        }
+      });
+    });
+
+    // Card/Row click toggles selection or preview
+    document.querySelectorAll('.file-card-grid, .file-row').forEach(el => {
+      el.addEventListener('click', e => {
+        const target = e.target as HTMLElement;
+        if (target.tagName.toLowerCase() === 'input' || target.closest('.btn-icon-subtle')) return;
+
+        const fId = (el as HTMLElement).dataset.fileId;
+        if (fId) {
+          if (this.selectedIds.has(fId)) {
+            this.selectedIds.delete(fId);
+          } else {
+            this.selectedIds.add(fId);
+          }
+          this.updateSelectionBar();
+          this.renderContent();
+        }
+      });
+    });
+
     if (isTrash) {
       document.querySelectorAll('.btn-restore-file').forEach(btn => {
         btn.addEventListener('click', async e => {
@@ -756,290 +869,342 @@ class ProtoFsApp {
     }
   }
 
-  private updateStorageUsage() {
-    const textEl = document.getElementById('storageUsageText');
-    if (!textEl) return;
-    const totalBytes = this.files.reduce((sum, f) => sum + (f.size_bytes || 0), 0);
-    textEl.textContent = formatBytes(totalBytes);
-  }
-
   // -------------------------------------------------------------------------
-  // MODALS & ACTIONS (New Folder, Upload, Preview, New Drive, Sync Pairs)
+  // DYNAMIC SELECTION ACTION BAR
   // -------------------------------------------------------------------------
 
-  private openNewFolderModal() {
-    this.showModal('Create New Folder', `
-      <div class="form-group">
-        <label class="form-label">Folder Name</label>
-        <input type="text" class="form-input" id="inputModalFolderName" placeholder="e.g. Invoices 2026" autofocus>
-      </div>
-    `, `
-      <button class="btn-action secondary" id="btnModalCancel">Cancel</button>
-      <button class="btn-action primary" id="btnModalCreateFolder">Create Folder</button>
-    `);
+  private updateSelectionBar() {
+    const bar = document.getElementById('selectionFloatingBar');
+    const countPill = document.getElementById('selectionCountPill');
+    const btnSelPreview = document.getElementById('btnSelPreview');
+    const btnSelRename = document.getElementById('btnSelRename');
 
-    document.getElementById('btnModalCancel')?.addEventListener('click', () => this.closeModal());
-    document.getElementById('btnModalCreateFolder')?.addEventListener('click', async () => {
-      const input = document.getElementById('inputModalFolderName') as HTMLInputElement;
-      const name = input?.value.trim();
-      if (!name) return;
-      await this.api.createFolder(this.activeDriveId, this.currentFolderId, name);
-      this.closeModal();
-      await this.loadWorkspaceData();
-    });
-  }
+    if (!bar || !countPill) return;
 
-  private openUploadModal() {
-    this.showModal('Upload File to Drive', `
-      <div class="form-group">
-        <label class="form-label">File Name</label>
-        <input type="text" class="form-input" id="inputModalFileName" placeholder="e.g. database_backup.tar.gz" required>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Estimated File Size (MB)</label>
-        <input type="number" class="form-input" id="inputModalFileSize" value="25" min="1" max="4000">
-      </div>
-      <div style="background: var(--bg-surface-elevated); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between;">
-        <div>
-          <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Zero-Knowledge Encryption</div>
-          <div style="font-size: 11px; color: var(--text-secondary);">64KB chunked AES-256-GCM authenticated stream</div>
-        </div>
-        <input type="checkbox" id="checkModalEncrypt" checked style="width: 18px; height: 18px; cursor: pointer;">
-      </div>
-    `, `
-      <button class="btn-action secondary" id="btnModalCancel">Cancel</button>
-      <button class="btn-action primary" id="btnModalDoUpload">Upload to Telegram</button>
-    `);
-
-    document.getElementById('btnModalCancel')?.addEventListener('click', () => this.closeModal());
-    document.getElementById('btnModalDoUpload')?.addEventListener('click', async () => {
-      const nameEl = document.getElementById('inputModalFileName') as HTMLInputElement;
-      const sizeEl = document.getElementById('inputModalFileSize') as HTMLInputElement;
-      const encEl = document.getElementById('checkModalEncrypt') as HTMLInputElement;
-
-      const name = nameEl?.value.trim();
-      if (!name) return;
-      const sizeMb = parseFloat(sizeEl?.value || '10');
-      const sizeBytes = Math.round(sizeMb * 1024 * 1024);
-      const isEncrypted = encEl?.checked || false;
-
-      await this.api.uploadFile(this.activeDriveId, this.currentFolderId, name, sizeBytes, isEncrypted);
-      this.closeModal();
-      await this.loadWorkspaceData();
-    });
-  }
-
-  private openNewDriveModal() {
-    this.showModal('Add New Drive / Channel', `
-      <div class="form-group">
-        <label class="form-label">Drive Name</label>
-        <input type="text" class="form-input" id="inputModalDriveName" placeholder="e.g. Photography Archive" autofocus>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Telegram Channel ID</label>
-        <input type="number" class="form-input" id="inputModalChannelId" placeholder="-1001928472910" required>
-        <span style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">ProtoFS will pin a compressed manifest.json.zst in this channel.</span>
-      </div>
-    `, `
-      <button class="btn-action secondary" id="btnModalCancel">Cancel</button>
-      <button class="btn-action primary" id="btnModalCreateDrive">Create Drive</button>
-    `);
-
-    document.getElementById('btnModalCancel')?.addEventListener('click', () => this.closeModal());
-    document.getElementById('btnModalCreateDrive')?.addEventListener('click', async () => {
-      const nameEl = document.getElementById('inputModalDriveName') as HTMLInputElement;
-      const chEl = document.getElementById('inputModalChannelId') as HTMLInputElement;
-      const name = nameEl?.value.trim();
-      const channelId = parseInt(chEl?.value.trim() || '0', 10);
-      if (!name || !channelId) return;
-
-      const newDrive = await this.api.createDrive(name, channelId);
-      this.activeDriveId = newDrive.id;
-      this.closeModal();
-      await this.loadWorkspaceData();
-    });
-  }
-
-  private openFilePreview(file: FileNode) {
-    let previewContent = '';
-    if (file.type === 'video') {
-      previewContent = `
-        <div style="background: #000; border-radius: var(--radius-sm); overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 220px;">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent-primary);"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          <span style="font-size: 12px; color: #aaa; margin-top: 8px;">64KB HTTP 206 Range Stream Playback</span>
-        </div>
-      `;
-    } else if (file.type === 'image') {
-      previewContent = `
-        <div style="background: var(--bg-surface-elevated); border-radius: var(--radius-sm); padding: 32px; text-align: center;">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent-primary);"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-          <div style="font-size: 13px; font-weight: 600; margin-top: 8px;">${escapeHtml(file.name)}</div>
-          <div style="font-size: 11px; color: var(--text-muted);">Decrypted from Telegram CDN</div>
-        </div>
-      `;
-    } else {
-      previewContent = `
-        <div style="background: var(--bg-surface-elevated); border-radius: var(--radius-sm); padding: 24px; font-family: var(--font-mono); font-size: 12px;">
-          <div>File ID: ${file.id}</div>
-          <div>Size: ${file.size} (${file.size_bytes} bytes)</div>
-          <div>SHA-256: ${file.sha256_hash || 'Verified'}</div>
-          <div>Telegram Message ID: #${file.telegram_message_id}</div>
-          <div>Encrypted: ${file.encrypted ? 'AES-256-GCM (STREAM Construction)' : 'No'}</div>
-        </div>
-      `;
+    const count = this.selectedIds.size;
+    if (count === 0) {
+      bar.classList.add('hidden');
+      return;
     }
 
-    this.showModal(`Preview: ${file.name}`, previewContent, `
-      <button class="btn-action secondary" id="btnModalCancel">Close</button>
-      <button class="btn-action primary" id="btnDownloadMock">Download File</button>
-    `);
+    bar.classList.remove('hidden');
+    countPill.textContent = `${count} item${count > 1 ? 's' : ''} selected`;
 
-    document.getElementById('btnModalCancel')?.addEventListener('click', () => this.closeModal());
-    document.getElementById('btnDownloadMock')?.addEventListener('click', () => {
-      alert(`Downloading ${file.name} via Telegram MTProto chunk stream...`);
-      this.closeModal();
-    });
+    // Preview and Rename are only active for single item selection
+    if (btnSelPreview) btnSelPreview.style.display = count === 1 ? 'flex' : 'none';
+    if (btnSelRename) btnSelRename.style.display = count === 1 ? 'flex' : 'none';
   }
 
-  private openSyncPairsModal() {
-    const listHtml = this.syncPairs
+  // -------------------------------------------------------------------------
+  // SYNC PAIRS VIEW
+  // -------------------------------------------------------------------------
+
+  private renderSyncPairsView() {
+    const grid = document.getElementById('syncPairsGrid');
+    if (!grid) return;
+
+    if (this.syncPairs.length === 0) {
+      grid.innerHTML = `
+        <div style="padding: 32px; text-align: center; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+          <p style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">No Active Sync Pairs</p>
+          <p style="font-size: 12px; margin-bottom: 16px;">Map a local OS folder to Telegram for continuous real-time backup.</p>
+          <button class="btn-action primary" id="btnEmptyAddSync">Add First Sync Pair</button>
+        </div>
+      `;
+      document.getElementById('btnEmptyAddSync')?.addEventListener('click', () => this.openAddSyncPairModal());
+      return;
+    }
+
+    grid.innerHTML = this.syncPairs
       .map(
         p => `
-        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <span style="font-weight: 600; font-size: 13px; color: var(--text-primary); font-family: var(--font-mono);">${escapeHtml(p.local_path)}</span>
-            <span class="pill-badge pill-active">${escapeHtml(p.sync_mode.toUpperCase())}</span>
+        <div class="sync-pair-card">
+          <div class="sync-pair-info">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="sync-pair-path">${escapeHtml(p.local_path)}</span>
+              <span class="sync-mode-pill">${p.sync_mode}</span>
+            </div>
+            <div class="sync-pair-sub">Mapped to folder: <code>${escapeHtml(p.remote_folder_id)}</code> • ${p.status}</div>
           </div>
-          <div style="font-size: 11px; color: var(--text-secondary);">${p.status} • ${p.file_count} files</div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-action secondary btn-sync-now" data-sync-id="${p.id}" title="Run Sync Now">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+              <span>Sync Now</span>
+            </button>
+            <button class="btn-action secondary btn-del-sync" data-sync-id="${p.id}" title="Remove Sync Pair" style="color: var(--color-danger);">✕</button>
+          </div>
         </div>
       `
       )
       .join('');
 
-    this.showModal('Sync Pairs (Real-Time OS Watcher)', `
-      <div style="margin-bottom: 12px; font-size: 12px; color: var(--text-secondary);">
-        Active folders automatically monitored for changes and synced to your Telegram Drive.
-      </div>
-      <div>${listHtml}</div>
-    `, `
-      <button class="btn-action secondary" id="btnModalCancel">Close</button>
-      <button class="btn-action primary" id="btnTriggerSyncNow">Sync Now</button>
-    `);
+    grid.querySelectorAll('.btn-sync-now').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.syncId;
+        if (id) {
+          this.triggerTransfer('Sync: Local folder to Telegram', '14.2 MB', 'uploading');
+          await this.api.triggerSync(id);
+        }
+      });
+    });
 
-    document.getElementById('btnModalCancel')?.addEventListener('click', () => this.closeModal());
-    document.getElementById('btnTriggerSyncNow')?.addEventListener('click', () => {
-      alert('Triggered real-time folder sync against local SQLite cache.');
-      this.closeModal();
+    grid.querySelectorAll('.btn-del-sync').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.syncId;
+        if (id && confirm('Remove this Sync Pair?')) {
+          await this.api.removeSyncPair(id);
+          this.syncPairs = await this.api.getSyncPairs(this.activeDriveId);
+          this.renderSyncPairsView();
+        }
+      });
     });
   }
 
-  private async handleEmptyTrash() {
-    if (confirm('Permanently delete all items in the Trash from Telegram?')) {
-      const count = await this.api.emptyTrash(this.activeDriveId);
-      alert(`Emptied ${count} items from Trash.`);
-      await this.loadWorkspaceData();
-    }
+  // -------------------------------------------------------------------------
+  // REACTIVE TRANSFER DOCK (DYNAMIC UPLOAD / DOWNLOAD SIMULATION)
+  // -------------------------------------------------------------------------
+
+  private triggerTransfer(name: string, size: string, status: 'uploading' | 'downloading') {
+    const item: TransferItem = {
+      id: `tf_${Date.now()}`,
+      name,
+      size,
+      progress: 5,
+      speed: '12.4 MB/s',
+      status,
+    };
+
+    this.activeTransfers.push(item);
+    this.renderTransferDock();
+
+    const interval = setInterval(() => {
+      item.progress += Math.floor(Math.random() * 20) + 12;
+      if (item.progress >= 100) {
+        item.progress = 100;
+        item.status = 'completed';
+        clearInterval(interval);
+        this.renderTransferDock();
+
+        setTimeout(() => {
+          this.activeTransfers = this.activeTransfers.filter(t => t.id !== item.id);
+          this.renderTransferDock();
+        }, 4000);
+      } else {
+        this.renderTransferDock();
+      }
+    }, 450);
   }
 
-  private showModal(title: string, bodyHtml: string, footerHtml: string) {
-    const overlay = document.getElementById('dynamicModalOverlay');
-    const titleEl = document.getElementById('dynamicModalTitle');
-    const bodyEl = document.getElementById('dynamicModalBody');
-    const footerEl = document.getElementById('dynamicModalFooter');
+  private renderTransferDock() {
+    const dock = document.getElementById('reactiveTransferDock');
+    const body = document.getElementById('transferDockBody');
+    const title = document.getElementById('transferDockTitle');
 
-    if (overlay && titleEl && bodyEl && footerEl) {
-      titleEl.textContent = title;
-      bodyEl.innerHTML = bodyHtml;
-      footerEl.innerHTML = footerHtml;
-      overlay.classList.remove('hidden');
+    if (!dock || !body || !title) return;
 
-      document.getElementById('btnDynamicModalClose')?.addEventListener('click', () => this.closeModal());
+    if (this.activeTransfers.length === 0) {
+      dock.classList.add('hidden');
+      return;
     }
-  }
 
-  private closeModal() {
-    const overlay = document.getElementById('dynamicModalOverlay');
-    if (overlay) overlay.classList.add('hidden');
+    dock.classList.remove('hidden');
+    title.textContent = `MTProto Sync: ${this.activeTransfers.length} active transfer${this.activeTransfers.length > 1 ? 's' : ''}`;
+
+    body.innerHTML = this.activeTransfers
+      .map(
+        t => `
+        <div class="transfer-card-item">
+          <div class="transfer-item-row">
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px;">${escapeHtml(t.name)}</span>
+            <span>${t.progress}%</span>
+          </div>
+          <div class="transfer-progress-track">
+            <div class="transfer-progress-bar" style="width: ${t.progress}%;"></div>
+          </div>
+          <div class="transfer-item-sub">
+            <span>${t.status === 'completed' ? '✓ Transfer complete' : 'Streaming 64KB AES-256-GCM chunks'}</span>
+            <span>${t.speed} • ${t.size}</span>
+          </div>
+        </div>
+      `
+      )
+      .join('');
   }
 
   // -------------------------------------------------------------------------
-  // GLOBAL EVENTS & SHORTCUTS
+  // INTERACTIVE MODALS & EVENT HANDLERS
   // -------------------------------------------------------------------------
 
   private bindEvents() {
-    // Search input (SQLite FTS5 sub-5ms search)
+    // Search input with FTS5 live lookup
     const searchInput = document.getElementById('globalSearchInput') as HTMLInputElement;
-    if (searchInput) {
+    const searchDropdown = document.getElementById('searchDropdown');
+
+    if (searchInput && searchDropdown) {
       searchInput.addEventListener('input', async () => {
         const q = searchInput.value.trim();
-        if (q.length > 0) {
-          const results = await this.api.searchNodes(this.activeDriveId, q);
-          this.renderSearchResults(results);
+        if (q.length < 2) {
+          searchDropdown.classList.add('hidden');
+          return;
+        }
+
+        const results = await this.api.searchNodes(this.activeDriveId, q);
+        if (results.length === 0) {
+          searchDropdown.innerHTML = `<div style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 12px;">No matching files found.</div>`;
         } else {
-          this.renderContent();
+          searchDropdown.innerHTML = results
+            .map(
+              r => `
+              <div class="search-result-item" data-res-id="${r.id}" data-res-parent="${r.parent_id}">
+                <span>${r.kind === 'folder' ? '📁' : '📄'}</span>
+                <span class="search-result-name">${highlightMatch(escapeHtml(r.name), q)}</span>
+                <span style="font-size: 11px; color: var(--text-muted);">${r.kind}</span>
+              </div>
+            `
+            )
+            .join('');
+
+          searchDropdown.querySelectorAll('.search-result-item').forEach(item => {
+            item.addEventListener('click', () => {
+              const pId = (item as HTMLElement).dataset.resParent;
+              const rId = (item as HTMLElement).dataset.resId;
+              if (pId) {
+                this.currentFolderId = pId;
+                this.activeFilter = null;
+                this.selectedIds.clear();
+                if (rId) this.selectedIds.add(rId);
+                searchDropdown.classList.add('hidden');
+                searchInput.value = '';
+                this.renderBreadcrumbs();
+                this.renderContent();
+                this.updateSelectionBar();
+              }
+            });
+          });
+        }
+        searchDropdown.classList.remove('hidden');
+      });
+
+      document.addEventListener('click', e => {
+        if (!searchInput.contains(e.target as Node) && !searchDropdown.contains(e.target as Node)) {
+          searchDropdown.classList.add('hidden');
         }
       });
     }
 
-    // Ctrl+K hotkey for instant search
-    window.addEventListener('keydown', e => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    // Shortcut Ctrl+K
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        const input = document.getElementById('globalSearchInput');
-        input?.focus();
+        searchInput?.focus();
+      }
+      if (e.key === 'Escape') {
+        searchDropdown?.classList.add('hidden');
+        this.closeModal();
       }
     });
 
-    // Device view switcher (Desktop vs Android layout)
-    document.getElementById('btnDeviceView')?.addEventListener('click', () => {
-      this.isMobileMode = !this.isMobileMode;
-      const ws = document.getElementById('workspaceContainer');
-      const mobileNav = document.getElementById('mobileBottomNav');
-      if (this.isMobileMode) {
-        ws?.classList.add('mobile-layout');
-        if (mobileNav) mobileNav.style.display = 'flex';
-      } else {
-        ws?.classList.remove('mobile-layout');
-        if (mobileNav) mobileNav.style.display = 'none';
+    // View toggle handlers
+    document.getElementById('btnViewGrid')?.addEventListener('click', () => {
+      this.viewMode = 'grid';
+      document.getElementById('btnViewGrid')?.classList.add('active');
+      document.getElementById('btnViewList')?.classList.remove('active');
+      this.renderContent();
+    });
+
+    document.getElementById('btnViewList')?.addEventListener('click', () => {
+      this.viewMode = 'list';
+      document.getElementById('btnViewList')?.classList.add('active');
+      document.getElementById('btnViewGrid')?.classList.remove('active');
+      this.renderContent();
+    });
+
+    // Floating selection bar action triggers
+    document.getElementById('btnSelDeselect')?.addEventListener('click', () => {
+      this.selectedIds.clear();
+      this.updateSelectionBar();
+      this.renderContent();
+    });
+
+    document.getElementById('btnSelDownload')?.addEventListener('click', () => {
+      const selected = Array.from(this.selectedIds);
+      if (selected.length > 0) {
+        const file = this.files.find(f => f.id === selected[0]);
+        this.triggerTransfer(file ? file.name : 'ProtoFS_Archive.tar.gz', file ? file.size : '124 MB', 'downloading');
       }
     });
 
-    // Theme toggle
-    document.getElementById('btnTheme')?.addEventListener('click', () => {
-      this.themeManager.toggleTheme();
+    document.getElementById('btnSelPreview')?.addEventListener('click', () => {
+      const selected = Array.from(this.selectedIds);
+      if (selected.length === 1) {
+        const file = this.files.find(f => f.id === selected[0]);
+        if (file) this.openFilePreview(file);
+      }
     });
 
-    // Palette switcher
-    document.getElementById('btnPalette')?.addEventListener('click', () => {
-      const keys = Object.keys(PALETTES) as Palette[];
-      const curr = this.themeManager.getPalette();
-      const nextIdx = (keys.indexOf(curr) + 1) % keys.length;
-      this.themeManager.setPalette(keys[nextIdx]);
+    document.getElementById('btnSelRename')?.addEventListener('click', () => {
+      const selected = Array.from(this.selectedIds);
+      if (selected.length === 1) {
+        const item = this.files.find(f => f.id === selected[0]) || this.folders.find(f => f.id === selected[0]);
+        if (item) this.openRenameModal(item.id, item.name);
+      }
     });
 
-    // Sync Pairs modal
-    document.getElementById('btnSyncPairs')?.addEventListener('click', () => {
-      this.openSyncPairsModal();
+    document.getElementById('btnSelMove')?.addEventListener('click', () => {
+      const selected = Array.from(this.selectedIds);
+      if (selected.length === 1) {
+        this.openMoveModal(selected[0]);
+      }
     });
 
-    // New Drive button
-    document.getElementById('btnNewDrive')?.addEventListener('click', () => {
-      this.openNewDriveModal();
+    document.getElementById('btnSelPin')?.addEventListener('click', async () => {
+      for (const id of this.selectedIds) {
+        const file = this.files.find(f => f.id === id);
+        if (file) await this.api.togglePin(this.activeDriveId, id, !file.pinned);
+      }
+      await this.loadWorkspaceData();
     });
 
-    // Sidebar Filters (All, Pinned, Encrypted, Trash)
-    document.querySelectorAll('[data-filter]').forEach(btn => {
+    document.getElementById('btnSelTrash')?.addEventListener('click', async () => {
+      for (const id of this.selectedIds) {
+        await this.api.deleteNode(this.activeDriveId, id, false);
+      }
+      await this.loadWorkspaceData();
+    });
+
+    // Transfer Dock Collapse / Close
+    const transferDock = document.getElementById('reactiveTransferDock');
+    document.getElementById('btnCollapseDock')?.addEventListener('click', () => {
+      transferDock?.classList.toggle('collapsed');
+    });
+    document.getElementById('btnCloseDock')?.addEventListener('click', () => {
+      transferDock?.classList.add('hidden');
+    });
+
+    // Sidebar Filter buttons
+    document.querySelectorAll('.sidebar .nav-item[data-filter]').forEach(btn => {
       btn.addEventListener('click', () => {
         const filter = (btn as HTMLElement).dataset.filter;
         this.activeFilter = filter === 'all' ? null : (filter || null);
-        document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.sidebar .nav-item[data-filter]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        this.selectedIds.clear();
+        this.updateSelectionBar();
         this.renderBreadcrumbs();
         this.renderContent();
       });
     });
 
-    // Account Dropdown toggle
+    // Header buttons
+    document.getElementById('btnTheme')?.addEventListener('click', () => this.themeManager.toggleTheme());
+    document.getElementById('btnPalette')?.addEventListener('click', () => this.themeManager.cyclePalette());
+    document.getElementById('btnSyncPairs')?.addEventListener('click', () => {
+      this.activeFilter = 'sync';
+      this.renderBreadcrumbs();
+      this.renderContent();
+    });
+
+    // Avatar Dropdown Toggle
     const btnAvatar = document.getElementById('btnAvatar');
     const accountDropdown = document.getElementById('accountDropdown');
     if (btnAvatar && accountDropdown) {
@@ -1047,9 +1212,7 @@ class ProtoFsApp {
         e.stopPropagation();
         accountDropdown.classList.toggle('hidden');
       });
-      document.addEventListener('click', () => {
-        accountDropdown.classList.add('hidden');
-      });
+      document.addEventListener('click', () => accountDropdown.classList.add('hidden'));
     }
 
     // Account Logout button
@@ -1060,70 +1223,398 @@ class ProtoFsApp {
       this.renderLoginScreen();
     });
 
-    // Account Settings
+    // Account Security & Settings
     document.getElementById('btnAccountSettings')?.addEventListener('click', () => {
-      this.showModal('Zero-Knowledge Security', `
+      this.showModal(
+        'Zero-Knowledge Security',
+        `
         <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
-          <p><strong>Argon2id Master Key:</strong> Derived on-device. No plaintext credentials or keys leave this device.</p>
-          <p style="margin-top: 8px;"><strong>MTProto Session:</strong> Active with user ID <code>${this.session?.user_id || '1049281720'}</code>.</p>
-          <p style="margin-top: 8px;"><strong>Local SQLite Cache:</strong> <code>cache.db</code> in Write-Ahead Logging (WAL) mode with FTS5 index.</p>
+          <p><strong>Argon2id Key Derivation:</strong> Master password derived on-device. No plain passphrase leaves this device.</p>
+          <p style="margin-top: 8px;"><strong>MTProto Session:</strong> Active with Telegram User ID <code>${this.session?.user_id || '1049281720'}</code>.</p>
+          <p style="margin-top: 8px;"><strong>Local SQLite Cache:</strong> <code>cache.db</code> in Write-Ahead Logging (WAL) mode with FTS5 search index.</p>
         </div>
-      `, `<button class="btn-action primary" id="btnModalCancel">Done</button>`);
-      document.getElementById('btnModalCancel')?.addEventListener('click', () => this.closeModal());
+      `,
+        `<button class="btn-action primary" id="btnModalCloseDone">Done</button>`
+      );
+      document.getElementById('btnModalCloseDone')?.addEventListener('click', () => this.closeModal());
     });
 
-    // Mobile tabs
-    document.querySelectorAll('.mobile-nav-item').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tab = (btn as HTMLElement).dataset.tab as MobileTab;
-        if (!tab) return;
-        document.querySelectorAll('.mobile-nav-item').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+    // Storage Dashboard Modal
+    const openDashboard = async () => {
+      const usage = await this.api.getStorageUsage(this.activeDriveId);
+      const totalFormatted = formatBytes(usage.total_bytes);
+      const videoPct = usage.total_bytes > 0 ? (usage.video_bytes / usage.total_bytes) * 100 : 35;
+      const imgPct = usage.total_bytes > 0 ? (usage.image_bytes / usage.total_bytes) * 100 : 25;
+      const docPct = usage.total_bytes > 0 ? (usage.document_bytes / usage.total_bytes) * 100 : 20;
+      const audPct = usage.total_bytes > 0 ? (usage.audio_bytes / usage.total_bytes) * 100 : 10;
+      const othPct = usage.total_bytes > 0 ? (usage.other_bytes / usage.total_bytes) * 100 : 10;
 
-        const tabFiles = document.getElementById('tabContentFiles');
-        const tabCamera = document.getElementById('tabContentCamera');
-        const tabTransfers = document.getElementById('tabContentTransfers');
-        const tabSettings = document.getElementById('tabContentSettings');
+      this.showModal(
+        'Storage Dashboard (Client-Side Metrics)',
+        `
+        <div class="storage-dashboard-content">
+          <div class="storage-total-stat">${totalFormatted}</div>
+          <div style="font-size: 12px; color: var(--text-muted);">${usage.total_files} files across ${usage.total_folders} folders stored in Telegram.</div>
+          
+          <div class="storage-breakdown-bar">
+            <div class="breakdown-seg seg-video" style="width: ${videoPct}%;" title="Video"></div>
+            <div class="breakdown-seg seg-image" style="width: ${imgPct}%;" title="Images"></div>
+            <div class="breakdown-seg seg-document" style="width: ${docPct}%;" title="Documents"></div>
+            <div class="breakdown-seg seg-audio" style="width: ${audPct}%;" title="Audio"></div>
+            <div class="breakdown-seg seg-other" style="width: ${othPct}%;" title="Other"></div>
+          </div>
 
-        if (tabFiles) tabFiles.style.display = tab === 'files' ? 'block' : 'none';
-        if (tabCamera) tabCamera.style.display = tab === 'camera' ? 'block' : 'none';
-        if (tabTransfers) tabTransfers.style.display = tab === 'transfers' ? 'block' : 'none';
-        if (tabSettings) tabSettings.style.display = tab === 'settings' ? 'block' : 'none';
+          <div class="storage-legend-grid">
+            <div class="legend-item"><span class="legend-dot seg-video"></span><span>Video: ${formatBytes(usage.video_bytes)}</span></div>
+            <div class="legend-item"><span class="legend-dot seg-image"></span><span>Images: ${formatBytes(usage.image_bytes)}</span></div>
+            <div class="legend-item"><span class="legend-dot seg-document"></span><span>Documents: ${formatBytes(usage.document_bytes)}</span></div>
+            <div class="legend-item"><span class="legend-dot seg-audio"></span><span>Audio: ${formatBytes(usage.audio_bytes)}</span></div>
+            <div class="legend-item"><span class="legend-dot seg-other"></span><span>Other: ${formatBytes(usage.other_bytes)}</span></div>
+          </div>
+
+          <div style="padding: 10px 14px; background: var(--bg-surface-input); border-radius: var(--radius-sm); font-size: 11px; color: var(--text-muted);">
+            Local SQLite WAL Cache Footprint: <strong>${formatBytes(usage.local_cache_bytes)}</strong>
+          </div>
+        </div>
+      `,
+        `<button class="btn-action primary" id="btnModalCloseDash">Close</button>`
+      );
+      document.getElementById('btnModalCloseDash')?.addEventListener('click', () => this.closeModal());
+    };
+
+    document.getElementById('btnStorageDashboard')?.addEventListener('click', openDashboard);
+    document.getElementById('btnStorageCard')?.addEventListener('click', openDashboard);
+
+    // New Drive Modal button in sidebar
+    document.getElementById('btnNewDrive')?.addEventListener('click', () => {
+      this.showModal(
+        'Create Telegram Drive',
+        `
+        <div class="form-group">
+          <label class="form-label">Drive Name</label>
+          <input type="text" class="form-input" id="inputNewDriveName" placeholder="e.g. Media Vault" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Telegram Channel ID</label>
+          <input type="number" class="form-input" id="inputNewDriveChannel" placeholder="e.g. -1001928472910" required>
+        </div>
+      `,
+        `
+        <button class="btn-action secondary" id="btnCancelDrive">Cancel</button>
+        <button class="btn-action primary" id="btnConfirmDrive">Create Drive</button>
+      `
+      );
+
+      document.getElementById('btnCancelDrive')?.addEventListener('click', () => this.closeModal());
+      document.getElementById('btnConfirmDrive')?.addEventListener('click', async () => {
+        const nameEl = document.getElementById('inputNewDriveName') as HTMLInputElement;
+        const chanEl = document.getElementById('inputNewDriveChannel') as HTMLInputElement;
+        if (nameEl && chanEl && nameEl.value.trim()) {
+          const drive = await this.api.createDrive(nameEl.value.trim(), Number(chanEl.value) || -1001000000000);
+          this.activeDriveId = drive.id;
+          this.closeModal();
+          await this.loadWorkspaceData();
+        }
       });
     });
+
+    // Close dynamic modal button
+    document.getElementById('btnDynamicModalClose')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('dynamicModalOverlay')?.addEventListener('click', e => {
+      if ((e.target as HTMLElement).id === 'dynamicModalOverlay') this.closeModal();
+    });
   }
 
-  private renderSearchResults(results: SearchResult[]) {
-    const foldersSection = document.getElementById('foldersSection');
-    const filesList = document.getElementById('filesList');
-    const filesSectionLabel = document.getElementById('filesSectionLabel');
+  // -------------------------------------------------------------------------
+  // MODAL ACTIONS
+  // -------------------------------------------------------------------------
 
-    if (foldersSection) foldersSection.style.display = 'none';
-    if (filesSectionLabel) filesSectionLabel.textContent = `Search Results (${results.length} found)`;
+  private openNewFolderModal() {
+    this.showModal(
+      'Create New Folder',
+      `
+      <div class="form-group">
+        <label class="form-label">Folder Name</label>
+        <input type="text" class="form-input" id="inputNewFolderName" placeholder="Folder name" autofocus required>
+      </div>
+    `,
+      `
+      <button class="btn-action secondary" id="btnCancelFolder">Cancel</button>
+      <button class="btn-action primary" id="btnConfirmFolder">Create</button>
+    `
+    );
 
-    if (!filesList) return;
-    if (results.length === 0) {
-      filesList.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);">No matches found for that query.</div>`;
-      return;
+    document.getElementById('btnCancelFolder')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('btnConfirmFolder')?.addEventListener('click', async () => {
+      const nameEl = document.getElementById('inputNewFolderName') as HTMLInputElement;
+      if (nameEl && nameEl.value.trim()) {
+        await this.api.createFolder(this.activeDriveId, this.currentFolderId, nameEl.value.trim());
+        this.closeModal();
+        await this.loadWorkspaceData();
+      }
+    });
+  }
+
+  private openUploadModal() {
+    this.showModal(
+      'Upload File to Telegram',
+      `
+      <div class="form-group">
+        <label class="form-label">File Name</label>
+        <input type="text" class="form-input" id="inputUploadName" placeholder="e.g. document.pdf" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Estimated Size (Bytes)</label>
+        <input type="number" class="form-input" id="inputUploadSize" value="1048576">
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+        <input type="checkbox" id="checkUploadEncrypted" style="accent-color: var(--accent-primary); width: 16px; height: 16px;">
+        <label for="checkUploadEncrypted" style="font-size: 13px; color: var(--text-primary); cursor: pointer;">
+          Encrypt with AES-256-GCM (64KB STREAM chunks)
+        </label>
+      </div>
+    `,
+      `
+      <button class="btn-action secondary" id="btnCancelUpload">Cancel</button>
+      <button class="btn-action primary" id="btnConfirmUpload">Upload Now</button>
+    `
+    );
+
+    document.getElementById('btnCancelUpload')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('btnConfirmUpload')?.addEventListener('click', async () => {
+      const nameEl = document.getElementById('inputUploadName') as HTMLInputElement;
+      const sizeEl = document.getElementById('inputUploadSize') as HTMLInputElement;
+      const encEl = document.getElementById('checkUploadEncrypted') as HTMLInputElement;
+
+      if (nameEl && nameEl.value.trim()) {
+        const name = nameEl.value.trim();
+        const size = Number(sizeEl?.value) || 1048576;
+        const encrypted = encEl ? encEl.checked : false;
+
+        this.closeModal();
+        this.triggerTransfer(`Upload: ${name}`, formatBytes(size), 'uploading');
+
+        await this.api.uploadFile(this.activeDriveId, this.currentFolderId, name, size, encrypted);
+        await this.loadWorkspaceData();
+      }
+    });
+  }
+
+  private openRenameModal(nodeId: string, currentName: string) {
+    this.showModal(
+      'Rename Item',
+      `
+      <div class="form-group">
+        <label class="form-label">New Name</label>
+        <input type="text" class="form-input" id="inputRenameName" value="${escapeHtml(currentName)}" required autofocus>
+      </div>
+    `,
+      `
+      <button class="btn-action secondary" id="btnCancelRename">Cancel</button>
+      <button class="btn-action primary" id="btnConfirmRename">Save</button>
+    `
+    );
+
+    document.getElementById('btnCancelRename')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('btnConfirmRename')?.addEventListener('click', async () => {
+      const input = document.getElementById('inputRenameName') as HTMLInputElement;
+      if (input && input.value.trim()) {
+        await this.api.renameNode(this.activeDriveId, nodeId, input.value.trim());
+        this.closeModal();
+        await this.loadWorkspaceData();
+      }
+    });
+  }
+
+  private openMoveModal(nodeId: string) {
+    const foldersOptions = [
+      { id: 'root', name: '/ (Drive Root)' },
+      ...this.folders.filter(f => f.id !== nodeId).map(f => ({ id: f.id, name: f.name })),
+    ];
+
+    this.showModal(
+      'Move to Destination Folder',
+      `
+      <div class="form-group">
+        <label class="form-label">Select Destination Folder</label>
+        <select class="form-input" id="selectMoveTarget">
+          ${foldersOptions.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('')}
+        </select>
+      </div>
+    `,
+      `
+      <button class="btn-action secondary" id="btnCancelMove">Cancel</button>
+      <button class="btn-action primary" id="btnConfirmMove">Move Item</button>
+    `
+    );
+
+    document.getElementById('btnCancelMove')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('btnConfirmMove')?.addEventListener('click', async () => {
+      const select = document.getElementById('selectMoveTarget') as HTMLSelectElement;
+      if (select && select.value) {
+        await this.api.moveNode(this.activeDriveId, nodeId, select.value);
+        this.closeModal();
+        await this.loadWorkspaceData();
+      }
+    });
+  }
+
+  private openAddSyncPairModal() {
+    this.showModal(
+      'Add Native OS Sync Pair',
+      `
+      <div class="form-group">
+        <label class="form-label">Local Folder Path</label>
+        <input type="text" class="form-input" id="inputSyncLocal" placeholder="e.g. C:\\Users\\User\\Documents\\Work" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Remote Folder</label>
+        <select class="form-input" id="selectSyncRemote">
+          <option value="root">/ (Root)</option>
+          ${this.folders.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sync Mode</label>
+        <select class="form-input" id="selectSyncMode">
+          <option value="two-way">Two-Way (Continuous OS Watcher + Bi-directional)</option>
+          <option value="one-way">One-Way (Local to Telegram Pure Backup)</option>
+        </select>
+      </div>
+    `,
+      `
+      <button class="btn-action secondary" id="btnCancelSync">Cancel</button>
+      <button class="btn-action primary" id="btnConfirmSync">Register Sync Pair</button>
+    `
+    );
+
+    document.getElementById('btnCancelSync')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('btnConfirmSync')?.addEventListener('click', async () => {
+      const local = (document.getElementById('inputSyncLocal') as HTMLInputElement)?.value.trim();
+      const remote = (document.getElementById('selectSyncRemote') as HTMLSelectElement)?.value;
+      const mode = (document.getElementById('selectSyncMode') as HTMLSelectElement)?.value as 'one-way' | 'two-way';
+
+      if (local && remote) {
+        await this.api.addSyncPair({
+          local_path: local,
+          remote_folder_id: remote,
+          drive_id: this.activeDriveId,
+          sync_mode: mode || 'two-way',
+        });
+        this.syncPairs = await this.api.getSyncPairs(this.activeDriveId);
+        this.closeModal();
+        this.renderSyncPairsView();
+      }
+    });
+  }
+
+  private openFilePreview(file: FileNode) {
+    let previewContent = '';
+
+    if (file.type === 'video') {
+      previewContent = `
+        <div class="preview-media-frame">
+          <video controls autoplay loop style="width: 100%; max-height: 480px;">
+            <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+            Your browser does not support HTML5 video preview.
+          </video>
+        </div>
+      `;
+    } else if (file.type === 'image') {
+      previewContent = `
+        <div class="preview-media-frame">
+          <img src="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1000&q=80" alt="${escapeHtml(file.name)}">
+        </div>
+      `;
+    } else {
+      previewContent = `
+        <div class="preview-text-box">
+// ProtoFS VFS File Inspection
+// Node ID: ${file.id}
+// Message ID: ${file.telegram_message_id}
+// Encryption: ${file.encrypted ? 'AES-256-GCM 64KB STREAM' : 'Plaintext Document'}
+// SHA256 Hash: ${file.sha256_hash || '3a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b'}
+
+{
+  "name": "${escapeHtml(file.name)}",
+  "size_bytes": ${file.size_bytes},
+  "parent_id": "${file.parent_id}",
+  "is_pinned": ${file.pinned},
+  "created_at": "${file.created_at}"
+}
+        </div>
+      `;
     }
 
-    filesList.innerHTML = results
-      .map(
-        r => `
-        <div class="file-row" style="cursor: pointer;">
-          <div class="file-icon-box ${r.kind === 'folder' ? 'file-type-binary' : 'file-type-sheet'}">
-            ${r.kind === 'folder' ? '📁' : '📄'}
-          </div>
-          <div class="file-details">
-            <span class="file-name">${escapeHtml(r.name)}</span>
-            <span class="file-meta">${r.kind === 'folder' ? 'Folder' : formatBytes(r.size_bytes || 0)}</span>
-          </div>
-        </div>
+    this.showModal(
+      `File Preview: ${escapeHtml(file.name)}`,
       `
-      )
-      .join('');
+      <div class="preview-modal-body">
+        ${previewContent}
+        <div class="preview-meta-grid">
+          <div><span class="preview-meta-label">Size:</span> <span class="preview-meta-val">${file.size}</span></div>
+          <div><span class="preview-meta-label">Modified:</span> <span class="preview-meta-val">${file.date}</span></div>
+          <div><span class="preview-meta-label">Encrypted:</span> <span class="preview-meta-val">${file.encrypted ? 'Yes (AES-GCM)' : 'No'}</span></div>
+          <div><span class="preview-meta-label">Cache Pin:</span> <span class="preview-meta-val">${file.pinned ? 'Pinned' : 'Evictable'}</span></div>
+        </div>
+      </div>
+    `,
+      `
+      <button class="btn-action secondary" id="btnPreviewDownload">Download</button>
+      <button class="btn-action primary" id="btnPreviewClose">Done</button>
+    `
+    );
+
+    document.getElementById('btnPreviewClose')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('btnPreviewDownload')?.addEventListener('click', () => {
+      this.closeModal();
+      this.triggerTransfer(file.name, file.size, 'downloading');
+    });
+  }
+
+  private async handleEmptyTrash() {
+    if (confirm('Permanently delete all trashed files from Telegram? This action cannot be undone.')) {
+      await this.api.emptyTrash(this.activeDriveId);
+      await this.loadWorkspaceData();
+    }
+  }
+
+  private updateStorageUsage() {
+    const usageText = document.getElementById('storageUsageText');
+    const barFill = document.getElementById('storageBarFill');
+    if (!usageText || !barFill) return;
+
+    let totalBytes = 0;
+    for (const f of this.files) {
+      if (!f.trashed) totalBytes += f.size_bytes;
+    }
+    usageText.textContent = totalBytes > 0 ? formatBytes(totalBytes) : 'Unlimited';
+    barFill.style.width = '28%';
+  }
+
+  private showModal(title: string, bodyHtml: string, footerHtml: string) {
+    const overlay = document.getElementById('dynamicModalOverlay');
+    const titleEl = document.getElementById('dynamicModalTitle');
+    const bodyEl = document.getElementById('dynamicModalBody');
+    const footerEl = document.getElementById('dynamicModalFooter');
+
+    if (!overlay || !titleEl || !bodyEl || !footerEl) return;
+
+    titleEl.textContent = title;
+    bodyEl.innerHTML = bodyHtml;
+    footerEl.innerHTML = footerHtml;
+    overlay.classList.remove('hidden');
+  }
+
+  private closeModal() {
+    const overlay = document.getElementById('dynamicModalOverlay');
+    if (overlay) overlay.classList.add('hidden');
   }
 }
+
+// ---------------------------------------------------------------------------
+// HELPERS
+// ---------------------------------------------------------------------------
 
 function getFileIconSvg(type: string): string {
   switch (type) {
@@ -1138,6 +1629,15 @@ function getFileIconSvg(type: string): string {
     default:
       return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`;
   }
+}
+
+function highlightMatch(text: string, query: string): string {
+  const index = text.toLowerCase().indexOf(query.toLowerCase());
+  if (index === -1) return text;
+  const before = text.substring(0, index);
+  const match = text.substring(index, index + query.length);
+  const after = text.substring(index + query.length);
+  return `${before}<span class="search-match-highlight">${match}</span>${after}`;
 }
 
 function escapeHtml(str: string): string {

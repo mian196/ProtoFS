@@ -43,6 +43,14 @@ export class ThemeManager {
     return this.currentPalette;
   }
 
+  public cyclePalette(): Palette {
+    const keys: Palette[] = ['telegram', 'aurora', 'emerald', 'sunset', 'monochrome'];
+    const idx = keys.indexOf(this.currentPalette);
+    const next = keys[(idx + 1) % keys.length];
+    this.setPalette(next);
+    return next;
+  }
+
   private loadSettings(): void {
     const savedTheme = localStorage.getItem('protofs_theme') as ThemeMode;
     if (savedTheme === 'light' || savedTheme === 'dark') {
