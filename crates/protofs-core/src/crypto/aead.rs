@@ -1,6 +1,6 @@
-use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
-use rand::RngCore;
 use crate::error::{ProtoFsError, Result};
+use rand::RngCore;
+use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
 
 pub const CHUNK_PLAINTEXT_SIZE: usize = 64 * 1024; // 64 KB
 pub const TAG_SIZE: usize = 16;
@@ -40,7 +40,12 @@ impl StreamEncryptor {
         &self.base_iv
     }
 
-    pub fn encrypt_chunk(&self, chunk_index: u32, is_final: bool, plaintext: &[u8]) -> Result<Vec<u8>> {
+    pub fn encrypt_chunk(
+        &self,
+        chunk_index: u32,
+        is_final: bool,
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>> {
         let nonce = derive_chunk_nonce(&self.base_iv, chunk_index, is_final);
         let mut buffer = plaintext.to_vec();
 
@@ -67,14 +72,24 @@ impl StreamDecryptor {
         })
     }
 
-    pub fn decrypt_chunk(&self, chunk_index: u32, is_final: bool, ciphertext: &[u8]) -> Result<Vec<u8>> {
+    pub fn decrypt_chunk(
+        &self,
+        chunk_index: u32,
+        is_final: bool,
+        ciphertext: &[u8],
+    ) -> Result<Vec<u8>> {
         let nonce = derive_chunk_nonce(&self.base_iv, chunk_index, is_final);
         let mut buffer = ciphertext.to_vec();
 
         let decrypted_slice = self
             .key
             .open_in_place(nonce, Aad::empty(), &mut buffer)
-            .map_err(|_| ProtoFsError::Crypto(format!("Authentication tag mismatch on chunk {}", chunk_index)))?;
+            .map_err(|_| {
+                ProtoFsError::Crypto(format!(
+                    "Authentication tag mismatch on chunk {}",
+                    chunk_index
+                ))
+            })?;
 
         Ok(decrypted_slice.to_vec())
     }

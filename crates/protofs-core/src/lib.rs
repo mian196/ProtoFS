@@ -162,14 +162,24 @@ mod tests {
         let db = CacheDatabase::open_in_memory().unwrap();
         let engine = SyncEngine::new(transport.clone(), db);
 
-        let channel = transport.create_channel("Personal Drive", "ProtoFS Root").await.unwrap();
+        let channel = transport
+            .create_channel("Personal Drive", "ProtoFS Root")
+            .await
+            .unwrap();
 
         // 1. Simulate uploading files to channel with structured captions
         let cap1 = ParsedCaption::new("root", "photo.jpg", false, None, None).serialize();
-        transport.upload_document(channel.id, "photo.jpg", &cap1, b"JPEG_DATA").await.unwrap();
+        transport
+            .upload_document(channel.id, "photo.jpg", &cap1, b"JPEG_DATA")
+            .await
+            .unwrap();
 
-        let cap2 = ParsedCaption::new("root", "secret.enc", true, Some("iv123"), Some("hashabc")).serialize();
-        transport.upload_document(channel.id, "secret.enc", &cap2, b"ENCRYPTED_DATA").await.unwrap();
+        let cap2 = ParsedCaption::new("root", "secret.enc", true, Some("iv123"), Some("hashabc"))
+            .serialize();
+        transport
+            .upload_document(channel.id, "secret.enc", &cap2, b"ENCRYPTED_DATA")
+            .await
+            .unwrap();
 
         // 2. First load: No pinned manifest -> triggers self-healing rebuild scan
         let tree = engine.load_drive("personal", channel.id).await.unwrap();

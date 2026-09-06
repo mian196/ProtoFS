@@ -10,7 +10,7 @@ on:
 
 jobs:
   test-and-lint:
-    name: Test & Build (${{ matrix.os }})
+    name: Lint & Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -26,8 +26,10 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Rust Stable
+      - name: Install Rust Stable with Clippy and Rustfmt
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
@@ -55,12 +57,19 @@ jobs:
         working-directory: frontend
         run: npm ci || npm install
 
+      - name: Frontend Syntax & Type Lint
+        working-directory: frontend
+        run: npm run lint
+
       - name: Build Frontend
         working-directory: frontend
         run: npm run build
 
-      - name: Run Workspace Tests
-        run: cargo test --workspace --verbose
+      - name: Check Rust Code Formatting
+        run: cargo fmt --check
 
-      - name: Check Formatting & Compilation
-        run: cargo check --workspace
+      - name: Rust Clippy Lint (Strict Zero Warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run Workspace Unit & Integration Tests
+        run: cargo test --workspace --verbose

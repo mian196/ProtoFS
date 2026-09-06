@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
 use crate::error::{ProtoFsError, Result};
 use crate::vfs::model::{FileNode, FolderNode, VfsNode, ROOT_PARENT_ID};
 use chrono::Utc;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Default, Clone)]
 pub struct VfsTree {
@@ -67,7 +67,10 @@ impl VfsTree {
     }
 
     pub fn rename(&mut self, id: &str, new_name: &str) -> Result<()> {
-        let node = self.nodes.get_mut(id).ok_or_else(|| ProtoFsError::NodeNotFound(id.to_string()))?;
+        let node = self
+            .nodes
+            .get_mut(id)
+            .ok_or_else(|| ProtoFsError::NodeNotFound(id.to_string()))?;
         let now = Utc::now();
         match node {
             VfsNode::Folder(f) => {
@@ -83,7 +86,10 @@ impl VfsTree {
     }
 
     pub fn move_node(&mut self, id: &str, new_parent_id: &str) -> Result<()> {
-        let node = self.nodes.get(id).ok_or_else(|| ProtoFsError::NodeNotFound(id.to_string()))?;
+        let node = self
+            .nodes
+            .get(id)
+            .ok_or_else(|| ProtoFsError::NodeNotFound(id.to_string()))?;
         let old_parent_id = node.parent_id().to_string();
 
         if old_parent_id == new_parent_id {

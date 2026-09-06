@@ -1,8 +1,8 @@
-use std::path::Path;
-use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use crate::error::Result;
 use crate::manifest::snapshot::ManifestSnapshot;
@@ -136,9 +136,18 @@ impl CacheDatabase {
         )?;
 
         // Clear existing nodes for this drive
-        tx.execute("DELETE FROM folders WHERE drive_id = ?1", params![manifest.header.drive_id])?;
-        tx.execute("DELETE FROM files WHERE drive_id = ?1", params![manifest.header.drive_id])?;
-        tx.execute("DELETE FROM fts_nodes WHERE drive_id = ?1", params![manifest.header.drive_id])?;
+        tx.execute(
+            "DELETE FROM folders WHERE drive_id = ?1",
+            params![manifest.header.drive_id],
+        )?;
+        tx.execute(
+            "DELETE FROM files WHERE drive_id = ?1",
+            params![manifest.header.drive_id],
+        )?;
+        tx.execute(
+            "DELETE FROM fts_nodes WHERE drive_id = ?1",
+            params![manifest.header.drive_id],
+        )?;
 
         // Batch insert folders
         {
@@ -161,7 +170,12 @@ impl CacheDatabase {
                     folder.created_at.to_rfc3339(),
                     folder.updated_at.to_rfc3339(),
                 ])?;
-                fts_stmt.execute(params![folder.id, folder.drive_id, folder.name, folder.parent_id])?;
+                fts_stmt.execute(params![
+                    folder.id,
+                    folder.drive_id,
+                    folder.name,
+                    folder.parent_id
+                ])?;
             }
         }
 

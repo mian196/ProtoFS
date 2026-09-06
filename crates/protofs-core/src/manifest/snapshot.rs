@@ -1,9 +1,9 @@
-use std::io::Cursor;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use crate::error::{ProtoFsError, Result};
 use crate::vfs::model::{FileNode, FolderNode, VfsNode};
 use crate::vfs::tree::VfsTree;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::io::Cursor;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ManifestHeader {
@@ -49,8 +49,7 @@ impl ManifestSnapshot {
     }
 
     pub fn to_compressed_bytes(&self) -> Result<Vec<u8>> {
-        let json_bytes = serde_json::to_vec(self)
-            .map_err(ProtoFsError::Serialization)?;
+        let json_bytes = serde_json::to_vec(self).map_err(ProtoFsError::Serialization)?;
 
         zstd::encode_all(Cursor::new(json_bytes), 3)
             .map_err(|e| ProtoFsError::Compression(e.to_string()))
@@ -60,8 +59,7 @@ impl ManifestSnapshot {
         let decompressed = zstd::decode_all(Cursor::new(compressed))
             .map_err(|e| ProtoFsError::Compression(e.to_string()))?;
 
-        serde_json::from_slice(&decompressed)
-            .map_err(ProtoFsError::Serialization)
+        serde_json::from_slice(&decompressed).map_err(ProtoFsError::Serialization)
     }
 
     pub fn populate_tree(&self, tree: &mut VfsTree) {

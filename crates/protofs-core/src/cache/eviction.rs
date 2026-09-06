@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 use crate::error::Result;
@@ -42,7 +42,13 @@ impl<'a> CacheManager<'a> {
         })
     }
 
-    pub fn record_access(&self, file_id: &str, relative_path: &Path, size_bytes: u64, is_pinned: bool) -> Result<()> {
+    pub fn record_access(
+        &self,
+        file_id: &str,
+        relative_path: &Path,
+        size_bytes: u64,
+        is_pinned: bool,
+    ) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         self.conn.execute(
             r#"
@@ -66,7 +72,9 @@ impl<'a> CacheManager<'a> {
     }
 
     pub fn total_cache_bytes(&self) -> Result<u64> {
-        let mut stmt = self.conn.prepare("SELECT COALESCE(SUM(size_bytes), 0) FROM local_cache_entries")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT COALESCE(SUM(size_bytes), 0) FROM local_cache_entries")?;
         let sum: i64 = stmt.query_row([], |row| row.get(0))?;
         Ok(sum as u64)
     }
@@ -114,7 +122,10 @@ impl<'a> CacheManager<'a> {
             if full_path.exists() {
                 let _ = std::fs::remove_file(&full_path);
             }
-            self.conn.execute("DELETE FROM local_cache_entries WHERE file_id = ?1", params![file_id])?;
+            self.conn.execute(
+                "DELETE FROM local_cache_entries WHERE file_id = ?1",
+                params![file_id],
+            )?;
             info!("Evicted cached file '{}' from disk", file_id);
         }
 
@@ -136,12 +147,16 @@ mod tests {
         // 1. Create a 1MB unpinned file
         let file1_path = dir.path().join("file1.bin");
         std::fs::write(&file1_path, vec![0u8; 1_000_000]).unwrap();
-        manager.record_access("file1", Path::new("file1.bin"), 1_000_000, false).unwrap();
+        manager
+            .record_access("file1", Path::new("file1.bin"), 1_000_000, false)
+            .unwrap();
 
         // 2. Create a 2MB pinned file
         let file2_path = dir.path().join("pinned.bin");
         std::fs::write(&file2_path, vec![0u8; 2_000_000]).unwrap();
-        manager.record_access("file2", Path::new("pinned.bin"), 2_000_000, true).unwrap();
+        manager
+            .record_access("file2", Path::new("pinned.bin"), 2_000_000, true)
+            .unwrap();
 
         assert_eq!(manager.total_cache_bytes().unwrap(), 3_000_000);
 

@@ -1,18 +1,20 @@
-use std::collections::HashMap;
-use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
+use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::error::{ProtoFsError, Result};
 use crate::mtproto::transport::{ChannelInfo, TelegramMessage, TelegramTransport, TelegramUser};
+
+pub type MessagePayloadStore = Arc<RwLock<HashMap<(i64, i32), Vec<u8>>>>;
 
 #[derive(Clone, Default)]
 pub struct MockTelegramTransport {
     user: TelegramUser,
     channels: Arc<RwLock<HashMap<i64, ChannelInfo>>>,
     messages: Arc<RwLock<HashMap<i64, Vec<TelegramMessage>>>>,
-    payloads: Arc<RwLock<HashMap<(i64, i32), Vec<u8>>>>,
+    payloads: MessagePayloadStore,
     next_msg_id: Arc<RwLock<i32>>,
 }
 
@@ -54,7 +56,11 @@ impl TelegramTransport for MockTelegramTransport {
     async fn get_pinned_manifest(&self, channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {
         let messages = self.messages.read().await;
         if let Some(msg_list) = messages.get(&channel_id) {
-            if let Some(pinned_msg) = msg_list.iter().rev().find(|m| m.is_pinned && m.document_name.as_deref() == Some("manifest.json.zst")) {
+            if let Some(pinned_msg) = msg_list
+                .iter()
+                .rev()
+                .find(|m| m.is_pinned && m.document_name.as_deref() == Some("manifest.json.zst"))
+            {
                 let payloads = self.payloads.read().await;
                 if let Some(bytes) = payloads.get(&(channel_id, pinned_msg.id)) {
                     return Ok(Some((pinned_msg.id, bytes.clone())));
@@ -95,7 +101,13 @@ impl TelegramTransport for MockTelegramTransport {
         Ok(msg_id)
     }
 
-    async fn upload_document(&self, channel_id: i64, filename: &str, caption: &str, data: &[u8]) -> Result<TelegramMessage> {
+    async fn upload_document(
+        &self,
+        channel_id: i64,
+        filename: &str,
+        caption: &str,
+        data: &[u8],
+    ) -> Result<TelegramMessage> {
         let mut next_id = self.next_msg_id.write().await;
         let msg_id = *next_id;
         *next_id += 1;
@@ -119,11 +131,17 @@ impl TelegramTransport for MockTelegramTransport {
         Ok(msg)
     }
 
-    async fn download_range(&self, channel_id: i64, message_id: i32, offset: u64, limit: u32) -> Result<Vec<u8>> {
+    async fn download_range(
+        &self,
+        channel_id: i64,
+        message_id: i32,
+        offset: u64,
+        limit: u32,
+    ) -> Result<Vec<u8>> {
         let payloads = self.payloads.read().await;
-        let data = payloads
-            .get(&(channel_id, message_id))
-            .ok_or_else(|| ProtoFsError::NodeNotFound(format!("Message {} payload not found", message_id)))?;
+        let data = payloads.get(&(channel_id, message_id)).ok_or_else(|| {
+            ProtoFsError::NodeNotFound(format!("Message {} payload not found", message_id))
+        })?;
 
         let start = offset as usize;
         if start >= data.len() {
@@ -134,10 +152,20 @@ impl TelegramTransport for MockTelegramTransport {
         Ok(data[start..end].to_vec())
     }
 
-    async fn edit_caption(&self, channel_id: i64, message_id: i32, new_caption: &str) -> Result<()> {
+    async fn edit_caption(
+        &self,
+        channel_id: i64,
+        message_id: i32,
+        new_caption: &str,
+    ) -> Result<()> {
         let mut messages = self.messages.write().await;
-        let list = messages.get_mut(&channel_id).ok_or_else(|| ProtoFsError::DriveNotFound(channel_id.to_string()))?;
-        let msg = list.iter_mut().find(|m| m.id == message_id).ok_or_else(|| ProtoFsError::NodeNotFound(message_id.to_string()))?;
+        let list = messages
+            .get_mut(&channel_id)
+            .ok_or_else(|| ProtoFsError::DriveNotFound(channel_id.to_string()))?;
+        let msg = list
+            .iter_mut()
+            .find(|m| m.id == message_id)
+            .ok_or_else(|| ProtoFsError::NodeNotFound(message_id.to_string()))?;
         msg.caption = Some(new_caption.to_string());
         Ok(())
     }
@@ -152,7 +180,12 @@ impl TelegramTransport for MockTelegramTransport {
         Ok(())
     }
 
-    async fn scan_messages(&self, channel_id: i64, min_id: i32, limit: usize) -> Result<Vec<TelegramMessage>> {
+    async fn scan_messages(
+        &self,
+        channel_id: i64,
+        min_id: i32,
+        limit: usize,
+    ) -> Result<Vec<TelegramMessage>> {
         let messages = self.messages.read().await;
         let list = messages.get(&channel_id).cloned().unwrap_or_default();
         let filtered: Vec<TelegramMessage> = list

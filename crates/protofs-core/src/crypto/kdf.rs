@@ -1,7 +1,7 @@
+use crate::error::{ProtoFsError, Result};
 use argon2::{Algorithm, Argon2, Params, Version};
 use rand::RngCore;
 use zeroize::Zeroizing;
-use crate::error::{ProtoFsError, Result};
 
 pub const SALT_LEN: usize = 16;
 pub const KEY_LEN: usize = 32; // 256 bits

@@ -12,7 +12,13 @@ pub struct ParsedCaption {
 impl ParsedCaption {
     pub const PREFIX: &'static str = "protofs:v1;";
 
-    pub fn new(parent_id: &str, name: &str, is_encrypted: bool, iv: Option<&str>, hash: Option<&str>) -> Self {
+    pub fn new(
+        parent_id: &str,
+        name: &str,
+        is_encrypted: bool,
+        iv: Option<&str>,
+        hash: Option<&str>,
+    ) -> Self {
         Self {
             parent_id: parent_id.to_string(),
             name: name.to_string(),
@@ -44,7 +50,10 @@ impl ParsedCaption {
             stripped
         } else {
             return Err(ProtoFsError::Serialization(serde_json::Error::io(
-                std::io::Error::new(std::io::ErrorKind::InvalidData, "Caption does not have ProtoFS prefix"),
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Caption does not have ProtoFS prefix",
+                ),
             )));
         };
 

@@ -1,10 +1,10 @@
 pub mod commands;
 
-use std::sync::Arc;
+use commands::AppState;
 use protofs_core::cache::CacheDatabase;
 use protofs_core::mtproto::MockTelegramTransport;
 use protofs_core::sync::SyncEngine;
-use commands::AppState;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

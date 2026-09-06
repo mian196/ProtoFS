@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use protofs_core::cache::{CacheDatabase, SearchResult};
 use protofs_core::mtproto::MockTelegramTransport;

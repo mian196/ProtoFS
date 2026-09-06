@@ -1,6 +1,6 @@
+use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
-use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tracing::{info, warn};
 
 use crate::error::{ProtoFsError, Result};
@@ -29,13 +29,16 @@ impl SyncWatcher {
             },
             Config::default(),
         )
-        .map_err(|e| ProtoFsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        .map_err(|e| ProtoFsError::Io(std::io::Error::other(e.to_string())))?;
 
         watcher
             .watch(path.as_ref(), RecursiveMode::Recursive)
-            .map_err(|e| ProtoFsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| ProtoFsError::Io(std::io::Error::other(e.to_string())))?;
 
-        info!("Native OS filesystem watcher registered for: {:?}", path.as_ref());
+        info!(
+            "Native OS filesystem watcher registered for: {:?}",
+            path.as_ref()
+        );
 
         Ok(Self {
             _watcher: watcher,
