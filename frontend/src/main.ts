@@ -76,9 +76,9 @@ class ProtoFsApp {
                   <span>API ID & API Hash</span>
                   <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org ↗</a>
                 </label>
-                <div style="display: flex; gap: 8px;">
-                  <input type="text" class="form-input" id="inputApiId" placeholder="API ID (e.g. 20401928)" style="flex: 1;" required>
-                  <input type="password" class="form-input" id="inputApiHash" placeholder="API Hash (e.g. 3a9f...)" style="flex: 1.5;" required>
+                <div class="form-row">
+                  <input type="text" class="form-input" id="inputApiId" placeholder="API ID (e.g. 20401928)" required>
+                  <input type="password" class="form-input" id="inputApiHash" placeholder="API Hash (e.g. 3a9f...)" required>
                 </div>
               </div>
 
@@ -119,9 +119,9 @@ class ProtoFsApp {
                 <input type="password" class="form-input" id="input2fa" placeholder="Two-Step Verification Password">
               </div>
 
-              <div style="display: flex; gap: 8px;">
-                <button type="button" class="btn-action secondary" id="btnBackToPhone" style="flex: 1;">Back</button>
-                <button type="submit" class="btn-primary-tg" style="flex: 2;">
+              <div class="form-actions-row">
+                <button type="button" class="btn-action secondary" id="btnBackToPhone">Back</button>
+                <button type="submit" class="btn-primary-tg">
                   <span>Enter ProtoFS Drive</span>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>

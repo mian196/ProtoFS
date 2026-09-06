@@ -826,7 +826,35 @@ body {
   text-decoration: underline;
 }
 
+.form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-row > * {
+  min-width: 0;
+}
+
+.form-actions-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-actions-row > * {
+  min-width: 0;
+}
+
 .form-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   background: var(--bg-surface-input);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -835,11 +863,12 @@ body {
   padding: 10px 14px;
   outline: none;
   font-family: inherit;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .form-input:focus {
   border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .demo-credentials-btn {
