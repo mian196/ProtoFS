@@ -135,6 +135,18 @@ impl VfsTree {
         crumbs
     }
 
+    pub fn remove(&mut self, id: &str) -> Option<VfsNode> {
+        if let Some(node) = self.nodes.remove(id) {
+            let parent_id = node.parent_id().to_string();
+            if let Some(children) = self.children_by_parent.get_mut(&parent_id) {
+                children.remove(id);
+            }
+            Some(node)
+        } else {
+            None
+        }
+    }
+
     pub fn all_nodes(&self) -> impl Iterator<Item = &VfsNode> {
         self.nodes.values()
     }

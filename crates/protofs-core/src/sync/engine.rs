@@ -179,4 +179,97 @@ impl<T: TelegramTransport> SyncEngine<T> {
         );
         Ok(())
     }
+
+    pub async fn get_tree(&self, drive_id: &str) -> Option<VfsTree> {
+        let trees = self.trees_by_drive.read().await;
+        trees.get(drive_id).cloned()
+    }
+
+    pub async fn add_node(&self, drive_id: &str, node: VfsNode) -> Result<()> {
+        let mut trees = self.trees_by_drive.write().await;
+        let tree = trees.entry(drive_id.to_string()).or_default();
+        tree.insert(node);
+        let mut dirty = self.is_dirty_by_drive.write().await;
+        dirty.insert(drive_id.to_string(), true);
+        Ok(())
+    }
+
+    pub async fn trash_node(&self, drive_id: &str, node_id: &str) -> Result<()> {
+        let mut trees = self.trees_by_drive.write().await;
+        let tree = trees
+            .get_mut(drive_id)
+            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+        if let Some(VfsNode::File(mut file)) = tree.remove(node_id) {
+            file.is_trashed = true;
+            file.updated_at = chrono::Utc::now();
+            tree.insert(VfsNode::File(file));
+        } else if let Some(VfsNode::Folder(folder)) = tree.remove(node_id) {
+            tree.insert(VfsNode::Folder(folder));
+        }
+        let mut dirty = self.is_dirty_by_drive.write().await;
+        dirty.insert(drive_id.to_string(), true);
+        Ok(())
+    }
+
+    pub async fn restore_node(&self, drive_id: &str, node_id: &str) -> Result<()> {
+        let mut trees = self.trees_by_drive.write().await;
+        let tree = trees
+            .get_mut(drive_id)
+            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+        if let Some(VfsNode::File(mut file)) = tree.remove(node_id) {
+            file.is_trashed = false;
+            file.updated_at = chrono::Utc::now();
+            tree.insert(VfsNode::File(file));
+        }
+        let mut dirty = self.is_dirty_by_drive.write().await;
+        dirty.insert(drive_id.to_string(), true);
+        Ok(())
+    }
+
+    pub async fn delete_node(&self, drive_id: &str, node_id: &str) -> Result<()> {
+        let mut trees = self.trees_by_drive.write().await;
+        let tree = trees
+            .get_mut(drive_id)
+            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+        tree.remove(node_id);
+        let mut dirty = self.is_dirty_by_drive.write().await;
+        dirty.insert(drive_id.to_string(), true);
+        Ok(())
+    }
+
+    pub async fn empty_trash(&self, drive_id: &str) -> Result<usize> {
+        let mut trees = self.trees_by_drive.write().await;
+        let tree = trees
+            .get_mut(drive_id)
+            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+        let trashed_ids: Vec<String> = tree
+            .all_nodes()
+            .filter_map(|n| match n {
+                VfsNode::File(f) if f.is_trashed => Some(f.id.clone()),
+                _ => None,
+            })
+            .collect();
+        let count = trashed_ids.len();
+        for id in &trashed_ids {
+            tree.remove(id);
+        }
+        let mut dirty = self.is_dirty_by_drive.write().await;
+        dirty.insert(drive_id.to_string(), true);
+        Ok(count)
+    }
+
+    pub async fn toggle_pin(&self, drive_id: &str, node_id: &str, pinned: bool) -> Result<()> {
+        let mut trees = self.trees_by_drive.write().await;
+        let tree = trees
+            .get_mut(drive_id)
+            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+        if let Some(VfsNode::File(mut file)) = tree.remove(node_id) {
+            file.is_pinned_offline = pinned;
+            file.updated_at = chrono::Utc::now();
+            tree.insert(VfsNode::File(file));
+        }
+        let mut dirty = self.is_dirty_by_drive.write().await;
+        dirty.insert(drive_id.to_string(), true);
+        Ok(())
+    }
 }

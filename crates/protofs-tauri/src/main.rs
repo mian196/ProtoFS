@@ -2,11 +2,14 @@
 
 pub mod commands;
 
+use chrono::Utc;
 use commands::AppState;
 use protofs_core::cache::CacheDatabase;
 use protofs_core::mtproto::MockTelegramTransport;
 use protofs_core::sync::SyncEngine;
+use protofs_core::vfs::DriveMetadata;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -15,14 +18,58 @@ fn main() {
     let cache = CacheDatabase::open_in_memory().expect("failed to open in-memory sqlite cache");
     let engine = Arc::new(SyncEngine::new(transport, cache.clone()));
 
-    let app_state = AppState { engine, cache };
+    let default_drives = vec![
+        DriveMetadata {
+            id: "personal".to_string(),
+            name: "Personal Drive".to_string(),
+            channel_id: -1001928472910,
+            pinned_manifest_msg_id: Some(104),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        },
+        DriveMetadata {
+            id: "work".to_string(),
+            name: "Work Archive".to_string(),
+            channel_id: -1001982736192,
+            pinned_manifest_msg_id: Some(88),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        },
+        DriveMetadata {
+            id: "media".to_string(),
+            name: "Cinema Vault".to_string(),
+            channel_id: -1001837492817,
+            pinned_manifest_msg_id: Some(210),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        },
+    ];
+
+    let app_state = AppState {
+        engine,
+        cache,
+        session: Arc::new(RwLock::new(None)),
+        drives: Arc::new(RwLock::new(default_drives)),
+    };
 
     tauri::Builder::default()
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
+            commands::login_send_code,
+            commands::login_verify_code,
+            commands::get_session_status,
+            commands::logout_command,
+            commands::get_drives_command,
+            commands::create_drive_command,
             commands::load_drive_command,
-            commands::search_nodes_command,
             commands::flush_manifest_command,
+            commands::create_folder_command,
+            commands::upload_file_command,
+            commands::delete_node_command,
+            commands::restore_node_command,
+            commands::empty_trash_command,
+            commands::toggle_pin_command,
+            commands::search_nodes_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs desktop application");
