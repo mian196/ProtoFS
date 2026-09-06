@@ -2,11 +2,15 @@ pub mod cache;
 pub mod crypto;
 pub mod error;
 pub mod manifest;
+pub mod mtproto;
+pub mod sync;
 pub mod vfs;
 
 pub use cache::CacheDatabase;
 pub use error::{ProtoFsError, Result};
 pub use manifest::ManifestSnapshot;
+pub use mtproto::{MockTelegramTransport, ParsedCaption, TelegramTransport};
+pub use sync::SyncEngine;
 pub use vfs::{FileNode, FolderNode, VfsNode, VfsTree, ROOT_PARENT_ID};
 
 #[cfg(test)]
@@ -148,5 +152,38 @@ mod tests {
         // Reload tree test
         let loaded_tree = db.load_tree("drive1").unwrap();
         assert_eq!(loaded_tree.count(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_sync_engine_end_to_end() {
+        use std::sync::Arc;
+
+        let transport = Arc::new(MockTelegramTransport::new());
+        let db = CacheDatabase::open_in_memory().unwrap();
+        let engine = SyncEngine::new(transport.clone(), db);
+
+        let channel = transport.create_channel("Personal Drive", "ProtoFS Root").await.unwrap();
+
+        // 1. Simulate uploading files to channel with structured captions
+        let cap1 = ParsedCaption::new("root", "photo.jpg", false, None, None).serialize();
+        transport.upload_document(channel.id, "photo.jpg", &cap1, b"JPEG_DATA").await.unwrap();
+
+        let cap2 = ParsedCaption::new("root", "secret.enc", true, Some("iv123"), Some("hashabc")).serialize();
+        transport.upload_document(channel.id, "secret.enc", &cap2, b"ENCRYPTED_DATA").await.unwrap();
+
+        // 2. First load: No pinned manifest -> triggers self-healing rebuild scan
+        let tree = engine.load_drive("personal", channel.id).await.unwrap();
+        assert_eq!(tree.count(), 2);
+
+        // 3. Verify pinned manifest was generated and uploaded
+        let pinned = transport.get_pinned_manifest(channel.id).await.unwrap();
+        assert!(pinned.is_some());
+
+        // 4. Second load: Fast path from pinned manifest
+        let fast_tree = engine.load_drive("personal", channel.id).await.unwrap();
+        assert_eq!(fast_tree.count(), 2);
+
+        // 5. Test flush manifest
+        engine.flush_manifest("personal", channel.id).await.unwrap();
     }
 }
