@@ -78,21 +78,33 @@ ProtoFS/
 
 ## 4. Build, Test, and Packaging Workflows
 
-### A. Frontend Verification
+### A. Development Mode (Hot Reloading)
+For active development with instant UI hot-reloading:
+```powershell
+# Terminal 1: Launch Vite development server (port 5173)
+cd frontend
+npm run dev
+
+# Terminal 2: Run Tauri application in debug mode
+cargo run -p protofs-tauri
+```
+*Note: Tauri dev mode connects directly to `http://localhost:5173`. Do not close the Vite dev server while the debug window is open.*
+
+### B. Frontend Verification & Production Build
 ```powershell
 cd frontend
-npm run build       # Validates TypeScript types and generates frontend/dist
-npm run lint        # Type check without emission
+npm run lint        # Type check without emission (TypeScript)
+npm run build       # Validates types and compiles production bundle to frontend/dist
 ```
 
-### B. Rust Workspace Verification
+### C. Rust Workspace Verification
 ```powershell
 cargo check --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-### C. Building the Portable GUI Application
+### D. Building the Standalone Portable GUI Application
 To compile the standalone, portable GUI application (no installation required):
 ```powershell
 # 1. Compile frontend distribution
@@ -104,8 +116,9 @@ cd ..
 cargo build --release -p protofs-tauri
 ```
 * **Output Binary**: `target/release/protofs-tauri.exe` (Windows) or `target/release/protofs-tauri` (Linux/macOS).
+* The release binary embeds `frontend/dist` directly using Tauri custom-protocol and does not require Vite or any local server.
 
-### D. Building Platform Installers (NSIS Setup, MSI, AppImage, DMG)
+### E. Building Platform Installers (NSIS Setup, MSI, AppImage, DMG)
 ```powershell
 cd frontend
 npm run build
@@ -115,7 +128,7 @@ npm run tauri -- build --config ../crates/protofs-tauri/tauri.conf.json
   * `target/release/bundle/nsis/ProtoFS_*_x64-setup.exe`
   * `target/release/bundle/msi/ProtoFS_*_x64_en-US.msi`
 
-### E. CLI Binary
+### F. CLI Binary
 ```powershell
 cargo build --release -p protofs-cli
 ```
@@ -123,25 +136,35 @@ cargo build --release -p protofs-cli
 
 ---
 
-## 5. UI/UX and Feature Checklist
+## 5. UI/UX and Dynamic Interface Checklist
 
-- **Authentication Flow**:
-  - Always verify session state on startup.
-  - If unauthenticated, show the Telegram MTProto onboarding screen (API ID, API Hash, phone, verification code, optional 2FA).
-  - Provide a quick demo credentials button for local testing without Telegram API keys.
-- **Account Management**:
-  - Header profile avatar displaying user initials and phone/handle.
-  - Dropdown menu with account details, encryption status, and logout button.
-- **File Browser**:
-  - Breadcrumbs navigation.
-  - New folder creation modal with recursive nesting.
-  - File upload modal with client-side encryption toggle.
-  - In-app preview for images, video stream seeking, and documents.
-  - Offline pin toggle to prevent LRU auto-eviction.
-- **Trash and Safety**:
-  - Soft-delete to Trash with 30-day retention countdown.
-  - Restore action and Empty Trash action.
-- **Sync Pairs**:
-  - Registered directory sync pairs with one-way and two-way modes.
-- **Search**:
-  - Sub-millisecond instant search powered by SQLite FTS5 via `Ctrl+K`.
+1. **Authentication Flow**:
+   - Always verify session state on startup. Never bypass unauthenticated sessions with cached mock credentials.
+   - If unauthenticated, show the Telegram MTProto onboarding screen (API ID, API Hash, phone number, verification code, optional 2FA password).
+   - Provide a 1-click Quick Test / Demo Mode button for instant local evaluation without Telegram API keys.
+
+2. **Account Management & Theme Customization**:
+   - Header profile avatar displaying user initials and phone or handle.
+   - Dropdown menu with account details, zero-knowledge encryption status, and logout button that returns to the onboarding screen.
+   - Theme toggle (Dark / Light) and Palette cycler (Telegram Blue, Cyber Aurora, Emerald Glacier, Sunset Flare, Obsidian Pure).
+
+3. **Dynamic UI Behaviors**:
+   - **Floating Selection Action Bar**: Must appear dynamically only when one or more items are selected. Displays selection count, Download, Move, Pin, and Delete buttons. Auto-dismisses when selection is cleared.
+   - **Reactive Transfer Progress Dock**: Slides up dynamically only during active file uploads or downloads. Shows item-by-item progress bars, transfer speeds, and status. Automatically dismisses when all transfers complete.
+   - **Dynamic View Modes**: Seamless toggle between responsive Grid mode and structured List mode.
+   - **Live Search Overlay**: Instant FTS5 search dropdown on `Ctrl+K` or search input, showing real-time file matches and navigation.
+
+4. **File Browser & VFS Operations**:
+   - Breadcrumbs navigation with root and child folder traversal.
+   - Interactive modals for folder creation, file uploads with client-side encryption toggle, node renaming, and moving between folders.
+   - In-app media preview for images, video seeking, documents, and code snippets.
+   - Offline pin toggle to protect cached files from LRU auto-eviction.
+
+5. **Trash & Safety Lifecycle**:
+   - Soft-delete to Trash with 30-day retention countdown.
+   - Restore action to return nodes to their original parent folder.
+   - Empty Trash action for permanent purge.
+
+6. **Sync Pairs & Storage Dashboard**:
+   - Directory sync pairs with one-way and two-way modes, sync status, and manual "Sync Now" trigger.
+   - Storage usage dashboard with category breakdowns (Photos, Videos, Documents, Archives, Audio, Other) and local cache quota stats.
