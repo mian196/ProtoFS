@@ -284,7 +284,12 @@ impl<T: TelegramTransport> SyncEngine<T> {
         Ok(())
     }
 
-    pub async fn move_node(&self, drive_id: &str, node_id: &str, new_parent_id: &str) -> Result<()> {
+    pub async fn move_node(
+        &self,
+        drive_id: &str,
+        node_id: &str,
+        new_parent_id: &str,
+    ) -> Result<()> {
         let mut trees = self.trees_by_drive.write().await;
         let tree = trees
             .get_mut(drive_id)

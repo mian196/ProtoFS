@@ -1,8 +1,8 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
-use chrono::Utc;
 
 use protofs_core::cache::{CacheDatabase, SearchResult};
 use protofs_core::mtproto::{DynamicTelegramTransport, TelegramAuthClient};
@@ -73,7 +73,9 @@ pub async fn login_send_code(
         return Ok(CommandResponse::err("Phone number cannot be empty"));
     }
     if api_id.trim().is_empty() || api_hash.trim().is_empty() {
-        return Ok(CommandResponse::err("API ID and API Hash are required (from my.telegram.org)"));
+        return Ok(CommandResponse::err(
+            "API ID and API Hash are required (from my.telegram.org)",
+        ));
     }
 
     // Check if demo mode
@@ -87,7 +89,11 @@ pub async fn login_send_code(
 
     let api_id_int: i32 = match api_id.trim().parse() {
         Ok(val) => val,
-        Err(_) => return Ok(CommandResponse::err("API ID must be a numeric integer from my.telegram.org")),
+        Err(_) => {
+            return Ok(CommandResponse::err(
+                "API ID must be a numeric integer from my.telegram.org",
+            ))
+        }
     };
 
     match state
@@ -113,7 +119,9 @@ pub async fn login_verify_code(
     let trimmed_code = code.trim();
 
     if trimmed_code.len() < 4 {
-        return Ok(CommandResponse::err("Verification code must be at least 4 digits"));
+        return Ok(CommandResponse::err(
+            "Verification code must be at least 4 digits",
+        ));
     }
 
     // Check if demo login
@@ -172,7 +180,9 @@ pub async fn login_verify_code(
     Ok(CommandResponse::ok(session))
 }
 
-fn get_session_paths(app: &tauri::AppHandle) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
+fn get_session_paths(
+    app: &tauri::AppHandle,
+) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
     let base_dir = if let Ok(dir) = app.path().app_data_dir() {
         let _ = std::fs::create_dir_all(&dir);
         Some(dir)
@@ -233,7 +243,9 @@ fn load_auth_session(app: &tauri::AppHandle) -> Option<AuthSession> {
     if let (Some(enc_path), Some(legacy_path)) = get_session_paths(app) {
         if enc_path.exists() {
             if let Ok(encrypted_bytes) = std::fs::read(&enc_path) {
-                if let Ok(decrypted_bytes) = protofs_core::crypto::unprotect_secret(&encrypted_bytes) {
+                if let Ok(decrypted_bytes) =
+                    protofs_core::crypto::unprotect_secret(&encrypted_bytes)
+                {
                     if let Ok(persisted) = serde_json::from_slice::<AuthSession>(&decrypted_bytes) {
                         return Some(persisted);
                     }
@@ -242,7 +254,8 @@ fn load_auth_session(app: &tauri::AppHandle) -> Option<AuthSession> {
         } else if legacy_path.exists() {
             if let Ok(content) = std::fs::read_to_string(&legacy_path) {
                 if let Ok(persisted) = serde_json::from_str::<AuthSession>(&content) {
-                    if let Ok(encrypted) = protofs_core::crypto::protect_secret(content.as_bytes()) {
+                    if let Ok(encrypted) = protofs_core::crypto::protect_secret(content.as_bytes())
+                    {
                         let _ = std::fs::write(enc_path, encrypted);
                         let _ = std::fs::remove_file(legacy_path);
                     }
@@ -299,9 +312,7 @@ pub async fn get_session_status(
 }
 
 #[tauri::command]
-pub async fn logout_command(
-    app: tauri::AppHandle,
-) -> Result<CommandResponse<()>, String> {
+pub async fn logout_command(app: tauri::AppHandle) -> Result<CommandResponse<()>, String> {
     let state = app.state::<AppState>();
     let mut lock = state.session.write().await;
     *lock = None;
@@ -457,7 +468,11 @@ pub async fn create_folder_command(
         updated_at: Utc::now(),
     };
 
-    if let Err(e) = state.engine.add_node(&drive_id, VfsNode::Folder(folder.clone())).await {
+    if let Err(e) = state
+        .engine
+        .add_node(&drive_id, VfsNode::Folder(folder.clone()))
+        .await
+    {
         return Ok(CommandResponse::err(e.to_string()));
     }
 
@@ -485,7 +500,10 @@ pub async fn upload_file_command(
         telegram_message_id: (Utc::now().timestamp_subsec_millis() as i32) + 1000,
         is_encrypted,
         encryption_iv: if is_encrypted {
-            Some(format!("{:016x}", Utc::now().timestamp_nanos_opt().unwrap_or(0)))
+            Some(format!(
+                "{:016x}",
+                Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            ))
         } else {
             None
         },
@@ -496,7 +514,11 @@ pub async fn upload_file_command(
         updated_at: Utc::now(),
     };
 
-    if let Err(e) = state.engine.add_node(&drive_id, VfsNode::File(file.clone())).await {
+    if let Err(e) = state
+        .engine
+        .add_node(&drive_id, VfsNode::File(file.clone()))
+        .await
+    {
         return Ok(CommandResponse::err(e.to_string()));
     }
 
@@ -590,7 +612,9 @@ pub async fn rename_node_command(
     if let Err(e) = state.engine.rename_node(&drive_id, &node_id, trimmed).await {
         return Ok(CommandResponse::err(e.to_string()));
     }
-    let _ = state.cache.rename_node_in_cache(&drive_id, &node_id, trimmed);
+    let _ = state
+        .cache
+        .rename_node_in_cache(&drive_id, &node_id, trimmed);
     Ok(CommandResponse::ok(()))
 }
 
@@ -602,10 +626,16 @@ pub async fn move_node_command(
     new_parent_id: String,
 ) -> Result<CommandResponse<()>, String> {
     let state = app.state::<AppState>();
-    if let Err(e) = state.engine.move_node(&drive_id, &node_id, &new_parent_id).await {
+    if let Err(e) = state
+        .engine
+        .move_node(&drive_id, &node_id, &new_parent_id)
+        .await
+    {
         return Ok(CommandResponse::err(e.to_string()));
     }
-    let _ = state.cache.move_node_in_cache(&drive_id, &node_id, &new_parent_id);
+    let _ = state
+        .cache
+        .move_node_in_cache(&drive_id, &node_id, &new_parent_id);
     Ok(CommandResponse::ok(()))
 }
 
@@ -767,8 +797,12 @@ fn guess_mime(filename: &str) -> String {
         "mp4" => "video/mp4".to_string(),
         "webm" => "video/webm".to_string(),
         "pdf" => "application/pdf".to_string(),
-        "xlsx" | "xls" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
-        "docx" | "doc" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document".to_string(),
+        "xlsx" | "xls" => {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string()
+        }
+        "docx" | "doc" => {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document".to_string()
+        }
         "rs" | "ts" | "js" | "json" | "toml" | "md" | "txt" => "text/plain".to_string(),
         _ => "application/octet-stream".to_string(),
     }

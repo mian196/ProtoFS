@@ -410,7 +410,12 @@ impl CacheDatabase {
         Ok(())
     }
 
-    pub fn rename_node_in_cache(&self, drive_id: &str, node_id: &str, new_name: &str) -> Result<()> {
+    pub fn rename_node_in_cache(
+        &self,
+        drive_id: &str,
+        node_id: &str,
+        new_name: &str,
+    ) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let now = Utc::now().to_rfc3339();
         conn.execute(
@@ -428,7 +433,12 @@ impl CacheDatabase {
         Ok(())
     }
 
-    pub fn move_node_in_cache(&self, drive_id: &str, node_id: &str, new_parent_id: &str) -> Result<()> {
+    pub fn move_node_in_cache(
+        &self,
+        drive_id: &str,
+        node_id: &str,
+        new_parent_id: &str,
+    ) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let now = Utc::now().to_rfc3339();
         conn.execute(

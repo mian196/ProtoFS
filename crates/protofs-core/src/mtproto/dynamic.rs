@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use async_trait::async_trait;
-use crate::error::Result;
 use super::mock::MockTelegramTransport;
 use super::real::RealTelegramTransport;
 use super::transport::{ChannelInfo, TelegramMessage, TelegramTransport, TelegramUser};
+use crate::error::Result;
+use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub enum TransportBackend {
     Mock(MockTelegramTransport),
@@ -19,7 +19,9 @@ pub struct DynamicTelegramTransport {
 impl DynamicTelegramTransport {
     pub fn new_mock() -> Self {
         Self {
-            backend: Arc::new(RwLock::new(TransportBackend::Mock(MockTelegramTransport::new()))),
+            backend: Arc::new(RwLock::new(TransportBackend::Mock(
+                MockTelegramTransport::new(),
+            ))),
         }
     }
 
@@ -83,8 +85,12 @@ impl TelegramTransport for DynamicTelegramTransport {
     ) -> Result<TelegramMessage> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Mock(m) => m.upload_document(channel_id, filename, caption, data).await,
-            TransportBackend::Real(r) => r.upload_document(channel_id, filename, caption, data).await,
+            TransportBackend::Mock(m) => {
+                m.upload_document(channel_id, filename, caption, data).await
+            }
+            TransportBackend::Real(r) => {
+                r.upload_document(channel_id, filename, caption, data).await
+            }
         }
     }
 
@@ -97,12 +103,23 @@ impl TelegramTransport for DynamicTelegramTransport {
     ) -> Result<Vec<u8>> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Mock(m) => m.download_range(channel_id, message_id, offset, limit).await,
-            TransportBackend::Real(r) => r.download_range(channel_id, message_id, offset, limit).await,
+            TransportBackend::Mock(m) => {
+                m.download_range(channel_id, message_id, offset, limit)
+                    .await
+            }
+            TransportBackend::Real(r) => {
+                r.download_range(channel_id, message_id, offset, limit)
+                    .await
+            }
         }
     }
 
-    async fn edit_caption(&self, channel_id: i64, message_id: i32, new_caption: &str) -> Result<()> {
+    async fn edit_caption(
+        &self,
+        channel_id: i64,
+        message_id: i32,
+        new_caption: &str,
+    ) -> Result<()> {
         let lock = self.backend.read().await;
         match &*lock {
             TransportBackend::Mock(m) => m.edit_caption(channel_id, message_id, new_caption).await,

@@ -66,7 +66,8 @@ mod platform {
             return Err("Windows DPAPI CryptProtectData failed".to_string());
         }
 
-        let slice = unsafe { std::slice::from_raw_parts(out_blob.pb_data, out_blob.cb_data as usize) };
+        let slice =
+            unsafe { std::slice::from_raw_parts(out_blob.pb_data, out_blob.cb_data as usize) };
         let ciphertext = slice.to_vec();
         unsafe {
             LocalFree(out_blob.pb_data as *mut std::ffi::c_void);
@@ -100,7 +101,8 @@ mod platform {
             return Err("Windows DPAPI CryptUnprotectData failed".to_string());
         }
 
-        let slice = unsafe { std::slice::from_raw_parts(out_blob.pb_data, out_blob.cb_data as usize) };
+        let slice =
+            unsafe { std::slice::from_raw_parts(out_blob.pb_data, out_blob.cb_data as usize) };
         let plaintext = slice.to_vec();
         unsafe {
             LocalFree(out_blob.pb_data as *mut std::ffi::c_void);
@@ -112,8 +114,8 @@ mod platform {
 #[cfg(not(target_os = "windows"))]
 mod platform {
     // Cross-platform fallback using local hardware-bound AES-256-GCM
-    use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
     use rand::RngCore;
+    use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
 
     fn get_machine_key() -> [u8; 32] {
         let id = std::fs::read_to_string("/etc/machine-id")

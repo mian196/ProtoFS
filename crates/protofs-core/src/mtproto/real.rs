@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use async_trait::async_trait;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use grammers_client::client::LoginToken;
 use grammers_client::{Client, SignInError};
@@ -13,8 +13,8 @@ use grammers_session::types::{DcOption, PeerInfo, UpdatesState};
 use grammers_session::{Session, SessionData};
 use grammers_tl_types as tl;
 
-use crate::error::{ProtoFsError, Result};
 use super::transport::{ChannelInfo, TelegramMessage, TelegramTransport, TelegramUser};
+use crate::error::{ProtoFsError, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportedSession {
@@ -67,6 +67,12 @@ pub struct TelegramAuthClient {
     pending: Mutex<Option<PendingLogin>>,
 }
 
+impl Default for TelegramAuthClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TelegramAuthClient {
     pub fn new() -> Self {
         Self {
@@ -74,12 +80,7 @@ impl TelegramAuthClient {
         }
     }
 
-    pub async fn send_code(
-        &self,
-        phone: &str,
-        api_id: i32,
-        api_hash: &str,
-    ) -> Result<String> {
+    pub async fn send_code(&self, phone: &str, api_id: i32, api_hash: &str) -> Result<String> {
         let session = Arc::new(MemorySession::default());
         let pool = SenderPool::new(Arc::clone(&session), api_id);
         let quit_handle = pool.handle.thin.clone();
@@ -93,7 +94,9 @@ impl TelegramAuthClient {
         let token = client
             .request_login_code(phone, api_hash)
             .await
-            .map_err(|e| ProtoFsError::Mtproto(format!("Failed to request Telegram login code: {}", e)))?;
+            .map_err(|e| {
+                ProtoFsError::Mtproto(format!("Failed to request Telegram login code: {}", e))
+            })?;
 
         let mut lock = self.pending.lock().await;
         *lock = Some(PendingLogin {
@@ -116,7 +119,9 @@ impl TelegramAuthClient {
     ) -> Result<(RealTelegramTransport, TelegramUser, Vec<u8>)> {
         let mut lock = self.pending.lock().await;
         let pending = lock.take().ok_or_else(|| {
-            ProtoFsError::Mtproto("No login request in progress. Please request a code first.".to_string())
+            ProtoFsError::Mtproto(
+                "No login request in progress. Please request a code first.".to_string(),
+            )
         })?;
 
         let user = match pending.client.sign_in(&pending.token, code).await {
@@ -127,16 +132,23 @@ impl TelegramAuthClient {
                         .client
                         .check_password(pwd_token, pwd)
                         .await
-                        .map_err(|e| ProtoFsError::Mtproto(format!("Invalid 2FA password: {}", e)))?
+                        .map_err(|e| {
+                            ProtoFsError::Mtproto(format!("Invalid 2FA password: {}", e))
+                        })?
                 } else {
                     // Put pending login back so user can supply 2FA password
                     *lock = Some(pending);
-                    return Err(ProtoFsError::Mtproto("2FA password required for this account".to_string()));
+                    return Err(ProtoFsError::Mtproto(
+                        "2FA password required for this account".to_string(),
+                    ));
                 }
             }
             Err(e) => {
                 *lock = Some(pending);
-                return Err(ProtoFsError::Mtproto(format!("Failed to verify Telegram code: {}", e)));
+                return Err(ProtoFsError::Mtproto(format!(
+                    "Failed to verify Telegram code: {}",
+                    e
+                )));
             }
         };
 
@@ -188,12 +200,12 @@ impl TelegramAuthClient {
             let _ = runner.run().await;
         });
 
-        if !client
-            .is_authorized()
-            .await
-            .map_err(|e| ProtoFsError::Mtproto(format!("Failed to check session authorization: {}", e)))?
-        {
-            return Err(ProtoFsError::Mtproto("Saved Telegram session has expired or was revoked".to_string()));
+        if !client.is_authorized().await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to check session authorization: {}", e))
+        })? {
+            return Err(ProtoFsError::Mtproto(
+                "Saved Telegram session has expired or was revoked".to_string(),
+            ));
         }
 
         Ok(RealTelegramTransport {
@@ -209,11 +221,9 @@ impl TelegramAuthClient {
 #[async_trait]
 impl TelegramTransport for RealTelegramTransport {
     async fn get_me(&self) -> Result<TelegramUser> {
-        let me = self
-            .client
-            .get_me()
-            .await
-            .map_err(|e| ProtoFsError::Mtproto(format!("Failed to get current user info: {}", e)))?;
+        let me = self.client.get_me().await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to get current user info: {}", e))
+        })?;
 
         Ok(TelegramUser {
             id: me.id().bare_id_unchecked(),
@@ -236,35 +246,36 @@ impl TelegramTransport for RealTelegramTransport {
             ttl_period: None,
         };
 
-        let updates = self
-            .client
-            .invoke(&req)
-            .await
-            .map_err(|e| ProtoFsError::Mtproto(format!("Failed to create Telegram storage channel: {}", e)))?;
+        let updates = self.client.invoke(&req).await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to create Telegram storage channel: {}", e))
+        })?;
 
-        match updates {
-            tl::enums::Updates::Updates(u) => {
-                for chat in u.chats {
-                    if let tl::enums::Chat::Channel(c) = chat {
-                        return Ok(ChannelInfo {
-                            id: c.id,
-                            title: c.title,
-                            access_hash: c.access_hash.unwrap_or(0),
-                        });
-                    }
+        if let tl::enums::Updates::Updates(u) = updates {
+            for chat in u.chats {
+                if let tl::enums::Chat::Channel(c) = chat {
+                    return Ok(ChannelInfo {
+                        id: c.id,
+                        title: c.title,
+                        access_hash: c.access_hash.unwrap_or(0),
+                    });
                 }
             }
-            _ => {}
         }
 
-        Err(ProtoFsError::Mtproto("Failed to parse created channel response from Telegram".to_string()))
+        Err(ProtoFsError::Mtproto(
+            "Failed to parse created channel response from Telegram".to_string(),
+        ))
     }
 
     async fn get_pinned_manifest(&self, _channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {
         Ok(None)
     }
 
-    async fn update_pinned_manifest(&self, _channel_id: i64, _manifest_bytes: &[u8]) -> Result<i32> {
+    async fn update_pinned_manifest(
+        &self,
+        _channel_id: i64,
+        _manifest_bytes: &[u8],
+    ) -> Result<i32> {
         Ok(1)
     }
 
