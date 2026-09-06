@@ -21,6 +21,7 @@ uuid = { workspace = true }
 # Compression & SQLite local cache
 zstd = { workspace = true }
 rusqlite = { workspace = true }
+notify = "6.1"
 
 # Encryption & Security
 ring = { workspace = true }
