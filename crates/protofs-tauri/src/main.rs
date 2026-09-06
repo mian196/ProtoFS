@@ -14,8 +14,15 @@ use tokio::sync::RwLock;
 fn main() {
     tracing_subscriber::fmt::init();
 
+    let appdata_dir = std::env::var("APPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("ProtoFS");
+    let _ = std::fs::create_dir_all(&appdata_dir);
+    let db_path = appdata_dir.join("cache.db");
+    let cache = CacheDatabase::open(&db_path)
+        .unwrap_or_else(|_| CacheDatabase::open_in_memory().expect("failed to open sqlite cache"));
     let transport = Arc::new(MockTelegramTransport::new());
-    let cache = CacheDatabase::open_in_memory().expect("failed to open in-memory sqlite cache");
     let engine = Arc::new(SyncEngine::new(transport, cache.clone()));
 
     let default_drives = vec![

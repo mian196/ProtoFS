@@ -114,8 +114,30 @@ pub async fn login_verify_code(
     let mut lock = state.session.write().await;
     *lock = Some(session.clone());
 
+    if let Some(path) = get_session_file_path(&app) {
+        if let Ok(json) = serde_json::to_string_pretty(&session) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+
     let _ = password_2fa; // captured for 2FA validation
     Ok(CommandResponse::ok(session))
+}
+
+fn get_session_file_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    if let Ok(mut dir) = app.path().app_data_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        dir.push("session.json");
+        Some(dir)
+    } else if let Ok(appdata) = std::env::var("APPDATA") {
+        let mut dir = std::path::PathBuf::from(appdata);
+        dir.push("ProtoFS");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.push("session.json");
+        Some(dir)
+    } else {
+        None
+    }
 }
 
 #[tauri::command]
@@ -123,7 +145,21 @@ pub async fn get_session_status(
     app: tauri::AppHandle,
 ) -> Result<CommandResponse<Option<AuthSession>>, String> {
     let state = app.state::<AppState>();
-    let lock = state.session.read().await;
+    let mut lock = state.session.write().await;
+
+    // If in-memory state is empty, restore persisted session from disk
+    if lock.is_none() {
+        if let Some(path) = get_session_file_path(&app) {
+            if path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(persisted) = serde_json::from_str::<AuthSession>(&content) {
+                        *lock = Some(persisted);
+                    }
+                }
+            }
+        }
+    }
+
     Ok(CommandResponse::ok(lock.clone()))
 }
 
@@ -134,6 +170,13 @@ pub async fn logout_command(
     let state = app.state::<AppState>();
     let mut lock = state.session.write().await;
     *lock = None;
+
+    if let Some(path) = get_session_file_path(&app) {
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     Ok(CommandResponse::ok(()))
 }
 
