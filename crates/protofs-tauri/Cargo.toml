@@ -1,0 +1,20 @@
+[package]
+name = "protofs-tauri"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Tauri 2.0 application shell for ProtoFS Desktop and Android."
+
+[dependencies]
+protofs-core = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

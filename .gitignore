@@ -1,0 +1,17 @@
+# Local documentation and design prototypes
+local-docs/
+
+# Build artifacts and caches
+target/
+debug/
+dist/
+node_modules/
+*.log
+*.pdb
+
+# Backup and temporary files
+**/*.rs.bk
+**/mutants.out*/
+rustc-ice-*.txt
+.DS_Store
+Thumbs.db

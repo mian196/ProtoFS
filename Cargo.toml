@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/protofs-core",
+    "crates/protofs-cli",
+    "crates/protofs-tauri",
+]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+authors = ["ProtoFS Contributors"]
+license = "MIT"
+repository = "https://github.com/mian196/ProtoFS"
+
+[workspace.dependencies]
+# Async Runtime & Core Utilities
+tokio = { version = "1.40", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+# Storage, Compression & Database
+rusqlite = { version = "0.32", features = ["bundled", "bundled-full", "vtab"] }
+zstd = "0.13"
+
+# Cryptography & Security
+ring = "0.17"
+argon2 = "0.5"
+rand = "0.8"
+subtle = "2.6"
+zeroize = { version = "1.8", features = ["derive"] }
+
+# Internal workspace crates
+protofs-core = { path = "crates/protofs-core" }
