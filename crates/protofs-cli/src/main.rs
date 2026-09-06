@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
 use protofs_core::manifest::ManifestSnapshot;
 use protofs_core::cache::CacheDatabase;
-use protofs_core::vfs::VfsTree;
 
 #[derive(Parser)]
 #[command(name = "protofs-cli")]
