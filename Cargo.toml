@@ -37,5 +37,11 @@ rand = "0.8"
 subtle = "2.6"
 zeroize = { version = "1.8", features = ["derive"] }
 
+# Telegram MTProto (Real Client via Codeberg)
+grammers-client = { git = "https://codeberg.org/Lonami/grammers.git" }
+grammers-session = { git = "https://codeberg.org/Lonami/grammers.git", default-features = false, features = ["serde"] }
+grammers-tl-types = { git = "https://codeberg.org/Lonami/grammers.git" }
+grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers.git" }
+
 # Internal workspace crates
 protofs-core = { path = "crates/protofs-core" }

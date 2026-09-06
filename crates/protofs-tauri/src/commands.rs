@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 use chrono::Utc;
 
 use protofs_core::cache::{CacheDatabase, SearchResult};
-use protofs_core::mtproto::MockTelegramTransport;
+use protofs_core::mtproto::{DynamicTelegramTransport, TelegramAuthClient};
 use protofs_core::sync::SyncEngine;
 use protofs_core::vfs::{DriveMetadata, FileNode, FolderNode, VfsNode};
 
@@ -23,10 +23,12 @@ pub struct AuthSession {
 
 #[derive(Clone)]
 pub struct AppState {
-    pub engine: Arc<SyncEngine<MockTelegramTransport>>,
+    pub engine: Arc<SyncEngine<DynamicTelegramTransport>>,
     pub cache: CacheDatabase,
     pub session: Arc<RwLock<Option<AuthSession>>>,
     pub drives: Arc<RwLock<Vec<DriveMetadata>>>,
+    pub auth_client: Arc<TelegramAuthClient>,
+    pub transport: DynamicTelegramTransport,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -60,10 +62,12 @@ impl<T> CommandResponse<T> {
 
 #[tauri::command]
 pub async fn login_send_code(
+    app: tauri::AppHandle,
     phone: String,
     api_id: String,
     api_hash: String,
 ) -> Result<CommandResponse<String>, String> {
+    let state = app.state::<AppState>();
     let trimmed_phone = phone.trim();
     if trimmed_phone.is_empty() {
         return Ok(CommandResponse::err("Phone number cannot be empty"));
@@ -72,9 +76,28 @@ pub async fn login_send_code(
         return Ok(CommandResponse::err("API ID and API Hash are required (from my.telegram.org)"));
     }
 
-    // In native MTProto with mock/local transport, generate valid login challenge hash
-    let code_hash = format!("hash_{:x}", md5_hash(trimmed_phone));
-    Ok(CommandResponse::ok(code_hash))
+    // Check if demo mode
+    if trimmed_phone == "demo"
+        || api_id.trim().to_lowercase() == "demo"
+        || trimmed_phone.starts_with("+1555")
+    {
+        let code_hash = format!("hash_{:x}", md5_hash(trimmed_phone));
+        return Ok(CommandResponse::ok(code_hash));
+    }
+
+    let api_id_int: i32 = match api_id.trim().parse() {
+        Ok(val) => val,
+        Err(_) => return Ok(CommandResponse::err("API ID must be a numeric integer from my.telegram.org")),
+    };
+
+    match state
+        .auth_client
+        .send_code(trimmed_phone, api_id_int, api_hash.trim())
+        .await
+    {
+        Ok(hash) => Ok(CommandResponse::ok(hash)),
+        Err(e) => Ok(CommandResponse::err(format!("Telegram login error: {}", e))),
+    }
 }
 
 #[tauri::command]
@@ -93,39 +116,59 @@ pub async fn login_verify_code(
         return Ok(CommandResponse::err("Verification code must be at least 4 digits"));
     }
 
-    // Determine initials/user info based on phone
-    let username = if phone.contains("196") || phone.contains("muz") {
-        Some("MuzAmMaL".to_string())
-    } else {
-        Some("protofs_user".to_string())
+    // Check if demo login
+    if phone.trim() == "demo"
+        || api_id.trim().to_lowercase() == "demo"
+        || phone.trim().starts_with("+1555")
+        || trimmed_code == "12345"
+    {
+        let session = AuthSession {
+            is_authenticated: true,
+            phone: phone.clone(),
+            api_id,
+            api_hash,
+            username: Some("MuzAmMaL".to_string()),
+            first_name: "ProtoFS User".to_string(),
+            user_id: 1049281720,
+            active_drive_id: "personal".to_string(),
+        };
+
+        let mut lock = state.session.write().await;
+        *lock = Some(session.clone());
+        save_auth_session(&app, &session);
+        return Ok(CommandResponse::ok(session));
+    }
+
+    // Real Telegram MTProto verification
+    let (real_transport, tg_user, session_bytes) = match state
+        .auth_client
+        .verify_code(trimmed_code, password_2fa.as_deref())
+        .await
+    {
+        Ok(res) => res,
+        Err(e) => return Ok(CommandResponse::err(format!("Verification failed: {}", e))),
     };
+
+    // Switch engine transport to live Telegram MTProto
+    state.transport.switch_to_real(real_transport).await;
 
     let session = AuthSession {
         is_authenticated: true,
         phone: phone.clone(),
         api_id,
         api_hash,
-        username,
-        first_name: "ProtoFS User".to_string(),
-        user_id: 1049281720,
+        username: tg_user.username,
+        first_name: tg_user.first_name,
+        user_id: tg_user.id,
         active_drive_id: "personal".to_string(),
     };
 
     let mut lock = state.session.write().await;
     *lock = Some(session.clone());
 
-    if let (Some(enc_path), Some(legacy_path)) = get_session_paths(&app) {
-        if let Ok(json) = serde_json::to_string(&session) {
-            if let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes()) {
-                let _ = std::fs::write(enc_path, encrypted);
-                if legacy_path.exists() {
-                    let _ = std::fs::remove_file(legacy_path);
-                }
-            }
-        }
-    }
+    save_auth_session(&app, &session);
+    save_real_telegram_session(&app, &session_bytes);
 
-    let _ = password_2fa; // captured for 2FA validation
     Ok(CommandResponse::ok(session))
 }
 
@@ -150,6 +193,80 @@ fn get_session_paths(app: &tauri::AppHandle) -> (Option<std::path::PathBuf>, Opt
     }
 }
 
+fn get_real_session_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    let base_dir = if let Ok(dir) = app.path().app_data_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir)
+    } else if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::PathBuf::from(appdata).join("ProtoFS");
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir)
+    } else {
+        None
+    };
+
+    base_dir.map(|d| d.join("telegram_session.enc"))
+}
+
+fn save_auth_session(app: &tauri::AppHandle, session: &AuthSession) {
+    if let (Some(enc_path), Some(legacy_path)) = get_session_paths(app) {
+        if let Ok(json) = serde_json::to_string(session) {
+            if let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes()) {
+                let _ = std::fs::write(enc_path, encrypted);
+                if legacy_path.exists() {
+                    let _ = std::fs::remove_file(legacy_path);
+                }
+            }
+        }
+    }
+}
+
+fn save_real_telegram_session(app: &tauri::AppHandle, session_bytes: &[u8]) {
+    if let Some(path) = get_real_session_path(app) {
+        if let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes) {
+            let _ = std::fs::write(path, encrypted);
+        }
+    }
+}
+
+fn load_auth_session(app: &tauri::AppHandle) -> Option<AuthSession> {
+    if let (Some(enc_path), Some(legacy_path)) = get_session_paths(app) {
+        if enc_path.exists() {
+            if let Ok(encrypted_bytes) = std::fs::read(&enc_path) {
+                if let Ok(decrypted_bytes) = protofs_core::crypto::unprotect_secret(&encrypted_bytes) {
+                    if let Ok(persisted) = serde_json::from_slice::<AuthSession>(&decrypted_bytes) {
+                        return Some(persisted);
+                    }
+                }
+            }
+        } else if legacy_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&legacy_path) {
+                if let Ok(persisted) = serde_json::from_str::<AuthSession>(&content) {
+                    if let Ok(encrypted) = protofs_core::crypto::protect_secret(content.as_bytes()) {
+                        let _ = std::fs::write(enc_path, encrypted);
+                        let _ = std::fs::remove_file(legacy_path);
+                    }
+                    return Some(persisted);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn load_real_telegram_session(app: &tauri::AppHandle) -> Option<Vec<u8>> {
+    if let Some(path) = get_real_session_path(app) {
+        if path.exists() {
+            if let Ok(encrypted_bytes) = std::fs::read(&path) {
+                if let Ok(decrypted) = protofs_core::crypto::unprotect_secret(&encrypted_bytes) {
+                    return Some(decrypted);
+                }
+            }
+        }
+    }
+    None
+}
+
 #[tauri::command]
 pub async fn get_session_status(
     app: tauri::AppHandle,
@@ -159,27 +276,22 @@ pub async fn get_session_status(
 
     // If in-memory state is empty, restore hardware-encrypted session from disk
     if lock.is_none() {
-        if let (Some(enc_path), Some(legacy_path)) = get_session_paths(&app) {
-            if enc_path.exists() {
-                if let Ok(encrypted_bytes) = std::fs::read(&enc_path) {
-                    if let Ok(decrypted_bytes) = protofs_core::crypto::unprotect_secret(&encrypted_bytes) {
-                        if let Ok(persisted) = serde_json::from_slice::<AuthSession>(&decrypted_bytes) {
-                            *lock = Some(persisted);
-                        }
-                    }
-                }
-            } else if legacy_path.exists() {
-                // Transparently migrate legacy unencrypted session to encrypted format
-                if let Ok(content) = std::fs::read_to_string(&legacy_path) {
-                    if let Ok(persisted) = serde_json::from_str::<AuthSession>(&content) {
-                        *lock = Some(persisted.clone());
-                        if let Ok(encrypted) = protofs_core::crypto::protect_secret(content.as_bytes()) {
-                            let _ = std::fs::write(enc_path, encrypted);
-                            let _ = std::fs::remove_file(legacy_path);
-                        }
+        if let Some(session) = load_auth_session(&app) {
+            // Attempt to reconnect to real Telegram MTProto if session exists
+            if let Some(session_bytes) = load_real_telegram_session(&app) {
+                if let Ok(api_id_int) = session.api_id.trim().parse::<i32>() {
+                    if let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                        api_id_int,
+                        session.api_hash.trim(),
+                        &session_bytes,
+                    )
+                    .await
+                    {
+                        state.transport.switch_to_real(real).await;
                     }
                 }
             }
+            *lock = Some(session);
         }
     }
 
@@ -194,12 +306,20 @@ pub async fn logout_command(
     let mut lock = state.session.write().await;
     *lock = None;
 
+    state.transport.switch_to_mock().await;
+
     if let (Some(enc_path), Some(legacy_path)) = get_session_paths(&app) {
         if enc_path.exists() {
             let _ = std::fs::remove_file(enc_path);
         }
         if legacy_path.exists() {
             let _ = std::fs::remove_file(legacy_path);
+        }
+    }
+
+    if let Some(path) = get_real_session_path(&app) {
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
         }
     }
 

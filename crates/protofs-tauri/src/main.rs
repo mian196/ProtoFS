@@ -5,7 +5,7 @@ pub mod commands;
 use chrono::Utc;
 use commands::AppState;
 use protofs_core::cache::CacheDatabase;
-use protofs_core::mtproto::MockTelegramTransport;
+use protofs_core::mtproto::{DynamicTelegramTransport, TelegramAuthClient};
 use protofs_core::sync::SyncEngine;
 use protofs_core::vfs::DriveMetadata;
 use std::sync::Arc;
@@ -22,8 +22,9 @@ fn main() {
     let db_path = appdata_dir.join("cache.db");
     let cache = CacheDatabase::open(&db_path)
         .unwrap_or_else(|_| CacheDatabase::open_in_memory().expect("failed to open sqlite cache"));
-    let transport = Arc::new(MockTelegramTransport::new());
-    let engine = Arc::new(SyncEngine::new(transport, cache.clone()));
+    let transport = DynamicTelegramTransport::new_mock();
+    let engine = Arc::new(SyncEngine::new(Arc::new(transport.clone()), cache.clone()));
+    let auth_client = Arc::new(TelegramAuthClient::new());
 
     let default_drives = vec![
         DriveMetadata {
@@ -57,6 +58,8 @@ fn main() {
         cache,
         session: Arc::new(RwLock::new(None)),
         drives: Arc::new(RwLock::new(default_drives)),
+        auth_client,
+        transport,
     };
 
     tauri::Builder::default()
