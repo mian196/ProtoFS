@@ -9,6 +9,7 @@ description = "Tauri 2.0 application shell for ProtoFS Desktop and Android."
 
 [dependencies]
 protofs-core = { workspace = true }
+tauri = { version = "2", features = [] }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

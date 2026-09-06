@@ -37,38 +37,46 @@ impl<T> CommandResponse<T> {
     }
 }
 
+use tauri::Manager;
+
+#[tauri::command]
 pub async fn load_drive_command(
-    state: &AppState,
+    app: tauri::AppHandle,
     drive_id: String,
     channel_id: i64,
-) -> CommandResponse<Vec<VfsNode>> {
+) -> Result<CommandResponse<Vec<VfsNode>>, String> {
+    let state = app.state::<AppState>();
     match state.engine.load_drive(&drive_id, channel_id).await {
         Ok(tree) => {
             let nodes: Vec<VfsNode> = tree.all_nodes().cloned().collect();
-            CommandResponse::ok(nodes)
+            Ok(CommandResponse::ok(nodes))
         }
-        Err(e) => CommandResponse::err(e.to_string()),
+        Err(e) => Ok(CommandResponse::err(e.to_string())),
     }
 }
 
+#[tauri::command]
 pub async fn search_nodes_command(
-    state: &AppState,
+    app: tauri::AppHandle,
     drive_id: String,
     query: String,
-) -> CommandResponse<Vec<SearchResult>> {
+) -> Result<CommandResponse<Vec<SearchResult>>, String> {
+    let state = app.state::<AppState>();
     match state.cache.search(&drive_id, &query) {
-        Ok(results) => CommandResponse::ok(results),
-        Err(e) => CommandResponse::err(e.to_string()),
+        Ok(results) => Ok(CommandResponse::ok(results)),
+        Err(e) => Ok(CommandResponse::err(e.to_string())),
     }
 }
 
+#[tauri::command]
 pub async fn flush_manifest_command(
-    state: &AppState,
+    app: tauri::AppHandle,
     drive_id: String,
     channel_id: i64,
-) -> CommandResponse<()> {
+) -> Result<CommandResponse<()>, String> {
+    let state = app.state::<AppState>();
     match state.engine.flush_manifest(&drive_id, channel_id).await {
-        Ok(_) => CommandResponse::ok(()),
-        Err(e) => CommandResponse::err(e.to_string()),
+        Ok(_) => Ok(CommandResponse::ok(())),
+        Err(e) => Ok(CommandResponse::err(e.to_string())),
     }
 }
