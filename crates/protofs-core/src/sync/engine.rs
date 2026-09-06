@@ -272,4 +272,26 @@ impl<T: TelegramTransport> SyncEngine<T> {
         dirty.insert(drive_id.to_string(), true);
         Ok(())
     }
+
+    pub async fn rename_node(&self, drive_id: &str, node_id: &str, new_name: &str) -> Result<()> {
+        let mut trees = self.trees_by_drive.write().await;
+        let tree = trees
+            .get_mut(drive_id)
+            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+        tree.rename(node_id, new_name)?;
+        let mut dirty = self.is_dirty_by_drive.write().await;
+        dirty.insert(drive_id.to_string(), true);
+        Ok(())
+    }
+
+    pub async fn move_node(&self, drive_id: &str, node_id: &str, new_parent_id: &str) -> Result<()> {
+        let mut trees = self.trees_by_drive.write().await;
+        let tree = trees
+            .get_mut(drive_id)
+            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+        tree.move_node(node_id, new_parent_id)?;
+        let mut dirty = self.is_dirty_by_drive.write().await;
+        dirty.insert(drive_id.to_string(), true);
+        Ok(())
+    }
 }

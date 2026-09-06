@@ -70,6 +70,13 @@ fn main() {
             commands::empty_trash_command,
             commands::toggle_pin_command,
             commands::search_nodes_command,
+            commands::rename_node_command,
+            commands::move_node_command,
+            commands::get_sync_pairs_command,
+            commands::add_sync_pair_command,
+            commands::remove_sync_pair_command,
+            commands::trigger_sync_command,
+            commands::get_storage_usage_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs desktop application");

@@ -6,7 +6,7 @@ pub mod mtproto;
 pub mod sync;
 pub mod vfs;
 
-pub use cache::CacheDatabase;
+pub use cache::{CacheDatabase, SearchResult, SyncPairEntry};
 pub use error::{ProtoFsError, Result};
 pub use manifest::ManifestSnapshot;
 pub use mtproto::{MockTelegramTransport, ParsedCaption, TelegramTransport};

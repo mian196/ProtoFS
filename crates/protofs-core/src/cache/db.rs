@@ -19,6 +19,16 @@ pub struct SearchResult {
     pub size_bytes: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncPairEntry {
+    pub id: String,
+    pub local_path: String,
+    pub remote_folder_id: String,
+    pub drive_id: String,
+    pub sync_mode: String,
+    pub last_synced_at: DateTime<Utc>,
+}
+
 #[derive(Clone)]
 pub struct CacheDatabase {
     conn: Arc<Mutex<Connection>>,
@@ -328,5 +338,105 @@ impl CacheDatabase {
         }
 
         Ok(tree)
+    }
+
+    pub fn insert_sync_pair(&self, pair: &SyncPairEntry) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            r#"
+            INSERT INTO sync_pairs (id, local_path, remote_folder_id, drive_id, sync_mode, last_synced_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            ON CONFLICT(id) DO UPDATE SET
+                local_path = excluded.local_path,
+                remote_folder_id = excluded.remote_folder_id,
+                sync_mode = excluded.sync_mode,
+                last_synced_at = excluded.last_synced_at
+            "#,
+            params![
+                pair.id,
+                pair.local_path,
+                pair.remote_folder_id,
+                pair.drive_id,
+                pair.sync_mode,
+                pair.last_synced_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sync_pairs(&self, drive_id: &str) -> Result<Vec<SyncPairEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, local_path, remote_folder_id, drive_id, sync_mode, last_synced_at FROM sync_pairs WHERE drive_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![drive_id], |row| {
+            let last_synced_str: String = row.get(5)?;
+            Ok(SyncPairEntry {
+                id: row.get(0)?,
+                local_path: row.get(1)?,
+                remote_folder_id: row.get(2)?,
+                drive_id: row.get(3)?,
+                sync_mode: row.get(4)?,
+                last_synced_at: DateTime::parse_from_rfc3339(&last_synced_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            })
+        })?;
+        let mut list = Vec::new();
+        for r in rows {
+            list.push(r?);
+        }
+        Ok(list)
+    }
+
+    pub fn delete_sync_pair(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM sync_pairs WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn update_sync_pair_last_synced(&self, id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE sync_pairs SET last_synced_at = ?1 WHERE id = ?2",
+            params![Utc::now().to_rfc3339(), id],
+        )?;
+        Ok(())
+    }
+
+    pub fn rename_node_in_cache(&self, drive_id: &str, node_id: &str, new_name: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE folders SET name = ?1, updated_at = ?2 WHERE id = ?3 AND drive_id = ?4",
+            params![new_name, now, node_id, drive_id],
+        )?;
+        conn.execute(
+            "UPDATE files SET name = ?1, updated_at = ?2 WHERE id = ?3 AND drive_id = ?4",
+            params![new_name, now, node_id, drive_id],
+        )?;
+        conn.execute(
+            "UPDATE fts_nodes SET name = ?1 WHERE id = ?2 AND drive_id = ?3",
+            params![new_name, node_id, drive_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn move_node_in_cache(&self, drive_id: &str, node_id: &str, new_parent_id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE folders SET parent_id = ?1, updated_at = ?2 WHERE id = ?3 AND drive_id = ?4",
+            params![new_parent_id, now, node_id, drive_id],
+        )?;
+        conn.execute(
+            "UPDATE files SET parent_id = ?1, updated_at = ?2 WHERE id = ?3 AND drive_id = ?4",
+            params![new_parent_id, now, node_id, drive_id],
+        )?;
+        conn.execute(
+            "UPDATE fts_nodes SET parent_id = ?1 WHERE id = ?2 AND drive_id = ?3",
+            params![new_parent_id, node_id, drive_id],
+        )?;
+        Ok(())
     }
 }

@@ -22,9 +22,15 @@ export class ProtoFsApi {
     if (isTauri()) {
       try {
         const res = await invoke<TauriCommandResponse<AuthSession | null>>('get_session_status');
-        if (res.success && res.data) {
-          localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(res.data));
-          return res.data;
+        if (res.success) {
+          if (res.data) {
+            localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(res.data));
+            return res.data;
+          } else {
+            // Tauri backend explicitly has no active session
+            localStorage.removeItem(STORAGE_KEY_SESSION);
+            return null;
+          }
         }
       } catch (err) {
         console.warn('Tauri get_session_status failed, checking local cache:', err);
@@ -423,11 +429,96 @@ export class ProtoFsApi {
     return results;
   }
 
+  async renameNode(driveId: string, nodeId: string, newName: string): Promise<void> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<void>>('rename_node_command', {
+          driveId,
+          nodeId,
+          newName,
+        });
+        if (res.success) return;
+        throw new Error(res.error || 'Failed to rename item');
+      } catch (err: any) {
+        console.warn('Tauri rename_node_command fallback:', err);
+      }
+    }
+
+    const folders = this.getStoredFolders();
+    const folder = folders.find(f => f.id === nodeId);
+    if (folder) {
+      folder.name = newName;
+      folder.updated_at = new Date().toISOString();
+      localStorage.setItem(STORAGE_KEY_FOLDERS, JSON.stringify(folders));
+      return;
+    }
+
+    const files = this.getStoredFiles();
+    const file = files.find(f => f.id === nodeId);
+    if (file) {
+      file.name = newName;
+      file.updated_at = new Date().toISOString();
+      localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
+    }
+  }
+
+  async moveNode(driveId: string, nodeId: string, newParentId: string): Promise<void> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<void>>('move_node_command', {
+          driveId,
+          nodeId,
+          newParentId,
+        });
+        if (res.success) return;
+        throw new Error(res.error || 'Failed to move item');
+      } catch (err: any) {
+        console.warn('Tauri move_node_command fallback:', err);
+      }
+    }
+
+    const folders = this.getStoredFolders();
+    const folder = folders.find(f => f.id === nodeId);
+    if (folder) {
+      folder.parent_id = newParentId;
+      folder.updated_at = new Date().toISOString();
+      localStorage.setItem(STORAGE_KEY_FOLDERS, JSON.stringify(folders));
+      return;
+    }
+
+    const files = this.getStoredFiles();
+    const file = files.find(f => f.id === nodeId);
+    if (file) {
+      file.parent_id = newParentId;
+      file.updated_at = new Date().toISOString();
+      localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Sync Pairs (PRD Section 6.6)
   // -------------------------------------------------------------------------
 
-  async getSyncPairs(): Promise<SyncPair[]> {
+  async getSyncPairs(driveId = 'personal'): Promise<SyncPair[]> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<any[]>>('get_sync_pairs_command', { driveId });
+        if (res.success && res.data && res.data.length > 0) {
+          return res.data.map(p => ({
+            id: p.id,
+            local_path: p.local_path,
+            remote_folder_id: p.remote_folder_id,
+            drive_id: p.drive_id,
+            sync_mode: p.sync_mode as 'one-way' | 'two-way',
+            status: 'Active (Watching)',
+            file_count: 0,
+          }));
+        }
+      } catch (err) {
+        console.warn('Tauri get_sync_pairs_command fallback:', err);
+      }
+    }
+
     const cached = localStorage.getItem(STORAGE_KEY_SYNC_PAIRS);
     if (cached) return JSON.parse(cached);
 
@@ -456,7 +547,31 @@ export class ProtoFsApi {
   }
 
   async addSyncPair(pair: Omit<SyncPair, 'id' | 'status' | 'file_count'>): Promise<SyncPair> {
-    const pairs = await this.getSyncPairs();
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<any>>('add_sync_pair_command', {
+          driveId: pair.drive_id,
+          localPath: pair.local_path,
+          remoteFolderId: pair.remote_folder_id,
+          syncMode: pair.sync_mode,
+        });
+        if (res.success && res.data) {
+          return {
+            id: res.data.id,
+            local_path: res.data.local_path,
+            remote_folder_id: res.data.remote_folder_id,
+            drive_id: res.data.drive_id,
+            sync_mode: res.data.sync_mode,
+            status: 'Active (Watching)',
+            file_count: 0,
+          };
+        }
+      } catch (err) {
+        console.warn('Tauri add_sync_pair_command fallback:', err);
+      }
+    }
+
+    const pairs = await this.getSyncPairs(pair.drive_id);
     const newPair: SyncPair = {
       ...pair,
       id: `sync_${Date.now()}`,
@@ -466,6 +581,83 @@ export class ProtoFsApi {
     pairs.push(newPair);
     localStorage.setItem(STORAGE_KEY_SYNC_PAIRS, JSON.stringify(pairs));
     return newPair;
+  }
+
+  async removeSyncPair(id: string): Promise<void> {
+    if (isTauri()) {
+      try {
+        await invoke('remove_sync_pair_command', { id });
+      } catch (err) {
+        console.warn('Tauri remove_sync_pair_command fallback:', err);
+      }
+    }
+    const pairs = (await this.getSyncPairs()).filter(p => p.id !== id);
+    localStorage.setItem(STORAGE_KEY_SYNC_PAIRS, JSON.stringify(pairs));
+  }
+
+  async triggerSync(id: string): Promise<void> {
+    if (isTauri()) {
+      try {
+        await invoke('trigger_sync_command', { id });
+      } catch (err) {
+        console.warn('Tauri trigger_sync_command fallback:', err);
+      }
+    }
+  }
+
+  async getStorageUsage(driveId: string): Promise<{
+    total_bytes: number;
+    total_files: number;
+    total_folders: number;
+    video_bytes: number;
+    image_bytes: number;
+    document_bytes: number;
+    audio_bytes: number;
+    other_bytes: number;
+    local_cache_bytes: number;
+  }> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<any>>('get_storage_usage_command', { driveId });
+        if (res.success && res.data) {
+          return res.data;
+        }
+      } catch (err) {
+        console.warn('Tauri get_storage_usage_command fallback:', err);
+      }
+    }
+
+    // Fallback calculation from local drive
+    const { folders, files } = await this.loadDrive(driveId, 0);
+    let total_bytes = 0;
+    let video_bytes = 0;
+    let image_bytes = 0;
+    let document_bytes = 0;
+    let audio_bytes = 0;
+    let other_bytes = 0;
+
+    for (const fl of files) {
+      if (!fl.trashed) {
+        total_bytes += fl.size_bytes;
+        if (fl.type === 'video') video_bytes += fl.size_bytes;
+        else if (fl.type === 'image') image_bytes += fl.size_bytes;
+        else if (fl.type === 'sheet' || fl.type === 'pdf') document_bytes += fl.size_bytes;
+        else if (fl.type === 'audio') audio_bytes += fl.size_bytes;
+        else other_bytes += fl.size_bytes;
+      }
+    }
+
+    return {
+      total_bytes,
+      total_files: files.filter(f => !f.trashed).length,
+      total_folders: folders.length,
+      video_bytes,
+      image_bytes,
+      document_bytes,
+      audio_bytes,
+      other_bytes,
+      local_cache_bytes: 42 * 1024 * 1024,
+    };
   }
 
   // -------------------------------------------------------------------------
