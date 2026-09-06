@@ -1,4 +1,11 @@
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import type { DriveMetadata, FileNode, FolderNode, SearchResult, SyncPair } from './types';
+
+interface TauriCommandResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
 
 export class ProtoFsApi {
   private drives: DriveMetadata[] = [
@@ -99,52 +106,51 @@ export class ProtoFsApi {
       id: 'file_4',
       drive_id: 'personal',
       parent_id: 'root',
-      name: 'Architecture_Blueprint_FUSE_Engine.pdf',
-      size: '12.8 MB',
-      size_bytes: 13421772,
-      type: 'pdf',
-      mime_type: 'application/pdf',
-      telegram_message_id: 10420,
+      name: 'Neural_Network_Weights_DenseNet121.pt',
+      size: '142.8 MB',
+      size_bytes: 149737472,
+      type: 'binary',
+      telegram_message_id: 10442,
       encrypted: true,
       pinned: false,
       trashed: false,
-      date: 'Aug 24, 2026',
-      created_at: '2026-08-24T11:00:00Z',
-      updated_at: '2026-08-24T11:00:00Z',
+      date: 'Aug 25, 2026',
+      created_at: '2026-08-25T11:00:00Z',
+      updated_at: '2026-08-25T11:00:00Z',
     },
     {
       id: 'file_5',
       drive_id: 'personal',
       parent_id: 'root',
-      name: 'Aurora_Borealis_Iceland_RAW.dng',
-      size: '88.4 MB',
-      size_bytes: 92694118,
+      name: 'Landscape_Wallpaper_Patagonia_8K.png',
+      size: '32.1 MB',
+      size_bytes: 33659289,
       type: 'image',
-      mime_type: 'image/x-adobe-dng',
-      telegram_message_id: 10415,
+      mime_type: 'image/png',
+      telegram_message_id: 10420,
       encrypted: false,
       pinned: false,
       trashed: false,
-      date: 'Aug 19, 2026',
-      created_at: '2026-08-19T09:45:00Z',
-      updated_at: '2026-08-19T09:45:00Z',
+      date: 'Aug 22, 2026',
+      created_at: '2026-08-22T09:15:00Z',
+      updated_at: '2026-08-22T09:15:00Z',
     },
     {
       id: 'file_6',
       drive_id: 'personal',
       parent_id: 'root',
-      name: 'Hans_Zimmer_Interstellar_Master.flac',
-      size: '142.1 MB',
-      size_bytes: 149002649,
+      name: 'Nordic_Ambient_Soundtrack_Lossless.flac',
+      size: '284.6 MB',
+      size_bytes: 298424729,
       type: 'audio',
       mime_type: 'audio/flac',
-      telegram_message_id: 10402,
-      encrypted: true,
-      pinned: true,
+      telegram_message_id: 10405,
+      encrypted: false,
+      pinned: false,
       trashed: false,
-      date: 'Aug 15, 2026',
-      created_at: '2026-08-15T16:30:00Z',
-      updated_at: '2026-09-02T11:00:00Z',
+      date: 'Aug 18, 2026',
+      created_at: '2026-08-18T16:30:00Z',
+      updated_at: '2026-08-18T16:30:00Z',
     },
     {
       id: 'file_7',
@@ -184,6 +190,11 @@ export class ProtoFsApi {
       file_count: 32,
     },
   ];
+
+  /** Check if running inside the native Tauri 2.0 shell */
+  public isNativeRuntime(): boolean {
+    return typeof isTauri === 'function' ? isTauri() : false;
+  }
 
   public async getDrives(): Promise<DriveMetadata[]> {
     return this.drives;
@@ -252,6 +263,20 @@ export class ProtoFsApi {
   }
 
   public async search(driveId: string, query: string): Promise<SearchResult[]> {
+    if (this.isNativeRuntime()) {
+      try {
+        const resp = await invoke<TauriCommandResponse<SearchResult[]>>('search_nodes_command', {
+          driveId,
+          query,
+        });
+        if (resp && resp.success && resp.data) {
+          return resp.data;
+        }
+      } catch (err) {
+        console.warn('Tauri IPC search failed, falling back to in-memory search:', err);
+      }
+    }
+
     const q = query.toLowerCase();
     const results: SearchResult[] = [];
 
@@ -264,6 +289,21 @@ export class ProtoFsApi {
       .forEach((f) => results.push({ id: f.id, drive_id: f.drive_id, name: f.name, kind: 'file', parent_id: f.parent_id, size_bytes: f.size_bytes }));
 
     return results;
+  }
+
+  public async flushManifest(driveId: string, channelId: number): Promise<void> {
+    if (this.isNativeRuntime()) {
+      try {
+        await invoke<TauriCommandResponse<void>>('flush_manifest_command', {
+          driveId,
+          channelId,
+        });
+        return;
+      } catch (err) {
+        console.warn('Tauri IPC flush failed, falling back to mock:', err);
+      }
+    }
+    console.debug('Manifest flushed to channel', channelId);
   }
 
   public async getSyncPairs(): Promise<SyncPair[]> {
