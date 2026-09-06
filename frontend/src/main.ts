@@ -120,7 +120,10 @@ class ProtoFsApp {
               </div>
 
               <div class="form-actions-row">
-                <button type="button" class="btn-action secondary" id="btnBackToPhone">Back</button>
+                <button type="button" class="btn-secondary-tg" id="btnBackToPhone">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                  <span>Back</span>
+                </button>
                 <button type="submit" class="btn-primary-tg">
                   <span>Enter ProtoFS Drive</span>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>

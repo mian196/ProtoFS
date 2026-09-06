@@ -840,8 +840,8 @@ body {
 
 .form-actions-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -911,6 +911,27 @@ body {
 
 .btn-primary-tg:hover {
   background: var(--accent-hover);
+}
+
+.btn-secondary-tg {
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary-tg:hover {
+  background: var(--bg-surface-input);
+  border-color: var(--border-focus);
 }
 
 .login-info-box {
