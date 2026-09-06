@@ -1,0 +1,153 @@
+name: Build and Release ProtoFS
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Create draft release'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark as prerelease'
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-x86_64'
+            os: windows-latest
+            cli_bin: protofs-cli.exe
+            archive_ext: zip
+          - platform: 'linux-x86_64'
+            os: ubuntu-latest
+            cli_bin: protofs-cli
+            archive_ext: tar.gz
+          - platform: 'macos-x86_64'
+            os: macos-latest
+            cli_bin: protofs-cli
+            archive_ext: tar.gz
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Install Linux dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci || npm install
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Run Workspace Tests
+        run: cargo test --workspace --verbose
+
+      - name: Build Release CLI Binary
+        run: cargo build --release -p protofs-cli
+
+      - name: Package CLI Binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "dist-bin" -Force
+          Copy-Item "target/release/${{ matrix.cli_bin }}" -Destination "dist-bin/"
+          Compress-Archive -Path "dist-bin/*" -DestinationPath "protofs-cli-${{ matrix.platform }}.zip"
+
+      - name: Package CLI Binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist-bin
+          cp "target/release/${{ matrix.cli_bin }}" dist-bin/
+          tar -czf "protofs-cli-${{ matrix.platform }}.tar.gz" -C dist-bin "${{ matrix.cli_bin }}"
+
+      - name: Upload CLI Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: protofs-cli-${{ matrix.platform }}
+          path: protofs-cli-${{ matrix.platform }}.${{ matrix.archive_ext }}
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Flatten Artifact Files
+        run: |
+          mkdir -p release-dist
+          find release-artifacts -type f -exec cp {} release-dist/ \;
+          ls -lh release-dist/
+
+      - name: Determine Tag or Release Name
+        id: release_info
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          else
+            TAG_NAME="manual-${GITHUB_SHA::8}"
+          fi
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag_name }}
+          name: ProtoFS ${{ steps.release_info.outputs.tag_name }}
+          draft: ${{ github.event.inputs.draft || false }}
+          prerelease: ${{ github.event.inputs.prerelease || false }}
+          generate_release_notes: true
+          files: release-dist/*
