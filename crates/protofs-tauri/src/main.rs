@@ -84,6 +84,9 @@ fn main() {
             commands::remove_sync_pair_command,
             commands::trigger_sync_command,
             commands::get_storage_usage_command,
+            commands::save_secure_secret_command,
+            commands::get_secure_secret_command,
+            commands::delete_secure_secret_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs desktop application");

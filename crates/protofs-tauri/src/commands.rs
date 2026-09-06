@@ -114,9 +114,14 @@ pub async fn login_verify_code(
     let mut lock = state.session.write().await;
     *lock = Some(session.clone());
 
-    if let Some(path) = get_session_file_path(&app) {
-        if let Ok(json) = serde_json::to_string_pretty(&session) {
-            let _ = std::fs::write(path, json);
+    if let (Some(enc_path), Some(legacy_path)) = get_session_paths(&app) {
+        if let Ok(json) = serde_json::to_string(&session) {
+            if let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes()) {
+                let _ = std::fs::write(enc_path, encrypted);
+                if legacy_path.exists() {
+                    let _ = std::fs::remove_file(legacy_path);
+                }
+            }
         }
     }
 
@@ -124,19 +129,24 @@ pub async fn login_verify_code(
     Ok(CommandResponse::ok(session))
 }
 
-fn get_session_file_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    if let Ok(mut dir) = app.path().app_data_dir() {
+fn get_session_paths(app: &tauri::AppHandle) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
+    let base_dir = if let Ok(dir) = app.path().app_data_dir() {
         let _ = std::fs::create_dir_all(&dir);
-        dir.push("session.json");
         Some(dir)
     } else if let Ok(appdata) = std::env::var("APPDATA") {
-        let mut dir = std::path::PathBuf::from(appdata);
-        dir.push("ProtoFS");
+        let dir = std::path::PathBuf::from(appdata).join("ProtoFS");
         let _ = std::fs::create_dir_all(&dir);
-        dir.push("session.json");
         Some(dir)
     } else {
         None
+    };
+
+    if let Some(dir) = base_dir {
+        let enc_path = dir.join("session.enc");
+        let legacy_path = dir.join("session.json");
+        (Some(enc_path), Some(legacy_path))
+    } else {
+        (None, None)
     }
 }
 
@@ -147,13 +157,26 @@ pub async fn get_session_status(
     let state = app.state::<AppState>();
     let mut lock = state.session.write().await;
 
-    // If in-memory state is empty, restore persisted session from disk
+    // If in-memory state is empty, restore hardware-encrypted session from disk
     if lock.is_none() {
-        if let Some(path) = get_session_file_path(&app) {
-            if path.exists() {
-                if let Ok(content) = std::fs::read_to_string(&path) {
+        if let (Some(enc_path), Some(legacy_path)) = get_session_paths(&app) {
+            if enc_path.exists() {
+                if let Ok(encrypted_bytes) = std::fs::read(&enc_path) {
+                    if let Ok(decrypted_bytes) = protofs_core::crypto::unprotect_secret(&encrypted_bytes) {
+                        if let Ok(persisted) = serde_json::from_slice::<AuthSession>(&decrypted_bytes) {
+                            *lock = Some(persisted);
+                        }
+                    }
+                }
+            } else if legacy_path.exists() {
+                // Transparently migrate legacy unencrypted session to encrypted format
+                if let Ok(content) = std::fs::read_to_string(&legacy_path) {
                     if let Ok(persisted) = serde_json::from_str::<AuthSession>(&content) {
-                        *lock = Some(persisted);
+                        *lock = Some(persisted.clone());
+                        if let Ok(encrypted) = protofs_core::crypto::protect_secret(content.as_bytes()) {
+                            let _ = std::fs::write(enc_path, encrypted);
+                            let _ = std::fs::remove_file(legacy_path);
+                        }
                     }
                 }
             }
@@ -171,13 +194,57 @@ pub async fn logout_command(
     let mut lock = state.session.write().await;
     *lock = None;
 
-    if let Some(path) = get_session_file_path(&app) {
-        if path.exists() {
-            let _ = std::fs::remove_file(path);
+    if let (Some(enc_path), Some(legacy_path)) = get_session_paths(&app) {
+        if enc_path.exists() {
+            let _ = std::fs::remove_file(enc_path);
+        }
+        if legacy_path.exists() {
+            let _ = std::fs::remove_file(legacy_path);
         }
     }
 
     Ok(CommandResponse::ok(()))
+}
+
+#[tauri::command]
+pub async fn save_secure_secret_command(
+    app: tauri::AppHandle,
+    key: String,
+    value: String,
+) -> Result<CommandResponse<()>, String> {
+    let state = app.state::<AppState>();
+    match state.cache.set_secure_secret(&key, value.as_bytes()) {
+        Ok(_) => Ok(CommandResponse::ok(())),
+        Err(e) => Ok(CommandResponse::err(e.to_string())),
+    }
+}
+
+#[tauri::command]
+pub async fn get_secure_secret_command(
+    app: tauri::AppHandle,
+    key: String,
+) -> Result<CommandResponse<Option<String>>, String> {
+    let state = app.state::<AppState>();
+    match state.cache.get_secure_secret(&key) {
+        Ok(Some(bytes)) => {
+            let val = String::from_utf8(bytes).unwrap_or_default();
+            Ok(CommandResponse::ok(Some(val)))
+        }
+        Ok(None) => Ok(CommandResponse::ok(None)),
+        Err(e) => Ok(CommandResponse::err(e.to_string())),
+    }
+}
+
+#[tauri::command]
+pub async fn delete_secure_secret_command(
+    app: tauri::AppHandle,
+    key: String,
+) -> Result<CommandResponse<()>, String> {
+    let state = app.state::<AppState>();
+    match state.cache.delete_secure_secret(&key) {
+        Ok(_) => Ok(CommandResponse::ok(())),
+        Err(e) => Ok(CommandResponse::err(e.to_string())),
+    }
 }
 
 // ---------------------------------------------------------------------------

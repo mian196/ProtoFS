@@ -110,6 +110,12 @@ impl CacheDatabase {
                 FOREIGN KEY (drive_id) REFERENCES drives(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS secure_secrets (
+                key TEXT PRIMARY KEY,
+                encrypted_value BLOB NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             -- FTS5 Full-Text Search Virtual Table
             CREATE VIRTUAL TABLE IF NOT EXISTS fts_nodes USING fts5(
                 id,
@@ -437,6 +443,36 @@ impl CacheDatabase {
             "UPDATE fts_nodes SET parent_id = ?1 WHERE id = ?2 AND drive_id = ?3",
             params![new_parent_id, node_id, drive_id],
         )?;
+        Ok(())
+    }
+
+    pub fn set_secure_secret(&self, key: &str, plaintext: &[u8]) -> Result<()> {
+        let encrypted = crate::crypto::protect_secret(plaintext)?;
+        let conn = self.conn.lock().unwrap();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR REPLACE INTO secure_secrets (key, encrypted_value, updated_at) VALUES (?1, ?2, ?3)",
+            params![key, encrypted, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_secure_secret(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT encrypted_value FROM secure_secrets WHERE key = ?1")?;
+        let mut rows = stmt.query(params![key])?;
+        if let Some(row) = rows.next()? {
+            let encrypted: Vec<u8> = row.get(0)?;
+            let decrypted = crate::crypto::unprotect_secret(&encrypted)?;
+            Ok(Some(decrypted))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn delete_secure_secret(&self, key: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM secure_secrets WHERE key = ?1", params![key])?;
         Ok(())
     }
 }
