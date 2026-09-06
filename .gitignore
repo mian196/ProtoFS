@@ -1,5 +1,6 @@
 # Local documentation and design prototypes
 local-docs/
+research-repos/
 
 # Build artifacts and caches
 target/
