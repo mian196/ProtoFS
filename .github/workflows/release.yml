@@ -31,14 +31,17 @@ jobs:
           - platform: 'windows-x86_64'
             os: windows-latest
             cli_bin: protofs-cli.exe
+            gui_bin: protofs-tauri.exe
             archive_ext: zip
           - platform: 'linux-x86_64'
             os: ubuntu-latest
             cli_bin: protofs-cli
+            gui_bin: protofs-tauri
             archive_ext: tar.gz
           - platform: 'macos-x86_64'
             os: macos-latest
             cli_bin: protofs-cli
+            gui_bin: protofs-tauri
             archive_ext: tar.gz
 
     steps:
@@ -86,23 +89,65 @@ jobs:
       - name: Run Workspace Tests
         run: cargo test --workspace --verbose
 
-      - name: Build Release CLI Binary
-        run: cargo build --release -p protofs-cli
+      - name: Build Release Binaries (CLI & GUI)
+        run: |
+          cargo build --release -p protofs-cli
+          cargo build --release -p protofs-tauri
 
       - name: Package CLI Binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path "dist-bin" -Force
-          Copy-Item "target/release/${{ matrix.cli_bin }}" -Destination "dist-bin/"
-          Compress-Archive -Path "dist-bin/*" -DestinationPath "protofs-cli-${{ matrix.platform }}.zip"
+          New-Item -ItemType Directory -Path "dist-cli" -Force
+          Copy-Item "target/release/${{ matrix.cli_bin }}" -Destination "dist-cli/"
+          Compress-Archive -Path "dist-cli/*" -DestinationPath "protofs-cli-${{ matrix.platform }}.zip"
 
       - name: Package CLI Binary (Unix)
         if: runner.os != 'Windows'
         run: |
-          mkdir -p dist-bin
-          cp "target/release/${{ matrix.cli_bin }}" dist-bin/
-          tar -czf "protofs-cli-${{ matrix.platform }}.tar.gz" -C dist-bin "${{ matrix.cli_bin }}"
+          mkdir -p dist-cli
+          cp "target/release/${{ matrix.cli_bin }}" dist-cli/
+          tar -czf "protofs-cli-${{ matrix.platform }}.tar.gz" -C dist-cli "${{ matrix.cli_bin }}"
+
+      - name: Package Portable GUI Binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "dist-gui" -Force
+          Copy-Item "target/release/${{ matrix.gui_bin }}" -Destination "dist-gui/"
+          Compress-Archive -Path "dist-gui/*" -DestinationPath "protofs-portable-${{ matrix.platform }}.zip"
+
+      - name: Package Portable GUI Binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist-gui
+          cp "target/release/${{ matrix.gui_bin }}" dist-gui/
+          tar -czf "protofs-portable-${{ matrix.platform }}.tar.gz" -C dist-gui "${{ matrix.gui_bin }}"
+
+      - name: Build Tauri Installers
+        working-directory: frontend
+        run: npm run tauri -- build --config ../crates/protofs-tauri/tauri.conf.json
+
+      - name: Collect Installer Artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "dist-installers" -Force
+          Get-ChildItem -Path "target/release/bundle" -Recurse -Include *.exe, *.msi | ForEach-Object {
+            Copy-Item $_.FullName -Destination "dist-installers/"
+          }
+
+      - name: Collect Installer Artifacts (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist-installers
+          find target/release/bundle -type f \( -name "*.AppImage" -o -name "*.deb" \) -exec cp {} dist-installers/ \;
+
+      - name: Collect Installer Artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dist-installers
+          find target/release/bundle -type f -name "*.dmg" -exec cp {} dist-installers/ \;
 
       - name: Upload CLI Artifact
         uses: actions/upload-artifact@v4
@@ -110,6 +155,20 @@ jobs:
           name: protofs-cli-${{ matrix.platform }}
           path: protofs-cli-${{ matrix.platform }}.${{ matrix.archive_ext }}
           if-no-files-found: error
+
+      - name: Upload Portable GUI Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: protofs-portable-${{ matrix.platform }}
+          path: protofs-portable-${{ matrix.platform }}.${{ matrix.archive_ext }}
+          if-no-files-found: error
+
+      - name: Upload Installer Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: protofs-installers-${{ matrix.platform }}
+          path: dist-installers/*
+          if-no-files-found: warn
 
   publish-release:
     name: Publish GitHub Release
