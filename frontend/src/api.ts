@@ -1486,7 +1486,7 @@ export class ProtoFsApi {
   }
 
   // -------------------------------------------------------------------------
-  // Android DocumentsProvider & Storage Access Framework (SAF) (PRD 6.8)
+  // Android DocumentsProvider & Storage Access Framework (SAF)
   // -------------------------------------------------------------------------
 
   async getDocumentsProviderStatus(driveId: string): Promise<DocumentsProviderStatus> {

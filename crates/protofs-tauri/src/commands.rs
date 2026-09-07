@@ -2948,7 +2948,7 @@ pub async fn clear_virtual_drive_cache_command(
 }
 
 // ---------------------------------------------------------------------------
-// ANDROID DOCUMENTSPROVIDER & STORAGE ACCESS FRAMEWORK (PRD 6.8)
+// ANDROID DOCUMENTSPROVIDER & STORAGE ACCESS FRAMEWORK
 // ---------------------------------------------------------------------------
 
 const SAF_AUTHORITY: &str = "com.protofs.app.documents";

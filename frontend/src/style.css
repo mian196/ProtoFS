@@ -2284,7 +2284,7 @@ body {
 }
 
 /* ===========================================================================
-   IN-APP OFFICE & MEDIA DOCUMENT PREVIEW SYSTEM (PRD 6.14)
+   IN-APP OFFICE & MEDIA DOCUMENT PREVIEW SYSTEM
    =========================================================================== */
 
 .modal-card.modal-card-lg {
@@ -3354,7 +3354,7 @@ body {
 }
 
 /* ===========================================================================
-   TAURI AUTO-UPDATER & GITHUB RELEASES CHECKER (PRD 6.19)
+   TAURI AUTO-UPDATER & GITHUB RELEASES CHECKER
    =========================================================================== */
 
 .update-notification-dot {
@@ -4004,7 +4004,7 @@ body {
   margin-left: auto;
 }
 
-/* Android DocumentsProvider & SAF Styles (PRD 6.8) */
+/* Android DocumentsProvider & SAF Styles */
 .saf-hero-card {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);

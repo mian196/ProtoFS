@@ -18,7 +18,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true">
 
-        <!-- Android Storage Access Framework (SAF) DocumentsProvider (PRD 6.8) -->
+        <!-- Android Storage Access Framework (SAF) DocumentsProvider -->
         <provider
             android:name=".ProtoFsDocumentsProvider"
             android:authorities="com.protofs.app.documents"

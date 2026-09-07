@@ -612,7 +612,7 @@ class ProtoFsApp {
           </button>
 
           <!-- Native Virtual Drive Mount Pill -->
-          <button class="mount-pill-btn" id="btnQuickMountDrive" title="Mount Native Virtual Drive (PRD 6.8)">
+          <button class="mount-pill-btn" id="btnQuickMountDrive" title="Mount Native Virtual Drive">
             <span class="mount-dot-pulse hidden" id="mountPulseDot"></span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>
             <span id="mountPillText">Mount Drive</span>
@@ -682,15 +682,15 @@ class ProtoFsApp {
               </button>
               <button class="account-menu-item" id="btnMenuAndroidSaf">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                <span>Android SAF Integration (PRD 6.8)</span>
+                <span>Android SAF Integration</span>
               </button>
               <button class="account-menu-item" id="btnMenuAndroidWorkManager">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="3"/></svg>
-                <span>Android Background Sync (PRD 6.6)</span>
+                <span>Android Background Sync</span>
               </button>
               <button class="account-menu-item" id="btnMenuP2pDirect">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                <span>P2P Direct Sharing (PRD 6.11)</span>
+                <span>P2P Direct Sharing</span>
               </button>
               <button class="account-menu-item" id="btnMenuCheckUpdates">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
@@ -1916,7 +1916,7 @@ class ProtoFsApp {
         <div class="settings-section-card">
           <div class="settings-toggle-row">
             <div class="settings-toggle-info">
-              <div class="settings-toggle-label">Automatic Startup Update Check (PRD 6.19)</div>
+              <div class="settings-toggle-label">Automatic Startup Update Check</div>
               <div class="settings-toggle-desc">When enabled, ProtoFS queries GitHub Releases on startup to check for newer versions and displays a notification badge.</div>
             </div>
             <label class="toggle-switch-wrapper">
@@ -1935,7 +1935,7 @@ class ProtoFsApp {
           <div class="shell-integration-header">
             <div class="shell-integration-title">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
-              <span>OS Context Menu & Shell Integration (PRD 6.13)</span>
+              <span>OS Context Menu & Shell Integration</span>
             </div>
             <span class="shell-status-badge ${shellStatus.send_to_enabled || shellStatus.context_menu_enabled ? 'active' : 'inactive'}" id="shellStatusBadge">
               ${shellStatus.send_to_enabled || shellStatus.context_menu_enabled ? 'Installed' : 'Not Configured'}
@@ -2020,7 +2020,7 @@ class ProtoFsApp {
       document.getElementById('btnModalCloseDone')?.addEventListener('click', () => this.closeModal());
     });
 
-    // Check for Updates Triggers (PRD 6.19)
+    // Check for Updates Triggers
     document.getElementById('btnVersionPill')?.addEventListener('click', () => this.openUpdateModal());
     document.getElementById('btnHeaderUpdates')?.addEventListener('click', () => this.openUpdateModal());
     document.getElementById('btnMenuCheckUpdates')?.addEventListener('click', () => {
@@ -2074,7 +2074,7 @@ class ProtoFsApp {
     document.getElementById('btnStorageDashboard')?.addEventListener('click', openDashboard);
     document.getElementById('btnStorageCard')?.addEventListener('click', openDashboard);
 
-    // Native Virtual Drive Mount (PRD 6.8)
+    // Native Virtual Drive Mount
     document.getElementById('btnQuickMountDrive')?.addEventListener('click', () => {
       this.openVirtualDriveModal();
     });
@@ -2082,21 +2082,21 @@ class ProtoFsApp {
       this.openVirtualDriveModal();
     });
 
-    // Android DocumentsProvider & Storage Access Framework (SAF) (PRD 6.8)
+    // Android DocumentsProvider & Storage Access Framework (SAF)
     document.getElementById('btnMenuAndroidSaf')?.addEventListener('click', () => {
       const dropdown = document.getElementById('accountDropdown');
       if (dropdown) dropdown.classList.add('hidden');
       this.openDocumentsProviderModal();
     });
 
-    // Android WorkManager Background Sync (PRD 6.6)
+    // Android WorkManager Background Sync
     document.getElementById('btnMenuAndroidWorkManager')?.addEventListener('click', () => {
       const dropdown = document.getElementById('accountDropdown');
       if (dropdown) dropdown.classList.add('hidden');
       this.openWorkManagerSyncModal();
     });
 
-    // P2P Direct Sharing (PRD 6.11)
+    // P2P Direct Sharing
     document.getElementById('btnMenuP2pDirect')?.addEventListener('click', () => {
       const dropdown = document.getElementById('accountDropdown');
       if (dropdown) dropdown.classList.add('hidden');
@@ -2485,7 +2485,7 @@ class ProtoFsApp {
     const config = await this.api.getCameraBackupConfig(this.activeDriveId);
 
     this.showModal(
-      'Camera & Media Auto-Backup (PRD 6.9)',
+      'Camera & Media Auto-Backup',
       `
       <div class="camera-preset-banner">
         <div class="camera-preset-icon">
@@ -2631,7 +2631,7 @@ class ProtoFsApp {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                 Word Document Reader
               </span>
-              <span class="office-plugin-status" title="Sandboxed WASM/JS Renderer (PRD 6.14)">⚡ Sandboxed WASM Viewer</span>
+              <span class="office-plugin-status" title="Sandboxed WASM/JS Renderer">⚡ Sandboxed WASM Viewer</span>
             </div>
             <div class="office-ribbon-actions">
               <div class="zoom-controls">
@@ -2898,7 +2898,7 @@ class ProtoFsApp {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
                 PDF Document Viewer
               </span>
-              <span class="office-plugin-status">⚡ Pure JS PDF.js Engine (PRD 6.14)</span>
+              <span class="office-plugin-status">⚡ Pure JS PDF.js Engine</span>
             </div>
             <div class="office-ribbon-actions">
               <span class="zoom-level">Page 1 of 4</span>
@@ -3914,7 +3914,7 @@ class ProtoFsApp {
       `
       <div style="display: flex; flex-direction: column; gap: 14px; font-size: 13px;">
         <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px; line-height: 1.5; color: var(--text-secondary);">
-          <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Full Drive Export (PRD 6.16)</div>
+          <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Full Drive Export</div>
           Export all directories and files from <strong>${escapeHtml(driveName)}</strong> to your local filesystem.
           Files are reconstructed into nested folders, decrypted from AES-256-GCM STREAM chunks, and a standalone <code>manifest.json</code> is saved at the root.
         </div>
@@ -4017,7 +4017,7 @@ class ProtoFsApp {
     const driveName = drive ? drive.name : 'ProtoFS Drive';
 
     this.showModal(
-      'Native Virtual Drive Mount (PRD 6.8)',
+      'Native Virtual Drive Mount',
       `
       <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
         <div class="modal-loading-spinner" style="display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle;"></div>
@@ -4288,7 +4288,7 @@ class ProtoFsApp {
     const driveName = drive ? drive.name : 'ProtoFS Drive';
 
     this.showModal(
-      'Android DocumentsProvider Integration (PRD 6.8)',
+      'Android DocumentsProvider Integration',
       `
       <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
         <div class="modal-loading-spinner" style="display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle;"></div>
@@ -4407,7 +4407,7 @@ class ProtoFsApp {
       modalFooter.innerHTML = `
         <button class="btn-action secondary" id="btnOpenWorkManagerFromSaf">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-          <span>Background Sync (PRD 6.6)</span>
+          <span>Background Sync</span>
         </button>
         <button class="btn-action secondary" id="btnCloseSafModalDone">Close</button>
         <button class="btn-action secondary" id="btnNotifySafChange">Notify ContentResolver</button>
@@ -4715,7 +4715,7 @@ class ProtoFsApp {
       });
     };
 
-    this.showModal('Android Background Sync via WorkManager (PRD 6.6)', renderModalBody(), renderFooter(), true);
+    this.showModal('Android Background Sync via WorkManager', renderModalBody(), renderFooter(), true);
     bindModalEvents();
   }
 
@@ -4909,7 +4909,7 @@ class ProtoFsApp {
       document.getElementById('btnUpdateModalClose')?.addEventListener('click', () => this.closeModal());
 
       document.getElementById('btnUpdateModalCheckAgain')?.addEventListener('click', async () => {
-        this.showModal('Software Updates (PRD 6.19)', renderModalBody(null, true), renderModalFooter(null, true), true);
+        this.showModal('Software Updates', renderModalBody(null, true), renderModalFooter(null, true), true);
         try {
           const fresh = await this.api.checkForUpdates();
           this.cachedUpdateInfo = fresh;
@@ -4943,7 +4943,7 @@ class ProtoFsApp {
 
     // If we don't have info yet, show loading first and fetch
     if (!updateInfo) {
-      this.showModal('Software Updates (PRD 6.19)', renderModalBody(null, true), renderModalFooter(null, true), true);
+      this.showModal('Software Updates', renderModalBody(null, true), renderModalFooter(null, true), true);
       document.getElementById('btnUpdateModalCancel')?.addEventListener('click', () => this.closeModal());
       try {
         updateInfo = await this.api.checkForUpdates();
@@ -4959,7 +4959,7 @@ class ProtoFsApp {
       }
     }
 
-    this.showModal('Software Updates (PRD 6.19)', renderModalBody(updateInfo, false), renderModalFooter(updateInfo, false), true);
+    this.showModal('Software Updates', renderModalBody(updateInfo, false), renderModalFooter(updateInfo, false), true);
     attachListeners(updateInfo);
   }
 
@@ -4979,7 +4979,7 @@ class ProtoFsApp {
             : `${fileCount} files received from Windows Explorer (starting with "${firstFile}"). Upload to your current folder with zero-knowledge encryption?`;
 
         const confirmed = await this.showConfirm({
-          title: 'Windows Explorer Upload (PRD 6.13)',
+          title: 'Windows Explorer Upload',
           message: msg,
           confirmText: 'Upload Now',
         });
