@@ -2148,6 +2148,7 @@ pub async fn set_shell_integration_command(
 
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]
     {
+        let _ = (enable_send_to, enable_context_menu);
         Ok(CommandResponse::ok(ShellIntegrationStatus {
             send_to_enabled: false,
             context_menu_enabled: false,
@@ -2190,8 +2191,14 @@ pub async fn open_path_in_explorer_command(path: String) -> Result<CommandRespon
         let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
         Ok(CommandResponse::ok(true))
     }
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    #[cfg(target_os = "macos")]
     {
+        let _ = std::process::Command::new("open").arg(&path).spawn();
+        Ok(CommandResponse::ok(true))
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+    {
+        let _ = path;
         Ok(CommandResponse::ok(false))
     }
 }
@@ -2632,6 +2639,7 @@ fn is_drive_letter_mounted(letter: &str) -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = letter;
         false
     }
 }
@@ -2921,6 +2929,7 @@ pub async fn open_virtual_drive_in_explorer_command(
     }
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = drive_letter;
         Ok(CommandResponse::ok(false))
     }
 }

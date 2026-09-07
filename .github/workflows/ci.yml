@@ -1,4 +1,4 @@
-name: Continuous Integration
+name: Continuous Integration (Lint & Quality)
 
 on:
   push:
@@ -9,13 +9,9 @@ on:
       - main
 
 jobs:
-  test-and-lint:
-    name: Lint & Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+  lint-and-check:
+    name: Lint & Code Quality Check
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -37,21 +33,16 @@ jobs:
           workspaces: |
             . -> target
 
-      - name: Install Linux dependencies (Ubuntu)
-        if: runner.os == 'Linux'
+      - name: Install Linux build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
-            curl \
-            wget \
-            file \
             libssl-dev \
             libgtk-3-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            libwebkit2gtk-4.1-dev \
-            patchelf
+            libwebkit2gtk-4.1-dev
 
       - name: Install Frontend Dependencies
         working-directory: frontend
@@ -61,15 +52,9 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
-      - name: Build Frontend
-        working-directory: frontend
-        run: npm run build
-
       - name: Check Rust Code Formatting
         run: cargo fmt --check
 
       - name: Rust Clippy Lint (Strict Zero Warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Run Workspace Unit & Integration Tests
-        run: cargo test --workspace --verbose

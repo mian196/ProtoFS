@@ -170,9 +170,72 @@ jobs:
           path: dist-installers/*
           if-no-files-found: warn
 
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci || npm install
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build Android APK via Gradle
+        working-directory: crates/protofs-tauri/gen/android
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleRelease || ./gradlew assembleDebug
+          else
+            gradle assembleRelease || gradle assembleDebug
+          fi
+
+      - name: Collect Android APK Artifacts
+        run: |
+          mkdir -p dist-apk
+          find crates/protofs-tauri/gen/android -name "*.apk" -exec cp {} dist-apk/ \;
+          ls -lh dist-apk/
+
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: protofs-android-apk
+          path: dist-apk/*
+          if-no-files-found: warn
+
   publish-release:
     name: Publish GitHub Release
-    needs: build-and-test
+    needs: [build-and-test, build-android]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
