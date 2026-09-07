@@ -5,9 +5,28 @@ use tauri::Manager;
 use tokio::sync::RwLock;
 
 use protofs_core::cache::{CacheDatabase, SearchResult};
-use protofs_core::mtproto::{DynamicTelegramTransport, TelegramAuthClient};
+use protofs_core::mtproto::{
+    DynamicTelegramTransport, QrCheckOutcome, RealTelegramTransport, TelegramAuthClient,
+    TelegramUser, VerifyOutcome,
+};
 use protofs_core::sync::SyncEngine;
 use protofs_core::vfs::{DriveMetadata, FileNode, FolderNode, VfsNode};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthResponse {
+    pub session: Option<AuthSession>,
+    pub requires_2fa: bool,
+    pub hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QrStatusResponse {
+    pub token_url: String,
+    pub expires_in_sec: i32,
+    pub status: String,
+    pub session: Option<AuthSession>,
+    pub hint: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthSession {
@@ -114,6 +133,114 @@ pub async fn login_send_code(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn finalize_login(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    phone: Option<String>,
+    api_id: String,
+    api_hash: String,
+    tg_user: TelegramUser,
+    session_bytes: &[u8],
+    real_transport: RealTelegramTransport,
+) -> AuthSession {
+    state.transport.switch_to_real(real_transport).await;
+
+    let drive_id = format!("drive_{}", tg_user.id);
+    let session = AuthSession {
+        is_authenticated: true,
+        phone: phone.unwrap_or_else(|| "+Telegram User".to_string()),
+        api_id,
+        api_hash,
+        username: tg_user.username,
+        first_name: tg_user.first_name,
+        user_id: tg_user.id,
+        active_drive_id: drive_id.clone(),
+        is_demo: false,
+    };
+
+    save_real_telegram_session_for_user(app, tg_user.id, session_bytes);
+
+    let mut registry = load_account_registry(app);
+    if let Some(pos) = registry
+        .accounts
+        .iter()
+        .position(|a| a.user_id == session.user_id)
+    {
+        registry.accounts[pos] = session.clone();
+    } else {
+        registry.accounts.push(session.clone());
+    }
+    registry.active_user_id = Some(session.user_id);
+    save_account_registry(app, &registry);
+
+    let mut user_drives = load_user_drives(app, tg_user.id);
+    if user_drives.is_empty() {
+        let initial_drive = DriveMetadata {
+            id: drive_id,
+            name: "ProtoFS Cloud Drive".to_string(),
+            channel_id: 0,
+            pinned_manifest_msg_id: Some(1),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        user_drives.push(initial_drive);
+        save_user_drives(app, tg_user.id, &user_drives);
+    }
+
+    let mut drives_lock = state.drives.write().await;
+    *drives_lock = user_drives;
+    drop(drives_lock);
+
+    let mut lock = state.session.write().await;
+    *lock = Some(session.clone());
+
+    save_auth_session(app, &session);
+    session
+}
+
+async fn finalize_demo_login(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    phone: String,
+    api_id: String,
+    api_hash: String,
+) -> AuthSession {
+    let session = AuthSession {
+        is_authenticated: true,
+        phone,
+        api_id,
+        api_hash,
+        username: Some("MuzAmMaL".to_string()),
+        first_name: "ProtoFS User".to_string(),
+        user_id: 1049281720,
+        active_drive_id: "personal".to_string(),
+        is_demo: true,
+    };
+
+    let mut registry = load_account_registry(app);
+    if let Some(pos) = registry
+        .accounts
+        .iter()
+        .position(|a| a.user_id == session.user_id)
+    {
+        registry.accounts[pos] = session.clone();
+    } else {
+        registry.accounts.push(session.clone());
+    }
+    registry.active_user_id = Some(session.user_id);
+    save_account_registry(app, &registry);
+
+    let mut lock = state.session.write().await;
+    *lock = Some(session.clone());
+    let mut drives_lock = state.drives.write().await;
+    *drives_lock = get_demo_drives();
+    drop(drives_lock);
+
+    save_auth_session(app, &session);
+    session
+}
+
 #[tauri::command]
 pub async fn login_verify_code(
     app: tauri::AppHandle,
@@ -121,8 +248,7 @@ pub async fn login_verify_code(
     api_id: String,
     api_hash: String,
     code: String,
-    password_2fa: Option<String>,
-) -> Result<CommandResponse<AuthSession>, String> {
+) -> Result<CommandResponse<AuthResponse>, String> {
     let state = app.state::<AppState>();
     let trimmed_code = code.trim();
 
@@ -139,107 +265,197 @@ pub async fn login_verify_code(
         || phone.trim().starts_with("+1 (202) 555")
         || trimmed_code == "12345"
     {
-        let session = AuthSession {
-            is_authenticated: true,
-            phone: phone.clone(),
-            api_id,
-            api_hash,
-            username: Some("MuzAmMaL".to_string()),
-            first_name: "ProtoFS User".to_string(),
-            user_id: 1049281720,
-            active_drive_id: "personal".to_string(),
-            is_demo: true,
-        };
-
-        let mut registry = load_account_registry(&app);
-        if let Some(pos) = registry
-            .accounts
-            .iter()
-            .position(|a| a.user_id == session.user_id)
-        {
-            registry.accounts[pos] = session.clone();
-        } else {
-            registry.accounts.push(session.clone());
-        }
-        registry.active_user_id = Some(session.user_id);
-        save_account_registry(&app, &registry);
-
-        let mut lock = state.session.write().await;
-        *lock = Some(session.clone());
-        let mut drives_lock = state.drives.write().await;
-        *drives_lock = get_demo_drives();
-        drop(drives_lock);
-
-        save_auth_session(&app, &session);
-        return Ok(CommandResponse::ok(session));
+        let session = finalize_demo_login(&app, &state, phone, api_id, api_hash).await;
+        return Ok(CommandResponse::ok(AuthResponse {
+            session: Some(session),
+            requires_2fa: false,
+            hint: None,
+        }));
     }
 
     // Real Telegram MTProto verification
-    let (real_transport, tg_user, session_bytes) = match state
+    match state.auth_client.verify_code(trimmed_code).await {
+        Ok(VerifyOutcome::Success {
+            transport,
+            user,
+            session_bytes,
+        }) => {
+            let session = finalize_login(
+                &app,
+                &state,
+                Some(phone),
+                api_id,
+                api_hash,
+                user,
+                &session_bytes,
+                transport,
+            )
+            .await;
+            Ok(CommandResponse::ok(AuthResponse {
+                session: Some(session),
+                requires_2fa: false,
+                hint: None,
+            }))
+        }
+        Ok(VerifyOutcome::Requires2Fa { hint }) => Ok(CommandResponse::ok(AuthResponse {
+            session: None,
+            requires_2fa: true,
+            hint,
+        })),
+        Err(e) => Ok(CommandResponse::err(format!("Verification failed: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn login_verify_2fa(
+    app: tauri::AppHandle,
+    api_id: String,
+    api_hash: String,
+    password: String,
+) -> Result<CommandResponse<AuthResponse>, String> {
+    let state = app.state::<AppState>();
+
+    match state.auth_client.verify_2fa(password.trim()).await {
+        Ok((transport, user, session_bytes)) => {
+            let phone = user.phone.clone();
+            let session = finalize_login(
+                &app,
+                &state,
+                phone,
+                api_id,
+                api_hash,
+                user,
+                &session_bytes,
+                transport,
+            )
+            .await;
+            Ok(CommandResponse::ok(AuthResponse {
+                session: Some(session),
+                requires_2fa: false,
+                hint: None,
+            }))
+        }
+        Err(e) => Ok(CommandResponse::err(format!("{}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn login_request_qr(
+    app: tauri::AppHandle,
+    api_id: String,
+    api_hash: String,
+) -> Result<CommandResponse<QrStatusResponse>, String> {
+    let state = app.state::<AppState>();
+
+    if api_id.trim().to_lowercase() == "demo" {
+        return Ok(CommandResponse::ok(QrStatusResponse {
+            token_url: "tg://login?token=demo_token_protofs_quick_test".to_string(),
+            expires_in_sec: 120,
+            status: "waiting_scan".to_string(),
+            session: None,
+            hint: None,
+        }));
+    }
+
+    let api_id_int = match api_id.trim().parse::<i32>() {
+        Ok(val) => val,
+        Err(_) => {
+            return Ok(CommandResponse::err(
+                "Invalid API ID: must be a numeric integer",
+            ));
+        }
+    };
+
+    match state
         .auth_client
-        .verify_code(trimmed_code, password_2fa.as_deref())
+        .request_qr_code(api_id_int, api_hash.trim())
         .await
     {
-        Ok(res) => res,
-        Err(e) => return Ok(CommandResponse::err(format!("Verification failed: {}", e))),
-    };
-
-    // Switch engine transport to live Telegram MTProto
-    state.transport.switch_to_real(real_transport).await;
-
-    let drive_id = format!("drive_{}", tg_user.id);
-    let session = AuthSession {
-        is_authenticated: true,
-        phone: phone.clone(),
-        api_id,
-        api_hash,
-        username: tg_user.username,
-        first_name: tg_user.first_name,
-        user_id: tg_user.id,
-        active_drive_id: drive_id.clone(),
-        is_demo: false,
-    };
-
-    save_real_telegram_session_for_user(&app, tg_user.id, &session_bytes);
-
-    let mut registry = load_account_registry(&app);
-    if let Some(pos) = registry
-        .accounts
-        .iter()
-        .position(|a| a.user_id == session.user_id)
-    {
-        registry.accounts[pos] = session.clone();
-    } else {
-        registry.accounts.push(session.clone());
+        Ok(res) => {
+            let now = Utc::now().timestamp();
+            let expires_in_sec = (res.expires_at - now).max(5) as i32;
+            Ok(CommandResponse::ok(QrStatusResponse {
+                token_url: res.token_url,
+                expires_in_sec,
+                status: "waiting_scan".to_string(),
+                session: None,
+                hint: None,
+            }))
+        }
+        Err(e) => Ok(CommandResponse::err(format!(
+            "Failed to generate QR code: {}",
+            e
+        ))),
     }
-    registry.active_user_id = Some(session.user_id);
-    save_account_registry(&app, &registry);
+}
 
-    // Load or initialize user's real drives
-    let mut user_drives = load_user_drives(&app, tg_user.id);
-    if user_drives.is_empty() {
-        let initial_drive = DriveMetadata {
-            id: drive_id,
-            name: "ProtoFS Cloud Drive".to_string(),
-            channel_id: 0,
-            pinned_manifest_msg_id: Some(1),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        user_drives.push(initial_drive);
-        save_user_drives(&app, tg_user.id, &user_drives);
+#[tauri::command]
+pub async fn login_check_qr(
+    app: tauri::AppHandle,
+    api_id: String,
+    api_hash: String,
+) -> Result<CommandResponse<QrStatusResponse>, String> {
+    let state = app.state::<AppState>();
+
+    if api_id.trim().to_lowercase() == "demo" {
+        return Ok(CommandResponse::ok(QrStatusResponse {
+            token_url: "tg://login?token=demo_token_protofs_quick_test".to_string(),
+            expires_in_sec: 120,
+            status: "waiting_scan".to_string(),
+            session: None,
+            hint: None,
+        }));
     }
 
-    let mut drives_lock = state.drives.write().await;
-    *drives_lock = user_drives;
-    drop(drives_lock);
-
-    let mut lock = state.session.write().await;
-    *lock = Some(session.clone());
-
-    save_auth_session(&app, &session);
-
-    Ok(CommandResponse::ok(session))
+    match state.auth_client.check_qr_code().await {
+        Ok(QrCheckOutcome::Waiting {
+            token_url,
+            expires_at,
+        }) => {
+            let now = Utc::now().timestamp();
+            let expires_in_sec = (expires_at - now).max(1) as i32;
+            Ok(CommandResponse::ok(QrStatusResponse {
+                token_url: token_url.unwrap_or_default(),
+                expires_in_sec,
+                status: "waiting_scan".to_string(),
+                session: None,
+                hint: None,
+            }))
+        }
+        Ok(QrCheckOutcome::Success {
+            transport,
+            user,
+            session_bytes,
+        }) => {
+            let phone = user.phone.clone();
+            let session = finalize_login(
+                &app,
+                &state,
+                phone,
+                api_id,
+                api_hash,
+                user,
+                &session_bytes,
+                transport,
+            )
+            .await;
+            Ok(CommandResponse::ok(QrStatusResponse {
+                token_url: String::new(),
+                expires_in_sec: 0,
+                status: "success".to_string(),
+                session: Some(session),
+                hint: None,
+            }))
+        }
+        Ok(QrCheckOutcome::Requires2Fa { hint }) => Ok(CommandResponse::ok(QrStatusResponse {
+            token_url: String::new(),
+            expires_in_sec: 0,
+            status: "requires_2fa".to_string(),
+            session: None,
+            hint,
+        })),
+        Err(e) => Ok(CommandResponse::err(format!("{}", e))),
+    }
 }
 
 fn get_accounts_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {

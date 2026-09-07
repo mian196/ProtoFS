@@ -60,6 +60,20 @@ export interface AuthSession {
   is_demo?: boolean;
 }
 
+export interface AuthResponse {
+  session: AuthSession | null;
+  requires_2fa: boolean;
+  hint?: string;
+}
+
+export interface QrStatusResponse {
+  token_url: string;
+  expires_in_sec: number;
+  status: 'waiting_scan' | 'success' | 'requires_2fa';
+  session: AuthSession | null;
+  hint?: string;
+}
+
 export interface SyncPair {
   id: string;
   local_path: string;

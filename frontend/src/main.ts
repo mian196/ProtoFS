@@ -1,4 +1,5 @@
 import './style.css';
+import QRCode from 'qrcode';
 import { ProtoFsApi } from './api';
 import { ThemeManager } from './theme';
 import type { AuthSession, DriveMetadata, FileNode, FolderNode, SyncPair, TransferItem } from './types';
@@ -23,10 +24,14 @@ class ProtoFsApp {
   private isAddingAccount = false;
 
   // Login flow state
-  private loginStep: 'credentials' | 'code' = 'credentials';
+  private authMethod: 'phone' | 'qr' = 'phone';
+  private loginStep: 'credentials' | 'code' | '2fa' = 'credentials';
   private loginPhone = '';
   private loginApiId = '';
   private loginApiHash = '';
+  private passwordHint = '';
+  private qrTokenUrl = '';
+  private qrPollTimer: any = null;
 
   constructor() {
     this.themeManager.init();
@@ -52,7 +57,15 @@ class ProtoFsApp {
   // TELEGRAM MTPROTO ONBOARDING & LOGIN SCREEN (PRD Section 6.1 & 6.18)
   // -------------------------------------------------------------------------
 
+  private stopQrPolling() {
+    if (this.qrPollTimer) {
+      clearInterval(this.qrPollTimer);
+      this.qrPollTimer = null;
+    }
+  }
+
   private renderLoginScreen() {
+    this.stopQrPolling();
     const appEl = document.getElementById('app');
     if (!appEl) return;
 
@@ -79,14 +92,80 @@ class ProtoFsApp {
             <p class="login-subtitle">Unlimited, zero-knowledge encrypted cloud storage powered directly by your private Telegram channels.</p>
           </div>
 
+          ${
+            this.loginStep !== '2fa'
+              ? `
+            <!-- Login Method Selector Tabs -->
+            <div class="auth-method-tabs">
+              <button type="button" class="auth-method-tab ${this.authMethod === 'phone' ? 'active' : ''}" id="tabAuthPhone">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                <span>Phone Number</span>
+              </button>
+              <button type="button" class="auth-method-tab ${this.authMethod === 'qr' ? 'active' : ''}" id="tabAuthQr">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
+                <span>Scan QR Code</span>
+              </button>
+            </div>
+          `
+              : ''
+          }
+
           <div class="login-step-badges">
-            <span class="step-badge ${this.loginStep === 'credentials' ? 'active' : ''}">1. Telegram Auth</span>
-            <span class="step-badge ${this.loginStep === 'code' ? 'active' : ''}">2. Verification Code</span>
+            ${
+              this.loginStep === '2fa'
+                ? `<span class="step-badge active">Two-Step Verification (2FA)</span>`
+                : this.authMethod === 'phone'
+                ? `
+              <span class="step-badge ${this.loginStep === 'credentials' ? 'active' : ''}">1. Telegram Auth</span>
+              <span class="step-badge ${this.loginStep === 'code' ? 'active' : ''}">2. Verification Code</span>
+            `
+                : `
+              <span class="step-badge active">1. Official Telegram QR Scan</span>
+            `
+            }
           </div>
 
           ${
-            this.loginStep === 'credentials'
+            this.loginStep === '2fa'
               ? `
+            <!-- Dedicated 2FA Screen: only shown if account requires 2FA -->
+            <form class="login-form" id="formVerify2Fa">
+              <div class="twofa-badge-card">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span>This account requires your Cloud Two-Step Verification Password.</span>
+              </div>
+
+              ${
+                this.passwordHint
+                  ? `
+                <div class="password-hint-box">
+                  <span>Password Hint: <strong>${escapeHtml(this.passwordHint)}</strong></span>
+                </div>
+              `
+                  : ''
+              }
+
+              <div class="form-group">
+                <label class="form-label">2FA Cloud Password</label>
+                <input type="password" class="form-input" id="input2faPassword" placeholder="Enter your 2FA password" required autofocus>
+              </div>
+
+              <div class="form-actions-row">
+                <button type="button" class="btn-secondary-tg" id="btnBackFrom2Fa">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                  <span>Back</span>
+                </button>
+                <button type="submit" class="btn-primary-tg" id="btnSubmit2Fa">
+                  <span>Verify & Enter ProtoFS</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+            </form>
+          `
+              : this.authMethod === 'phone'
+              ? this.loginStep === 'credentials'
+                ? `
+            <!-- Phone Step 1: Credentials -->
             <form class="login-form" id="formCredentials">
               <div class="form-group">
                 <label class="form-label">
@@ -94,8 +173,8 @@ class ProtoFsApp {
                   <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org ↗</a>
                 </label>
                 <div class="form-row">
-                  <input type="text" class="form-input" id="inputApiId" placeholder="API ID (e.g. 20401928)" required>
-                  <input type="password" class="form-input" id="inputApiHash" placeholder="API Hash (e.g. 3a9f...)" required>
+                  <input type="text" class="form-input" id="inputApiId" placeholder="API ID (e.g. 20401928)" value="${escapeHtml(this.loginApiId)}" required>
+                  <input type="password" class="form-input" id="inputApiHash" placeholder="API Hash (e.g. 3a9f...)" value="${escapeHtml(this.loginApiHash)}" required>
                 </div>
               </div>
 
@@ -106,7 +185,7 @@ class ProtoFsApp {
 
               <div class="form-group">
                 <label class="form-label">Telegram Phone Number</label>
-                <input type="tel" class="form-input" id="inputPhone" placeholder="+1 202 555 0192" required>
+                <input type="tel" class="form-input" id="inputPhone" placeholder="+1 202 555 0192" value="${escapeHtml(this.loginPhone)}" required>
               </div>
 
               <div class="login-info-box">
@@ -120,20 +199,13 @@ class ProtoFsApp {
               </button>
             </form>
           `
-              : `
+                : `
+            <!-- Phone Step 2: Verification Code (NO 2FA password field shown here) -->
             <form class="login-form" id="formVerifyCode">
               <div class="form-group">
                 <label class="form-label">Verification Code</label>
                 <input type="text" class="form-input" id="inputCode" placeholder="Enter 5-digit Telegram code" required autofocus>
                 <span style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Code sent via Telegram chat to ${escapeHtml(this.loginPhone)}</span>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">
-                  <span>2FA Cloud Password (Optional)</span>
-                  <span style="color: var(--text-muted); font-size: 11px;">If enabled</span>
-                </label>
-                <input type="password" class="form-input" id="input2fa" placeholder="Two-Step Verification Password">
               </div>
 
               <div class="form-actions-row">
@@ -148,25 +220,120 @@ class ProtoFsApp {
               </div>
             </form>
           `
+              : `
+            <!-- QR Code Login View -->
+            <div class="qr-login-container">
+              <div class="form-group" style="width: 100%;">
+                <label class="form-label">
+                  <span>API ID & API Hash</span>
+                  <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org ↗</a>
+                </label>
+                <div class="form-row">
+                  <input type="text" class="form-input" id="inputApiId" placeholder="API ID (e.g. 20401928)" value="${escapeHtml(this.loginApiId || '20491820')}" required>
+                  <input type="password" class="form-input" id="inputApiHash" placeholder="API Hash (e.g. 3a9f...)" value="${escapeHtml(this.loginApiHash || 'e8b7c6d5a4f3210987654321fedcba09')}" required>
+                </div>
+              </div>
+
+              <button type="button" class="demo-credentials-btn" id="btnQuickDemo" style="width: 100%;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                <span>Use Quick Test / Demo Mode</span>
+              </button>
+
+              <div class="qr-preview-box" id="qrPreviewBox">
+                <canvas id="qrCanvas"></canvas>
+              </div>
+
+              <div class="qr-status-indicator">
+                <span class="pulse-dot"></span>
+                <span id="qrStatusText">Generating Telegram login QR code...</span>
+              </div>
+
+              <div class="qr-instruction-card">
+                <strong>Log in via QR Code:</strong>
+                <ol class="qr-instruction-list">
+                  <li>Open Telegram on your mobile device</li>
+                  <li>Go to <strong>Settings &gt; Devices &gt; Link Desktop Device</strong></li>
+                  <li>Point your phone camera at this QR code to confirm</li>
+                </ol>
+              </div>
+
+              <button type="button" class="btn-secondary-tg" id="btnRefreshQr" style="width: 100%;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Refresh QR Code</span>
+              </button>
+            </div>
+          `
           }
         </div>
       </div>
     `;
 
     this.bindLoginEvents();
+    if (this.authMethod === 'qr' && this.loginStep !== '2fa') {
+      this.initQrLogin();
+    }
   }
 
   private bindLoginEvents() {
+    // Tabs
+    const tabPhone = document.getElementById('tabAuthPhone');
+    if (tabPhone) {
+      tabPhone.addEventListener('click', () => {
+        this.authMethod = 'phone';
+        this.loginStep = 'credentials';
+        this.renderLoginScreen();
+      });
+    }
+
+    const tabQr = document.getElementById('tabAuthQr');
+    if (tabQr) {
+      tabQr.addEventListener('click', () => {
+        this.authMethod = 'qr';
+        this.loginStep = 'credentials';
+        this.renderLoginScreen();
+      });
+    }
+
+    const btnRefreshQr = document.getElementById('btnRefreshQr');
+    if (btnRefreshQr) {
+      btnRefreshQr.addEventListener('click', () => {
+        this.initQrLogin();
+      });
+    }
+
     const btnQuickDemo = document.getElementById('btnQuickDemo');
     if (btnQuickDemo) {
-      btnQuickDemo.addEventListener('click', () => {
+      btnQuickDemo.addEventListener('click', async () => {
         const idEl = document.getElementById('inputApiId') as HTMLInputElement;
         const hashEl = document.getElementById('inputApiHash') as HTMLInputElement;
         const phoneEl = document.getElementById('inputPhone') as HTMLInputElement;
-        if (idEl && hashEl && phoneEl) {
-          idEl.value = '20491820';
-          hashEl.value = 'e8b7c6d5a4f3210987654321fedcba09';
-          phoneEl.value = '+1 (202) 555-0196';
+        if (idEl) idEl.value = '20491820';
+        if (hashEl) hashEl.value = 'e8b7c6d5a4f3210987654321fedcba09';
+        if (phoneEl) phoneEl.value = '+1 (202) 555-0196';
+
+        this.loginApiId = '20491820';
+        this.loginApiHash = 'e8b7c6d5a4f3210987654321fedcba09';
+        this.loginPhone = '+1 (202) 555-0196';
+
+        if (this.authMethod === 'qr') {
+          // In QR mode, Quick Demo logs in directly with demo mode
+          try {
+            const res = await this.api.loginVerifyCode(
+              '+1 (202) 555-0196',
+              'demo',
+              'demo',
+              '12345'
+            );
+            if (res.session) {
+              this.session = res.session;
+              this.isAddingAccount = false;
+              this.stopQrPolling();
+              this.activeDriveId = 'personal';
+              await this.initWorkspace();
+            }
+          } catch (err: any) {
+            alert(`Demo login error: ${err.message}`);
+          }
         }
       });
     }
@@ -196,6 +363,7 @@ class ProtoFsApp {
     const btnCancelAddAccount = document.getElementById('btnCancelAddAccount');
     if (btnCancelAddAccount) {
       btnCancelAddAccount.addEventListener('click', async () => {
+        this.stopQrPolling();
         this.isAddingAccount = false;
         this.loginStep = 'credentials';
         await this.initWorkspace();
@@ -210,34 +378,148 @@ class ProtoFsApp {
       });
     }
 
+    const btnBackFrom2Fa = document.getElementById('btnBackFrom2Fa');
+    if (btnBackFrom2Fa) {
+      btnBackFrom2Fa.addEventListener('click', () => {
+        this.loginStep = this.authMethod === 'qr' ? 'credentials' : 'code';
+        this.renderLoginScreen();
+      });
+    }
+
     const formVerifyCode = document.getElementById('formVerifyCode');
     if (formVerifyCode) {
       formVerifyCode.addEventListener('submit', async e => {
         e.preventDefault();
         const codeEl = document.getElementById('inputCode') as HTMLInputElement;
-        const twoFaEl = document.getElementById('input2fa') as HTMLInputElement;
 
         try {
-          const session = await this.api.loginVerifyCode(
+          const res = await this.api.loginVerifyCode(
             this.loginPhone,
             this.loginApiId,
             this.loginApiHash,
-            codeEl.value.trim(),
-            twoFaEl ? twoFaEl.value.trim() : undefined
+            codeEl.value.trim()
           );
-          this.session = session;
-          this.isAddingAccount = false;
-          if (!session.is_demo) {
-            localStorage.removeItem('protofs_folders');
-            localStorage.removeItem('protofs_files');
-            localStorage.removeItem('protofs_drives');
+
+          if (res.requires_2fa) {
+            this.passwordHint = res.hint || '';
+            this.loginStep = '2fa';
+            this.renderLoginScreen();
+            return;
           }
-          this.activeDriveId = session.active_drive_id || (session.is_demo ? 'personal' : `drive_${session.user_id}`);
-          await this.initWorkspace();
+
+          if (res.session) {
+            this.session = res.session;
+            this.isAddingAccount = false;
+            if (!res.session.is_demo) {
+              localStorage.removeItem('protofs_folders');
+              localStorage.removeItem('protofs_files');
+              localStorage.removeItem('protofs_drives');
+            }
+            this.activeDriveId = res.session.active_drive_id || (res.session.is_demo ? 'personal' : `drive_${res.session.user_id}`);
+            await this.initWorkspace();
+          }
         } catch (err: any) {
           alert(`Verification error: ${err.message}`);
         }
       });
+    }
+
+    const formVerify2Fa = document.getElementById('formVerify2Fa');
+    if (formVerify2Fa) {
+      formVerify2Fa.addEventListener('submit', async e => {
+        e.preventDefault();
+        const pwdEl = document.getElementById('input2faPassword') as HTMLInputElement;
+
+        try {
+          const res = await this.api.loginVerify2Fa(
+            this.loginApiId,
+            this.loginApiHash,
+            pwdEl.value.trim()
+          );
+
+          if (res.session) {
+            this.session = res.session;
+            this.isAddingAccount = false;
+            this.loginStep = 'credentials';
+            if (!res.session.is_demo) {
+              localStorage.removeItem('protofs_folders');
+              localStorage.removeItem('protofs_files');
+              localStorage.removeItem('protofs_drives');
+            }
+            this.activeDriveId = res.session.active_drive_id || (res.session.is_demo ? 'personal' : `drive_${res.session.user_id}`);
+            await this.initWorkspace();
+          }
+        } catch (err: any) {
+          alert(`2FA verification error: ${err.message}`);
+        }
+      });
+    }
+  }
+
+  private async initQrLogin() {
+    this.stopQrPolling();
+    const idEl = document.getElementById('inputApiId') as HTMLInputElement;
+    const hashEl = document.getElementById('inputApiHash') as HTMLInputElement;
+    const apiId = idEl ? idEl.value.trim() : this.loginApiId || '20491820';
+    const apiHash = hashEl ? hashEl.value.trim() : this.loginApiHash || 'e8b7c6d5a4f3210987654321fedcba09';
+    this.loginApiId = apiId;
+    this.loginApiHash = apiHash;
+
+    try {
+      const statusText = document.getElementById('qrStatusText');
+      if (statusText) statusText.textContent = 'Generating Telegram login QR code...';
+      const res = await this.api.loginRequestQr(apiId, apiHash);
+      this.qrTokenUrl = res.token_url;
+      this.renderQrCode(res.token_url);
+      if (statusText) statusText.textContent = 'Waiting for scan in Telegram app...';
+
+      this.qrPollTimer = setInterval(async () => {
+        try {
+          const check = await this.api.loginCheckQr(this.loginApiId, this.loginApiHash);
+          if (check.status === 'waiting_scan') {
+            if (check.token_url && check.token_url !== this.qrTokenUrl) {
+              this.qrTokenUrl = check.token_url;
+              this.renderQrCode(check.token_url);
+            }
+          } else if (check.status === 'requires_2fa') {
+            this.stopQrPolling();
+            this.passwordHint = check.hint || '';
+            this.loginStep = '2fa';
+            this.renderLoginScreen();
+          } else if (check.status === 'success' && check.session) {
+            this.stopQrPolling();
+            this.session = check.session;
+            this.isAddingAccount = false;
+            this.loginStep = 'credentials';
+            if (!check.session.is_demo) {
+              localStorage.removeItem('protofs_folders');
+              localStorage.removeItem('protofs_files');
+              localStorage.removeItem('protofs_drives');
+            }
+            this.activeDriveId = check.session.active_drive_id || (check.session.is_demo ? 'personal' : `drive_${check.session.user_id}`);
+            await this.initWorkspace();
+          }
+        } catch (pollErr) {
+          console.warn('QR poll status error:', pollErr);
+        }
+      }, 2000);
+    } catch (err: any) {
+      const statusText = document.getElementById('qrStatusText');
+      if (statusText) statusText.textContent = `Error: ${err.message || err}`;
+    }
+  }
+
+  private renderQrCode(url: string) {
+    const canvas = document.getElementById('qrCanvas') as HTMLCanvasElement;
+    if (canvas && url) {
+      QRCode.toCanvas(canvas, url, {
+        width: 192,
+        margin: 1,
+        color: {
+          dark: '#0f141c',
+          light: '#ffffff',
+        },
+      }).catch(err => console.error('Failed to draw QR code canvas:', err));
     }
   }
 

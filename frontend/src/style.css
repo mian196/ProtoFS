@@ -790,6 +790,43 @@ body {
   max-width: 360px;
 }
 
+.auth-method-tabs {
+  display: flex;
+  background: var(--bg-surface-input);
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.auth-method-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-method-tab:hover {
+  color: var(--text-primary);
+}
+
+.auth-method-tab.active {
+  background: var(--accent-primary);
+  color: var(--accent-text);
+  box-shadow: var(--shadow-sm);
+}
+
 .login-step-badges {
   display: flex;
   justify-content: center;
@@ -812,6 +849,92 @@ body {
   background: var(--accent-soft);
   color: var(--accent-primary);
   border-color: var(--accent-primary);
+}
+
+/* QR Code Login Elements */
+.qr-login-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.qr-preview-box {
+  background: #ffffff;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 220px;
+  min-height: 220px;
+  position: relative;
+}
+
+.qr-preview-box canvas {
+  display: block;
+  width: 192px !important;
+  height: 192px !important;
+  border-radius: 4px;
+}
+
+.qr-instruction-card {
+  width: 100%;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.qr-instruction-list {
+  margin: 6px 0 0 16px;
+  padding: 0;
+}
+
+.qr-instruction-list li {
+  margin-bottom: 4px;
+}
+
+.qr-instruction-list strong {
+  color: var(--text-primary);
+}
+
+.qr-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 2FA Dedicated Elements */
+.twofa-badge-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.password-hint-box {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-xs);
+  padding: 8px 12px;
+  font-size: 11.5px;
+  color: var(--color-warning);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .login-form {

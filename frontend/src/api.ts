@@ -1,5 +1,14 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import type { AuthSession, DriveMetadata, FileNode, FolderNode, SearchResult, SyncPair } from './types';
+import type {
+  AuthResponse,
+  AuthSession,
+  DriveMetadata,
+  FileNode,
+  FolderNode,
+  QrStatusResponse,
+  SearchResult,
+  SyncPair,
+} from './types';
 
 interface TauriCommandResponse<T> {
   success: boolean;
@@ -65,20 +74,20 @@ export class ProtoFsApi {
     phone: string,
     apiId: string,
     apiHash: string,
-    code: string,
-    password2fa?: string
-  ): Promise<AuthSession> {
+    code: string
+  ): Promise<AuthResponse> {
     if (isTauri()) {
       try {
-        const res = await invoke<TauriCommandResponse<AuthSession>>('login_verify_code', {
+        const res = await invoke<TauriCommandResponse<AuthResponse>>('login_verify_code', {
           phone,
           apiId,
           apiHash,
           code,
-          password2fa: password2fa || null,
         });
         if (res.success && res.data) {
-          localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(res.data));
+          if (res.data.session) {
+            localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(res.data.session));
+          }
           return res.data;
         }
         throw new Error(res.error || 'Invalid verification code');
@@ -97,9 +106,100 @@ export class ProtoFsApi {
       first_name: 'MuzAmMaL',
       user_id: 1049281720,
       active_drive_id: 'personal',
+      is_demo: true,
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(session));
-    return session;
+    return { session, requires_2fa: false };
+  }
+
+  async loginVerify2Fa(
+    apiId: string,
+    apiHash: string,
+    password: string
+  ): Promise<AuthResponse> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<AuthResponse>>('login_verify_2fa', {
+          apiId,
+          apiHash,
+          password,
+        });
+        if (res.success && res.data) {
+          if (res.data.session) {
+            localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(res.data.session));
+          }
+          return res.data;
+        }
+        throw new Error(res.error || 'Invalid 2FA password');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    const session: AuthSession = {
+      is_authenticated: true,
+      phone: '+1 (202) 555-0196',
+      api_id: apiId,
+      api_hash: apiHash,
+      username: 'MuzAmMaL',
+      first_name: 'MuzAmMaL',
+      user_id: 1049281720,
+      active_drive_id: 'personal',
+      is_demo: true,
+    };
+    localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(session));
+    return { session, requires_2fa: false };
+  }
+
+  async loginRequestQr(apiId: string, apiHash: string): Promise<QrStatusResponse> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<QrStatusResponse>>('login_request_qr', {
+          apiId,
+          apiHash,
+        });
+        if (res.success && res.data) {
+          return res.data;
+        }
+        throw new Error(res.error || 'Failed to request QR login');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    return {
+      token_url: 'tg://login?token=demo_token_protofs_quick_test',
+      expires_in_sec: 120,
+      status: 'waiting_scan',
+      session: null,
+    };
+  }
+
+  async loginCheckQr(apiId: string, apiHash: string): Promise<QrStatusResponse> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<QrStatusResponse>>('login_check_qr', {
+          apiId,
+          apiHash,
+        });
+        if (res.success && res.data) {
+          if (res.data.session) {
+            localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(res.data.session));
+          }
+          return res.data;
+        }
+        throw new Error(res.error || 'Failed to check QR login status');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    return {
+      token_url: '',
+      expires_in_sec: 0,
+      status: 'waiting_scan',
+      session: null,
+    };
   }
 
   async logout(): Promise<void> {

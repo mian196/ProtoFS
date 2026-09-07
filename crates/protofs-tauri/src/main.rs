@@ -38,6 +38,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::login_send_code,
             commands::login_verify_code,
+            commands::login_verify_2fa,
+            commands::login_request_qr,
+            commands::login_check_qr,
             commands::get_session_status,
             commands::list_accounts_command,
             commands::switch_account_command,
