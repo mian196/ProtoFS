@@ -4258,9 +4258,212 @@ body {
 
 .workmanager-badge:hover {
   background: rgba(59, 130, 246, 0.25);
+}/* ---------------------------------------------------------------------------
+   P2P Direct Sharing (PRD Section 6.11)
+   --------------------------------------------------------------------------- */
+.p2p-hero-card {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: all 0.2s ease;
 }
 
+.p2p-hero-card.active {
+  border-color: rgba(14, 165, 233, 0.4);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.05) 0%, var(--bg-surface-elevated) 100%);
+}
 
+.p2p-role-toggle {
+  display: flex;
+  background: var(--bg-surface-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  gap: 4px;
+}
 
+.p2p-role-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: var(--radius-xs);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
 
+.p2p-role-btn:hover {
+  color: var(--text-primary);
+}
+
+.p2p-role-btn.active {
+  background: var(--accent-primary);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.p2p-qr-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  width: fit-content;
+  margin: 0 auto;
+}
+
+.p2p-qr-wrapper canvas {
+  display: block;
+  border-radius: var(--radius-xs);
+}
+
+.p2p-pin-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.p2p-pin-box {
+  font-family: var(--font-mono, monospace);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: var(--accent-primary);
+  background: var(--bg-surface-input);
+  border: 2px dashed var(--accent-primary);
+  border-radius: var(--radius-md);
+  padding: 10px 24px;
+  text-align: center;
+  user-select: all;
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.15);
+}
+
+.p2p-pin-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.p2p-radar-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
+  gap: 12px;
+}
+
+.p2p-radar-pulse {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(14, 165, 233, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-primary);
+}
+
+.p2p-radar-pulse::before,
+.p2p-radar-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  animation: radar-ripple 2s linear infinite;
+  opacity: 0;
+}
+
+.p2p-radar-pulse::after {
+  animation-delay: 1s;
+}
+
+@keyframes radar-ripple {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.p2p-speed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(14, 165, 233, 0.15);
+  color: #0ea5e9;
+  border: 1px solid rgba(14, 165, 233, 0.3);
+}
+
+.p2p-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 12px;
+}
+
+.p2p-info-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.p2p-info-label {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.p2p-info-val {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+}
+
+.p2p-target-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-family: var(--font-mono, monospace);
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  text-align: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-input);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.p2p-target-input:focus {
+  border-color: var(--accent-primary);
+}
 

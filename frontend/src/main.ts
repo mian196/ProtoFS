@@ -2,7 +2,7 @@ import './style.css';
 import QRCode from 'qrcode';
 import { ProtoFsApi } from './api';
 import { ThemeManager } from './theme';
-import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo, ParsedShareLink, VirtualDriveStatus, DocumentsProviderStatus, WorkManagerSyncConfig } from './types';
+import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo, ParsedShareLink, VirtualDriveStatus, DocumentsProviderStatus, WorkManagerSyncConfig, P2pSessionInfo, P2pStatus, P2pTransferProgress } from './types';
 
 class ProtoFsApp {
   private api = new ProtoFsApi();
@@ -688,6 +688,10 @@ class ProtoFsApp {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="3"/></svg>
                 <span>Android Background Sync (PRD 6.6)</span>
               </button>
+              <button class="account-menu-item" id="btnMenuP2pDirect">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                <span>P2P Direct Sharing (PRD 6.11)</span>
+              </button>
               <button class="account-menu-item" id="btnMenuCheckUpdates">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
                 <span>Check for Updates</span>
@@ -810,6 +814,10 @@ class ProtoFsApp {
           <button class="btn-selection-tool" id="btnSelShare" title="Share Link">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
             <span>Share</span>
+          </button>
+          <button class="btn-selection-tool" id="btnSelP2pShare" title="P2P Direct LAN Share">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span>P2P Direct</span>
           </button>
           <button class="btn-selection-tool" id="btnSelRename" title="Rename item">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -1214,6 +1222,9 @@ class ProtoFsApp {
             <button class="btn-icon-subtle btn-share-file" data-id="${f.id}" title="Share Link">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
             </button>
+            <button class="btn-icon-subtle btn-p2p-file" data-id="${f.id}" title="Share via Direct P2P LAN">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
             <button class="btn-icon-subtle btn-history-file" data-id="${f.id}" title="Version History">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </button>
@@ -1306,6 +1317,14 @@ class ProtoFsApp {
           if (id) this.openShareModal(id);
         });
       });
+      document.querySelectorAll('.btn-p2p-file').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const id = (btn as HTMLElement).dataset.id;
+          const file = this.files.find(f => f.id === id);
+          if (file) this.openP2pShareModal(file);
+        });
+      });
       document.querySelectorAll('.btn-history-file').forEach(btn => {
         btn.addEventListener('click', e => {
           e.stopPropagation();
@@ -1355,6 +1374,7 @@ class ProtoFsApp {
     const btnSelPreview = document.getElementById('btnSelPreview');
     const btnSelHistory = document.getElementById('btnSelHistory');
     const btnSelShare = document.getElementById('btnSelShare');
+    const btnSelP2pShare = document.getElementById('btnSelP2pShare');
     const btnSelRename = document.getElementById('btnSelRename');
 
     if (!bar || !countPill) return;
@@ -1370,10 +1390,11 @@ class ProtoFsApp {
 
     const isSingleFile = count === 1 && this.files.some(f => f.id === Array.from(this.selectedIds)[0]);
 
-    // Preview, History, Share and Rename are only active for single item selection
+    // Preview, History, Share, P2P and Rename are only active for single item selection
     if (btnSelPreview) btnSelPreview.style.display = isSingleFile ? 'flex' : 'none';
     if (btnSelHistory) btnSelHistory.style.display = isSingleFile ? 'flex' : 'none';
     if (btnSelShare) btnSelShare.style.display = isSingleFile ? 'flex' : 'none';
+    if (btnSelP2pShare) btnSelP2pShare.style.display = isSingleFile ? 'flex' : 'none';
     if (btnSelRename) btnSelRename.style.display = count === 1 ? 'flex' : 'none';
   }
 
@@ -1669,6 +1690,14 @@ class ProtoFsApp {
       if (selected.length === 1) {
         const file = this.files.find(f => f.id === selected[0]);
         if (file) this.openShareModal(file.id);
+      }
+    });
+
+    document.getElementById('btnSelP2pShare')?.addEventListener('click', () => {
+      const selected = Array.from(this.selectedIds);
+      if (selected.length === 1) {
+        const file = this.files.find(f => f.id === selected[0]);
+        if (file) this.openP2pShareModal(file);
       }
     });
 
@@ -2065,6 +2094,13 @@ class ProtoFsApp {
       const dropdown = document.getElementById('accountDropdown');
       if (dropdown) dropdown.classList.add('hidden');
       this.openWorkManagerSyncModal();
+    });
+
+    // P2P Direct Sharing (PRD 6.11)
+    document.getElementById('btnMenuP2pDirect')?.addEventListener('click', () => {
+      const dropdown = document.getElementById('accountDropdown');
+      if (dropdown) dropdown.classList.add('hidden');
+      this.openP2pShareModal();
     });
 
     // Export Drive Modal button in sidebar
@@ -5119,6 +5155,413 @@ class ProtoFsApp {
       overlay.classList.remove('hidden');
       (document.getElementById('btnDialogOk') as HTMLElement)?.focus();
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // P2P DIRECT SHARING (PRD Section 6.11)
+  // -------------------------------------------------------------------------
+
+  private async openP2pShareModal(fileNode?: FileNode) {
+    let status: P2pStatus = await this.api.getP2pStatus();
+    let currentRole: 'sender' | 'receiver' = fileNode ? 'sender' : 'receiver';
+    let currentSession: P2pSessionInfo | null = status.active_session || null;
+    let selectedFile: FileNode | undefined = fileNode || (this.files.length > 0 ? this.files[0] : undefined);
+    let selectedFolderId: string = this.currentFolderId === 'root' ? 'root' : this.currentFolderId;
+    let isConnecting = false;
+    let activeTransfer: P2pTransferProgress | null = null;
+    let pollInterval: any = null;
+
+    const cleanup = () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    };
+
+    const renderModalBody = () => {
+      const isSender = currentRole === 'sender';
+      const historyRows =
+        status.recent_transfers.length > 0
+          ? status.recent_transfers
+              .map(
+                t => `
+            <div class="workmanager-history-row">
+              <span style="font-family: monospace;">${escapeHtml(t.peer_address || 'LAN Peer')}</span>
+              <span><strong>${escapeHtml(t.file_name)}</strong> (${t.role === 'sender' ? 'Sent' : 'Received'})</span>
+              <span style="color: var(--text-muted); text-align: right;">${t.formatted_bytes} @ ${t.formatted_speed}</span>
+              <span style="text-align: right;">
+                <span class="workmanager-status-badge-ok">${t.status.toUpperCase()}</span>
+              </span>
+            </div>
+          `
+              )
+              .join('')
+          : `<div style="padding: 14px; text-align: center; color: var(--text-muted); font-size: 11.5px;">No local peer transfers recorded yet.</div>`;
+
+      return `
+        <!-- Role Selector -->
+        <div class="p2p-role-toggle">
+          <button type="button" class="p2p-role-btn ${isSender ? 'active' : ''}" id="btnP2pRoleSender">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span>Send File (Sender Mode)</span>
+          </button>
+          <button type="button" class="p2p-role-btn ${!isSender ? 'active' : ''}" id="btnP2pRoleReceiver">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+            <span>Receive File (Receiver Mode)</span>
+          </button>
+        </div>
+
+        ${
+          isSender
+            ? `
+          <!-- SENDER VIEW -->
+          <div class="p2p-hero-card ${currentSession ? 'active' : ''}">
+            ${
+              !currentSession
+                ? `
+              <div style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">
+                Direct peer-to-peer sharing allows lightning-fast file transfer between devices on the same local network or Wi-Fi without streaming or uploading to Telegram first.
+              </div>
+
+              <div>
+                <label class="form-label" style="font-weight: 700;">Select File to Share</label>
+                ${
+                  this.files.length > 0
+                    ? `
+                  <select class="form-input" id="selP2pSenderFile" style="padding: 8px 12px; font-size: 13px;">
+                    ${this.files
+                      .map(
+                        f => `
+                      <option value="${f.id}" ${selectedFile && selectedFile.id === f.id ? 'selected' : ''}>
+                        ${escapeHtml(f.name)} (${f.size})
+                      </option>
+                    `
+                      )
+                      .join('')}
+                  </select>
+                `
+                    : `<div style="color: var(--color-danger); font-size: 12px;">No files available in the current drive. Upload a file first.</div>`
+                }
+              </div>
+
+              ${
+                selectedFile
+                  ? `
+                <div class="p2p-info-grid">
+                  <div class="p2p-info-cell">
+                    <span class="p2p-info-label">Selected File</span>
+                    <span class="p2p-info-val">${escapeHtml(selectedFile.name)}</span>
+                  </div>
+                  <div class="p2p-info-cell">
+                    <span class="p2p-info-label">File Size</span>
+                    <span class="p2p-info-val">${selectedFile.size}</span>
+                  </div>
+                  <div class="p2p-info-cell">
+                    <span class="p2p-info-label">Local LAN IP</span>
+                    <span class="p2p-info-val">${escapeHtml(status.local_ip)}:${status.default_port}</span>
+                  </div>
+                  <div class="p2p-info-cell">
+                    <span class="p2p-info-label">Transfer Security</span>
+                    <span class="p2p-info-val">TLS & 6-Digit Pairing PIN</span>
+                  </div>
+                </div>
+              `
+                  : ''
+              }
+
+              <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+                <button type="button" class="btn-action primary" id="btnStartP2pSender" ${!selectedFile ? 'disabled' : ''}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  <span>Start P2P Direct Listener</span>
+                </button>
+              </div>
+            `
+                : `
+              <!-- SENDER ACTIVE SESSION -->
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="pulse-dot"></span>
+                  <strong style="font-size: 13px; color: var(--text-primary);">P2P Sender Listening on Local Network</strong>
+                </div>
+                <button type="button" class="btn-action secondary" id="btnStopP2pSender" style="padding: 4px 10px; font-size: 11px;">
+                  Stop Listener
+                </button>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 200px 1fr; gap: 20px; align-items: center;">
+                <div class="p2p-qr-wrapper">
+                  <canvas id="p2pQrCanvas" width="168" height="168"></canvas>
+                  <span style="font-size: 10px; color: #475569; margin-top: 6px; font-weight: 600;">Scan with ProtoFS Mobile</span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                  <div class="p2p-pin-container">
+                    <span class="p2p-pin-label">Ephemeral 6-Digit PIN Code</span>
+                    <div class="p2p-pin-box">${escapeHtml(currentSession.pin_code)}</div>
+                  </div>
+
+                  <div class="p2p-info-grid" style="margin-top: 4px;">
+                    <div class="p2p-info-cell">
+                      <span class="p2p-info-label">Listening Address</span>
+                      <span class="p2p-info-val">${escapeHtml(currentSession.local_ip)}:${currentSession.listen_port}</span>
+                    </div>
+                    <div class="p2p-info-cell">
+                      <span class="p2p-info-label">Sharing File</span>
+                      <span class="p2p-info-val">${escapeHtml(currentSession.target_file_name || selectedFile?.name || 'File')}</span>
+                    </div>
+                  </div>
+
+                  <div style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.4;">
+                    Instruct the receiving device to open <strong>Receive Mode</strong> on the same Wi-Fi and type the PIN code or scan the QR code.
+                  </div>
+                </div>
+              </div>
+            `
+            }
+          </div>
+        `
+            : `
+          <!-- RECEIVER VIEW -->
+          <div class="p2p-hero-card ${activeTransfer ? 'active' : ''}">
+            <div style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">
+              Connect directly to a peer sender on your local network using their 6-digit PIN code or socket address.
+            </div>
+
+            ${
+              !activeTransfer
+                ? `
+              <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 4px;">
+                <div>
+                  <label class="form-label" style="font-weight: 700;">6-Digit Pairing PIN Code</label>
+                  <input type="text" class="p2p-target-input" id="inputP2pPin" placeholder="XXX-XXX" maxlength="7" value="${currentSession?.pin_code || ''}" />
+                </div>
+
+                <div>
+                  <label class="form-label" style="font-weight: 700;">Peer Socket / Host Address</label>
+                  <input type="text" class="form-input" id="inputP2pAddress" placeholder="${escapeHtml(status.local_ip)}:${status.default_port}" value="${currentSession ? `${currentSession.local_ip}:${currentSession.listen_port}` : `${status.local_ip}:${status.default_port}`}" />
+                </div>
+
+                <div>
+                  <label class="form-label" style="font-weight: 700;">Destination Folder in ProtoFS</label>
+                  <select class="form-input" id="selP2pDestFolder" style="padding: 8px 12px; font-size: 13px;">
+                    <option value="root" ${selectedFolderId === 'root' ? 'selected' : ''}>Root Folder (/)</option>
+                    ${this.folders
+                      .map(
+                        f => `
+                      <option value="${f.id}" ${selectedFolderId === f.id ? 'selected' : ''}>
+                        📁 ${escapeHtml(f.name)}
+                      </option>
+                    `
+                      )
+                      .join('')}
+                  </select>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+                  <button type="button" class="btn-action primary" id="btnConnectP2pReceiver" ${isConnecting ? 'disabled' : ''}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+                    <span>${isConnecting ? 'Establishing Direct LAN Socket...' : 'Connect & Receive File'}</span>
+                  </button>
+                </div>
+              </div>
+            `
+                : `
+              <!-- ACTIVE RECEIVER TRANSFER STATE -->
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="pulse-dot"></span>
+                  <strong style="font-size: 13px; color: var(--text-primary);">${activeTransfer.status === 'completed' ? 'Transfer Completed Successfully' : 'Receiving Streamed Chunks...'}</strong>
+                </div>
+                <span class="p2p-speed-badge">${activeTransfer.formatted_speed}</span>
+              </div>
+
+              <div style="background: var(--bg-surface); padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 600;">
+                  <span>${escapeHtml(activeTransfer.file_name)}</span>
+                  <span>${activeTransfer.formatted_bytes}</span>
+                </div>
+                <div class="transfer-progress-track">
+                  <div class="transfer-progress-bar" style="width: ${activeTransfer.progress_percent}%;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);">
+                  <span>Peer: ${escapeHtml(activeTransfer.peer_address)}</span>
+                  <span>${activeTransfer.progress_percent}% completed (${activeTransfer.duration_ms} ms)</span>
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px;">
+                <button type="button" class="btn-action secondary" id="btnP2pReceiveAnother">Receive Another File</button>
+                <button type="button" class="btn-action primary" id="btnP2pOpenReceived">Go to Destination Folder</button>
+              </div>
+            `
+            }
+          </div>
+        `
+        }
+
+        <!-- Recent Transfers History -->
+        <div style="margin-top: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <label class="form-label" style="margin-bottom: 0; font-weight: 700;">Recent P2P LAN Direct Transfers</label>
+            <span style="font-size: 11px; color: var(--text-muted);">${status.recent_transfers.length} recorded</span>
+          </div>
+          <div class="workmanager-history-container">
+            <div class="workmanager-history-row workmanager-history-header">
+              <span>Peer Address</span>
+              <span>File Name & Role</span>
+              <span style="text-align: right;">Speed & Size</span>
+              <span style="text-align: right;">Status</span>
+            </div>
+            ${historyRows}
+          </div>
+        </div>
+      `;
+    };
+
+    const renderFooter = () => `
+      <button class="btn-action secondary" id="btnP2pClose">Close</button>
+    `;
+
+    const refreshModal = () => {
+      const bodyEl = document.getElementById('dynamicModalBody');
+      if (bodyEl) {
+        bodyEl.innerHTML = renderModalBody();
+        bindModalEvents();
+      }
+    };
+
+    const renderCanvasQr = (payload: string) => {
+      const canvas = document.getElementById('p2pQrCanvas') as HTMLCanvasElement;
+      if (canvas && payload) {
+        QRCode.toCanvas(canvas, payload, {
+          width: 168,
+          margin: 1,
+          color: {
+            dark: '#0f172a',
+            light: '#ffffff',
+          },
+        }).catch(err => console.error('Failed to draw P2P QR code canvas:', err));
+      }
+    };
+
+    const bindModalEvents = () => {
+      document.getElementById('btnP2pClose')?.addEventListener('click', () => {
+        cleanup();
+        this.closeModal();
+      });
+
+      // Role switcher
+      document.getElementById('btnP2pRoleSender')?.addEventListener('click', () => {
+        currentRole = 'sender';
+        refreshModal();
+      });
+      document.getElementById('btnP2pRoleReceiver')?.addEventListener('click', () => {
+        currentRole = 'receiver';
+        refreshModal();
+      });
+
+      // Sender file selector
+      const selFile = document.getElementById('selP2pSenderFile') as HTMLSelectElement;
+      if (selFile) {
+        selFile.addEventListener('change', () => {
+          selectedFile = this.files.find(f => f.id === selFile.value);
+          refreshModal();
+        });
+      }
+
+      // Sender: Start listener
+      document.getElementById('btnStartP2pSender')?.addEventListener('click', async () => {
+        const startBtn = document.getElementById('btnStartP2pSender') as HTMLButtonElement;
+        if (startBtn) {
+          startBtn.disabled = true;
+          startBtn.innerText = 'Initializing LAN Socket...';
+        }
+        try {
+          currentSession = await this.api.startP2pSession('sender', selectedFile?.id, this.activeDriveId);
+          status = await this.api.getP2pStatus();
+          refreshModal();
+          if (currentSession?.qr_payload) {
+            renderCanvasQr(currentSession.qr_payload);
+          }
+        } catch (err: any) {
+          await this.showAlert({
+            title: 'P2P Listener Error',
+            message: `Could not start local P2P listener: ${err.message || err}`,
+            type: 'error',
+          });
+          refreshModal();
+        }
+      });
+
+      // Sender: Stop listener
+      document.getElementById('btnStopP2pSender')?.addEventListener('click', async () => {
+        await this.api.cancelP2pSession();
+        currentSession = null;
+        status = await this.api.getP2pStatus();
+        refreshModal();
+      });
+
+      // Receiver: Connect & Receive
+      document.getElementById('btnConnectP2pReceiver')?.addEventListener('click', async () => {
+        const pinInput = document.getElementById('inputP2pPin') as HTMLInputElement;
+        const addrInput = document.getElementById('inputP2pAddress') as HTMLInputElement;
+        const folderSel = document.getElementById('selP2pDestFolder') as HTMLSelectElement;
+
+        const pinCode = pinInput?.value.trim();
+        const peerAddress = addrInput?.value.trim() || `${status.local_ip}:${status.default_port}`;
+        const targetFolder = folderSel?.value || 'root';
+
+        if (!pinCode) {
+          await this.showAlert({
+            title: 'PIN Code Required',
+            message: 'Please enter the 6-digit PIN code displayed on the sending peer device.',
+            type: 'error',
+          });
+          return;
+        }
+
+        isConnecting = true;
+        refreshModal();
+
+        try {
+          activeTransfer = await this.api.connectP2pPeer(peerAddress, pinCode, targetFolder, this.activeDriveId);
+          isConnecting = false;
+          status = await this.api.getP2pStatus();
+          await this.loadWorkspaceData();
+          refreshModal();
+        } catch (err: any) {
+          isConnecting = false;
+          await this.showAlert({
+            title: 'P2P Transfer Failed',
+            message: `Direct peer transfer failed: ${err.message || err}`,
+            type: 'error',
+          });
+          refreshModal();
+        }
+      });
+
+      // Receiver: Receive another file
+      document.getElementById('btnP2pReceiveAnother')?.addEventListener('click', () => {
+        activeTransfer = null;
+        refreshModal();
+      });
+
+      // Receiver: Go to folder
+      document.getElementById('btnP2pOpenReceived')?.addEventListener('click', async () => {
+        cleanup();
+        this.closeModal();
+        this.currentFolderId = selectedFolderId;
+        await this.loadWorkspaceData();
+      });
+
+      // Render QR code if active sender session exists
+      if (currentSession?.qr_payload) {
+        renderCanvasQr(currentSession.qr_payload);
+      }
+    };
+
+    this.showModal('P2P Direct Sharing (PRD Section 6.11)', renderModalBody(), renderFooter(), true);
+    bindModalEvents();
   }
 }
 

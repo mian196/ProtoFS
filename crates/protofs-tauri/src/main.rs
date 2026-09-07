@@ -95,6 +95,10 @@ fn main() {
             commands::configure_workmanager_sync_command,
             commands::trigger_immediate_background_sync_command,
             commands::get_workmanager_history_command,
+            commands::get_p2p_status_command,
+            commands::start_p2p_session_command,
+            commands::connect_p2p_peer_command,
+            commands::cancel_p2p_session_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs desktop application");

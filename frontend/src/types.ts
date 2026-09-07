@@ -252,5 +252,44 @@ export interface WorkManagerSyncStatus {
   recent_history: WorkManagerJobRecord[];
 }
 
+export interface P2pTransferProgress {
+  transfer_id: string;
+  role: 'sender' | 'receiver';
+  file_name: string;
+  file_size: number;
+  bytes_transferred: number;
+  speed_bps: number;
+  progress_percent: number;
+  status: string;
+  peer_address: string;
+  pin_code: string;
+  duration_ms: number;
+  formatted_bytes: string;
+  formatted_speed: string;
+}
+
+export interface P2pSessionInfo {
+  session_id: string;
+  pin_code: string;
+  listen_port: number;
+  local_ip: string;
+  p2p_uri: string;
+  qr_payload: string;
+  is_active: boolean;
+  role: string;
+  target_file_id?: string | null;
+  target_file_name?: string | null;
+  target_file_size?: number | null;
+}
+
+export interface P2pStatus {
+  is_supported: boolean;
+  local_ip: string;
+  default_port: number;
+  active_session?: P2pSessionInfo | null;
+  recent_transfers: P2pTransferProgress[];
+}
+
+
 
 

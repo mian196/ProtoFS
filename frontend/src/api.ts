@@ -22,6 +22,9 @@ import type {
   WorkManagerSyncConfig,
   WorkManagerJobRecord,
   WorkManagerSyncStatus,
+  P2pTransferProgress,
+  P2pSessionInfo,
+  P2pStatus,
 } from './types';
 
 interface TauriCommandResponse<T> {
@@ -1702,6 +1705,135 @@ export class ProtoFsApi {
     const rawHist = localStorage.getItem('protofs_workmanager_history');
     return rawHist ? JSON.parse(rawHist) : [];
   }
+
+  // -------------------------------------------------------------------------
+  // P2P Direct Sharing (PRD Section 6.11)
+  // -------------------------------------------------------------------------
+
+  async getP2pStatus(): Promise<P2pStatus> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<P2pStatus>>('get_p2p_status_command');
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        console.warn('Tauri get_p2p_status_command error:', err);
+      }
+    }
+
+    const rawSession = localStorage.getItem('protofs_p2p_session');
+    const rawHist = localStorage.getItem('protofs_p2p_history');
+    const recentTransfers: P2pTransferProgress[] = rawHist ? JSON.parse(rawHist) : [];
+
+    return {
+      is_supported: true,
+      local_ip: '192.168.1.145',
+      default_port: 48873,
+      active_session: rawSession ? JSON.parse(rawSession) : null,
+      recent_transfers: recentTransfers,
+    };
+  }
+
+  async startP2pSession(role: 'sender' | 'receiver', fileId?: string, driveId?: string): Promise<P2pSessionInfo> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<P2pSessionInfo>>('start_p2p_session_command', {
+          role,
+          fileId,
+          driveId,
+        });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    const pin = `${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}`;
+    const session: P2pSessionInfo = {
+      session_id: `p2p_${Date.now()}`,
+      pin_code: pin,
+      listen_port: 48873,
+      local_ip: '192.168.1.145',
+      p2p_uri: `protofs-p2p://192.168.1.145:48873/?pin=${pin}&role=${role}`,
+      qr_payload: `protofs://p2p/connect?ip=192.168.1.145&port=48873&pin=${pin}&role=${role}`,
+      is_active: true,
+      role,
+      target_file_id: fileId,
+      target_file_name: fileId ? 'Encrypted_Cloud_File.dat' : null,
+      target_file_size: fileId ? 4892100 : null,
+    };
+
+    localStorage.setItem('protofs_p2p_session', JSON.stringify(session));
+    return session;
+  }
+
+  async connectP2pPeer(
+    peerAddress: string,
+    pinCode: string,
+    targetFolderId?: string,
+    driveId?: string
+  ): Promise<P2pTransferProgress> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<P2pTransferProgress>>('connect_p2p_peer_command', {
+          peerAddress,
+          pinCode,
+          targetFolderId,
+          driveId,
+        });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    const rawSession = localStorage.getItem('protofs_p2p_session');
+    const session: P2pSessionInfo | null = rawSession ? JSON.parse(rawSession) : null;
+    const isSender = session?.role === 'sender';
+    const fileSize = session?.target_file_size || 5242880;
+    const fileName = session?.target_file_name || 'Direct_P2P_Share.pdf';
+
+    const result: P2pTransferProgress = {
+      transfer_id: `p2p_tx_${Date.now()}`,
+      role: isSender ? 'sender' : 'receiver',
+      file_name: fileName,
+      file_size: fileSize,
+      bytes_transferred: fileSize,
+      speed_bps: 18500000,
+      progress_percent: 100,
+      status: 'completed',
+      peer_address: peerAddress,
+      pin_code: pinCode,
+      duration_ms: 680,
+      formatted_bytes: formatBytes(fileSize),
+      formatted_speed: '18.5 MB/s',
+    };
+
+    const rawHist = localStorage.getItem('protofs_p2p_history');
+    const hist: P2pTransferProgress[] = rawHist ? JSON.parse(rawHist) : [];
+    hist.unshift(result);
+    if (hist.length > 20) hist.pop();
+    localStorage.setItem('protofs_p2p_history', JSON.stringify(hist));
+    localStorage.removeItem('protofs_p2p_session');
+
+    return result;
+  }
+
+  async cancelP2pSession(): Promise<boolean> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<boolean>>('cancel_p2p_session_command');
+        if (res.success) return true;
+      } catch (err) {
+        console.warn('Tauri cancel_p2p_session_command error:', err);
+      }
+    }
+    localStorage.removeItem('protofs_p2p_session');
+    return true;
+  }
+
 
 
   // -------------------------------------------------------------------------
