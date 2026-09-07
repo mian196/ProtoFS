@@ -839,7 +839,7 @@ export class ProtoFsApi {
     if (isTauri()) {
       try {
         const res = await invoke<TauriCommandResponse<any[]>>('get_sync_pairs_command', { driveId });
-        if (res.success && res.data && res.data.length > 0) {
+        if (res.success && Array.isArray(res.data)) {
           return res.data.map(p => ({
             id: p.id,
             local_path: p.local_path,
@@ -855,31 +855,26 @@ export class ProtoFsApi {
       }
     }
 
-    const cached = localStorage.getItem(STORAGE_KEY_SYNC_PAIRS);
-    if (cached) return JSON.parse(cached);
+    // Purge legacy storage containing hardcoded dummy pairs if present
+    const legacy = localStorage.getItem(STORAGE_KEY_SYNC_PAIRS);
+    if (legacy) {
+      localStorage.removeItem(STORAGE_KEY_SYNC_PAIRS);
+    }
 
-    const defaultPairs: SyncPair[] = [
-      {
-        id: 'sync_1',
-        local_path: 'C:\\Users\\User\\Pictures\\Camera',
-        remote_folder_id: 'f_camera',
-        drive_id: 'personal',
-        sync_mode: 'one-way',
-        status: 'Watching (Native OS API)',
-        file_count: 1420,
-      },
-      {
-        id: 'sync_2',
-        local_path: 'D:\\Projects\\ProtoFS',
-        remote_folder_id: 'f_code',
-        drive_id: 'personal',
-        sync_mode: 'two-way',
-        status: 'In Sync (SQLite cache diff)',
-        file_count: 32,
-      },
-    ];
-    localStorage.setItem(STORAGE_KEY_SYNC_PAIRS, JSON.stringify(defaultPairs));
-    return defaultPairs;
+    const driveKey = `${STORAGE_KEY_SYNC_PAIRS}_${driveId}`;
+    const cached = localStorage.getItem(driveKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((p: any) => p.id !== 'sync_1' && p.id !== 'sync_2');
+        }
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
   }
 
   async addSyncPair(pair: Omit<SyncPair, 'id' | 'status' | 'file_count'>): Promise<SyncPair> {
@@ -915,11 +910,12 @@ export class ProtoFsApi {
       file_count: 0,
     };
     pairs.push(newPair);
-    localStorage.setItem(STORAGE_KEY_SYNC_PAIRS, JSON.stringify(pairs));
+    const driveKey = `${STORAGE_KEY_SYNC_PAIRS}_${pair.drive_id}`;
+    localStorage.setItem(driveKey, JSON.stringify(pairs));
     return newPair;
   }
 
-  async removeSyncPair(id: string): Promise<void> {
+  async removeSyncPair(id: string, driveId = 'personal'): Promise<void> {
     if (isTauri()) {
       try {
         await invoke('remove_sync_pair_command', { id });
@@ -927,8 +923,9 @@ export class ProtoFsApi {
         console.warn('Tauri remove_sync_pair_command fallback:', err);
       }
     }
-    const pairs = (await this.getSyncPairs()).filter(p => p.id !== id);
-    localStorage.setItem(STORAGE_KEY_SYNC_PAIRS, JSON.stringify(pairs));
+    const pairs = (await this.getSyncPairs(driveId)).filter(p => p.id !== id);
+    const driveKey = `${STORAGE_KEY_SYNC_PAIRS}_${driveId}`;
+    localStorage.setItem(driveKey, JSON.stringify(pairs));
   }
 
   async triggerSync(id: string): Promise<void> {

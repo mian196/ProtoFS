@@ -1372,7 +1372,7 @@ class ProtoFsApp {
           isDanger: true,
         });
         if (confirmed) {
-          await this.api.removeSyncPair(id);
+          await this.api.removeSyncPair(id, this.activeDriveId);
           this.syncPairs = await this.api.getSyncPairs(this.activeDriveId);
           this.renderSyncPairsView();
         }
