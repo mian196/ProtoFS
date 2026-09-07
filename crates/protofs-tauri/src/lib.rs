@@ -5,35 +5,42 @@ use protofs_core::cache::CacheDatabase;
 use protofs_core::mtproto::{DynamicTelegramTransport, TelegramAuthClient};
 use protofs_core::sync::SyncEngine;
 use std::sync::Arc;
+use tauri::Manager;
 use tokio::sync::RwLock;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
 
-    let appdata_dir = std::env::var("APPDATA")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir())
-        .join("ProtoFS");
-    let _ = std::fs::create_dir_all(&appdata_dir);
-    let db_path = appdata_dir.join("cache.db");
-    let cache = CacheDatabase::open(&db_path)
-        .unwrap_or_else(|_| CacheDatabase::open_in_memory().expect("failed to open sqlite cache"));
-    let transport = DynamicTelegramTransport::new_mock();
-    let engine = Arc::new(SyncEngine::new(Arc::new(transport.clone()), cache.clone()));
-    let auth_client = Arc::new(TelegramAuthClient::new());
-
-    let app_state = AppState {
-        engine,
-        cache,
-        session: Arc::new(RwLock::new(None)),
-        drives: Arc::new(RwLock::new(Vec::new())),
-        auth_client,
-        transport,
-    };
-
     tauri::Builder::default()
-        .manage(app_state)
+        .setup(|app| {
+            let appdata_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+                std::env::var("APPDATA")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::env::temp_dir())
+                    .join("ProtoFS")
+            });
+            let _ = std::fs::create_dir_all(&appdata_dir);
+            let db_path = appdata_dir.join("cache.db");
+            let cache = CacheDatabase::open(&db_path).unwrap_or_else(|_| {
+                CacheDatabase::open_in_memory().expect("failed to open sqlite cache")
+            });
+            let transport = DynamicTelegramTransport::new_mock();
+            let engine = Arc::new(SyncEngine::new(Arc::new(transport.clone()), cache.clone()));
+            let auth_client = Arc::new(TelegramAuthClient::new());
+
+            let app_state = AppState {
+                engine,
+                cache,
+                session: Arc::new(RwLock::new(None)),
+                drives: Arc::new(RwLock::new(Vec::new())),
+                auth_client,
+                transport,
+            };
+
+            app.manage(app_state);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::login_send_code,
             commands::login_verify_code,

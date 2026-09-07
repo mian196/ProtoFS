@@ -8,8 +8,12 @@ repository.workspace = true
 description = "Tauri 2.0 application shell for ProtoFS Desktop and Android."
 
 [lib]
-name = "protofs_tauri"
+name = "protofs_tauri_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "protofs-tauri"
+path = "src/main.rs"
 
 [dependencies]
 protofs-core = { workspace = true }
