@@ -220,15 +220,13 @@ jobs:
         run: npm run build
 
       - name: Initialize Tauri Android Project
-        working-directory: frontend
-        run: npm run tauri -- android init --config ../crates/protofs-tauri/tauri.conf.json
+        run: ./frontend/node_modules/.bin/tauri android init
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ env.NDK_HOME }}
 
       - name: Build Android APK
-        working-directory: frontend
-        run: npm run tauri -- android build --apk --config ../crates/protofs-tauri/tauri.conf.json
+        run: ./frontend/node_modules/.bin/tauri android build --apk
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ env.NDK_HOME }}
