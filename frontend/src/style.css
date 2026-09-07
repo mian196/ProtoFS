@@ -731,7 +731,7 @@ body {
   background: var(--bg-sidebar);
 }
 
-/* Telegram Login & Onboarding Screen (PRD Section 6.1 & 6.18) */
+/* Telegram Login & Onboarding Screen */
 .login-screen {
   position: fixed;
   inset: 0;
@@ -3520,7 +3520,7 @@ body {
   color: var(--text-primary);
 }
 
-/* OS Context Menu & Shell Integration (PRD Section 6.13) */
+/* OS Context Menu & Shell Integration */
 .shell-integration-card {
   display: flex;
   flex-direction: column;
@@ -3610,7 +3610,7 @@ body {
   border-color: var(--accent-primary);
 }
 
-/* Camera Auto-Backup & Media Sync (PRD Section 6.9) */
+/* Camera Auto-Backup & Media Sync */
 .camera-backup-badge {
   display: inline-flex;
   align-items: center;
@@ -3678,7 +3678,7 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
- * Shareable Links (PRD Section 6.11)
+ * Shareable Links
  * --------------------------------------------------------------------------- */
 
 .share-modal-container {
@@ -3860,7 +3860,7 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
- * Native Virtual Drive Mount (PRD Section 6.8)
+ * Native Virtual Drive Mount
  * --------------------------------------------------------------------------- */
 
 .mount-pill-btn {
@@ -4090,7 +4090,7 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   Android WorkManager Background Sync (PRD Section 6.6)
+   Android WorkManager Background Sync
    --------------------------------------------------------------------------- */
 .workmanager-hero-card {
   background: var(--bg-surface-elevated);
@@ -4259,7 +4259,7 @@ body {
 .workmanager-badge:hover {
   background: rgba(59, 130, 246, 0.25);
 }/* ---------------------------------------------------------------------------
-   P2P Direct Sharing (PRD Section 6.11)
+   P2P Direct Sharing
    --------------------------------------------------------------------------- */
 .p2p-hero-card {
   background: var(--bg-surface-elevated);

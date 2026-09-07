@@ -58,7 +58,7 @@ class ProtoFsApp {
   }
 
   // -------------------------------------------------------------------------
-  // TELEGRAM MTPROTO ONBOARDING & LOGIN SCREEN (PRD Section 6.1 & 6.18)
+  // TELEGRAM MTPROTO ONBOARDING & LOGIN SCREEN
   // -------------------------------------------------------------------------
 
   private stopQrPolling() {
@@ -2478,7 +2478,7 @@ class ProtoFsApp {
   }
 
   // -------------------------------------------------------------------------
-  // CAMERA AUTO-BACKUP & MEDIA SYNC (PRD Section 6.9)
+  // CAMERA AUTO-BACKUP & MEDIA SYNC
   // -------------------------------------------------------------------------
 
   private async openCameraBackupModal() {
@@ -3583,7 +3583,7 @@ class ProtoFsApp {
   }
 
   // -------------------------------------------------------------------------
-  // SHAREABLE LINKS (PRD Section 6.11)
+  // SHAREABLE LINKS
   // -------------------------------------------------------------------------
 
   private async openShareModal(fileId: string) {
@@ -4506,7 +4506,7 @@ class ProtoFsApp {
   }
 
   // -------------------------------------------------------------------------
-  // ANDROID JETPACK WORKMANAGER BACKGROUND SYNC (PRD Section 6.6)
+  // ANDROID JETPACK WORKMANAGER BACKGROUND SYNC
   // -------------------------------------------------------------------------
 
   private async openWorkManagerSyncModal() {
@@ -4776,7 +4776,7 @@ class ProtoFsApp {
   }
 
   // -------------------------------------------------------------------------
-  // TAURI AUTO-UPDATER & GITHUB RELEASES CHECKER (PRD Section 6.19)
+  // TAURI AUTO-UPDATER & GITHUB RELEASES CHECKER
   // -------------------------------------------------------------------------
 
   private async checkUpdatesSilently() {
@@ -4964,7 +4964,7 @@ class ProtoFsApp {
   }
 
   // -------------------------------------------------------------------------
-  // OS CONTEXT MENU & EXTERNAL SHELL UPLOADS (PRD Section 6.13)
+  // OS CONTEXT MENU & EXTERNAL SHELL UPLOADS
   // -------------------------------------------------------------------------
 
   private async checkPendingUploads() {
@@ -5158,7 +5158,7 @@ class ProtoFsApp {
   }
 
   // -------------------------------------------------------------------------
-  // P2P DIRECT SHARING (PRD Section 6.11)
+  // P2P DIRECT SHARING
   // -------------------------------------------------------------------------
 
   private async openP2pShareModal(fileNode?: FileNode) {
@@ -5560,7 +5560,7 @@ class ProtoFsApp {
       }
     };
 
-    this.showModal('P2P Direct Sharing (PRD Section 6.11)', renderModalBody(), renderFooter(), true);
+    this.showModal('P2P Direct Sharing', renderModalBody(), renderFooter(), true);
     bindModalEvents();
   }
 }

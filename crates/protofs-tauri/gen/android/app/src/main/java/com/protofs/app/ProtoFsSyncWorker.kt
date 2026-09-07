@@ -26,7 +26,7 @@ import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 
 /**
- * ProtoFS Android Background Sync Worker (PRD Section 6.6).
+ * ProtoFS Android Background Sync Worker.
  *
  * Implements resilient background synchronization via Android Jetpack WorkManager.
  * Manages periodic sync jobs respecting system constraints:

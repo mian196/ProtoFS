@@ -174,7 +174,7 @@ impl<T> CommandResponse<T> {
 }
 
 // ---------------------------------------------------------------------------
-// Authentication & Session IPC Commands (PRD Section 6.1 & 6.18)
+// Authentication & Session IPC Commands
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
@@ -1031,7 +1031,7 @@ fn load_user_drives(app: &tauri::AppHandle, user_id: i64) -> Vec<DriveMetadata> 
 }
 
 // ---------------------------------------------------------------------------
-// Drive Management IPC Commands (PRD Section 6.2)
+// Drive Management IPC Commands
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
@@ -1234,7 +1234,7 @@ pub async fn flush_manifest_command(
 }
 
 // ---------------------------------------------------------------------------
-// VFS File & Folder Operations (PRD Section 6.3, 6.4, 6.7)
+// VFS File & Folder Operations
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
@@ -1277,7 +1277,7 @@ pub async fn upload_file_command(
 ) -> Result<CommandResponse<FileNode>, String> {
     let state = app.state::<AppState>();
 
-    // Check if a file with same name and parent_id already exists (PRD 6.10: non-destructive versioning)
+    // Check if a file with same name and parent_id already exists (non-destructive versioning)
     let existing_file_id = {
         let tree = state.engine.get_or_create_tree(&drive_id).await;
         tree.list_children(&parent_id).into_iter().find_map(|node| {
@@ -1669,7 +1669,7 @@ pub async fn trigger_sync_command(
 }
 
 // ---------------------------------------------------------------------------
-// Camera Auto-Backup & Media Sync (PRD Section 6.9)
+// Camera Auto-Backup & Media Sync
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1916,7 +1916,7 @@ pub async fn check_for_updates_command() -> Result<CommandResponse<UpdateInfo>, 
 }
 
 // ---------------------------------------------------------------------------
-// OS Context Menu & Shell Integration (PRD Section 6.13)
+// OS Context Menu & Shell Integration
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2204,7 +2204,7 @@ pub async fn open_path_in_explorer_command(path: String) -> Result<CommandRespon
 }
 
 // ---------------------------------------------------------------------------
-// Shareable Links (PRD Section 6.11)
+// Shareable Links
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
@@ -2542,7 +2542,7 @@ fn md5_hash(input: &str) -> u64 {
 }
 
 // ---------------------------------------------------------------------------
-// Native Virtual Drive Mount (PRD Section 6.8)
+// Native Virtual Drive Mount
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3147,7 +3147,7 @@ pub async fn test_saf_document_query_command(
 }
 
 // ---------------------------------------------------------------------------
-// Android Jetpack WorkManager Background Sync Integration (PRD Section 6.6)
+// Android Jetpack WorkManager Background Sync Integration
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3412,7 +3412,7 @@ pub async fn get_workmanager_history_command(
 }
 
 // ---------------------------------------------------------------------------
-// P2P Direct Sharing (PRD Section 6.11)
+// P2P Direct Sharing
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

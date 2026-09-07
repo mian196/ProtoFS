@@ -20,7 +20,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 
 /**
- * ProtoFS Android DocumentsProvider (PRD Section 6.8).
+ * ProtoFS Android DocumentsProvider.
  *
  * Integrates ProtoFS encrypted cloud drives directly into the Android Storage Access Framework (SAF).
  * Exposes virtual drives, nested folders, and zero-knowledge files directly to:

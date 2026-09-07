@@ -42,7 +42,7 @@ const STORAGE_KEY_SYNC_PAIRS = 'protofs_sync_pairs';
 
 export class ProtoFsApi {
   // -------------------------------------------------------------------------
-  // Session & Authentication (PRD Section 6.1 & 6.18)
+  // Session & Authentication
   // -------------------------------------------------------------------------
 
   async getSessionStatus(): Promise<AuthSession | null> {
@@ -308,7 +308,7 @@ export class ProtoFsApi {
   }
 
   // -------------------------------------------------------------------------
-  // Drives (PRD Section 6.2)
+  // Drives
   // -------------------------------------------------------------------------
 
   async getDrives(): Promise<DriveMetadata[]> {
@@ -846,7 +846,7 @@ export class ProtoFsApi {
   }
 
   // -------------------------------------------------------------------------
-  // Sync Pairs (PRD Section 6.6)
+  // Sync Pairs
   // -------------------------------------------------------------------------
 
   async getSyncPairs(driveId = 'personal'): Promise<SyncPair[]> {
@@ -1038,7 +1038,7 @@ export class ProtoFsApi {
   }
 
   // -------------------------------------------------------------------------
-  // OS Context Menu & Shell Integration (PRD Section 6.13)
+  // OS Context Menu & Shell Integration
   // -------------------------------------------------------------------------
 
   async getShellIntegrationStatus(): Promise<ShellIntegrationStatus> {
@@ -1111,7 +1111,7 @@ export class ProtoFsApi {
   }
 
   // -------------------------------------------------------------------------
-  // Camera Auto-Backup & Media Sync (PRD Section 6.9)
+  // Camera Auto-Backup & Media Sync
   // -------------------------------------------------------------------------
 
   async getCameraBackupConfig(driveId: string): Promise<CameraBackupConfig> {
@@ -1200,7 +1200,7 @@ export class ProtoFsApi {
   }
 
   // -------------------------------------------------------------------------
-  // Shareable Links (PRD Section 6.11)
+  // Shareable Links
   // -------------------------------------------------------------------------
 
   async generateShareLink(driveId: string, fileId: string, includeKey?: string): Promise<ShareLinkInfo | null> {
@@ -1372,7 +1372,7 @@ export class ProtoFsApi {
   }
 
   // -------------------------------------------------------------------------
-  // Native Virtual Drive Mount (PRD Section 6.8)
+  // Native Virtual Drive Mount
   // -------------------------------------------------------------------------
 
   async getVirtualDriveStatus(driveId: string): Promise<VirtualDriveStatus | null> {
@@ -1581,7 +1581,7 @@ export class ProtoFsApi {
   }
 
   // -------------------------------------------------------------------------
-  // Android Jetpack WorkManager Background Sync (PRD Section 6.6)
+  // Android Jetpack WorkManager Background Sync
   // -------------------------------------------------------------------------
 
   async getWorkManagerSyncStatus(): Promise<WorkManagerSyncStatus> {
@@ -1709,7 +1709,7 @@ export class ProtoFsApi {
   }
 
   // -------------------------------------------------------------------------
-  // P2P Direct Sharing (PRD Section 6.11)
+  // P2P Direct Sharing
   // -------------------------------------------------------------------------
 
   async getP2pStatus(): Promise<P2pStatus> {
