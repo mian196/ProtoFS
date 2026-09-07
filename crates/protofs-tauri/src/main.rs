@@ -73,6 +73,10 @@ fn main() {
             commands::get_secure_secret_command,
             commands::delete_secure_secret_command,
             commands::check_for_updates_command,
+            commands::get_shell_integration_status_command,
+            commands::set_shell_integration_command,
+            commands::get_pending_uploads_command,
+            commands::open_path_in_explorer_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs desktop application");

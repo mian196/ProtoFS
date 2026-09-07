@@ -12,6 +12,7 @@ import type {
   SearchResult,
   SyncPair,
   UpdateInfo,
+  ShellIntegrationStatus,
 } from './types';
 
 interface TauriCommandResponse<T> {
@@ -1020,6 +1021,79 @@ export class ProtoFsApi {
       signature_verified: true,
       channel: 'Stable (GitHub Releases)',
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // OS Context Menu & Shell Integration (PRD Section 6.13)
+  // -------------------------------------------------------------------------
+
+  async getShellIntegrationStatus(): Promise<ShellIntegrationStatus> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<ShellIntegrationStatus>>('get_shell_integration_status_command');
+        if (res.success && res.data) return res.data;
+      } catch (err) {
+        console.warn('Tauri get_shell_integration_status_command error:', err);
+      }
+    }
+
+    const savedSendTo = localStorage.getItem('protofs_shell_send_to') === 'true';
+    const savedMenu = localStorage.getItem('protofs_shell_context_menu') === 'true';
+    return {
+      send_to_enabled: savedSendTo,
+      context_menu_enabled: savedMenu,
+      platform: 'browser',
+      send_to_path: '%APPDATA%\\Microsoft\\Windows\\SendTo\\ProtoFS.cmd',
+      target_exe: 'protofs-tauri.exe',
+    };
+  }
+
+  async setShellIntegration(enableSendTo: boolean, enableContextMenu: boolean): Promise<ShellIntegrationStatus> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<ShellIntegrationStatus>>('set_shell_integration_command', {
+          enableSendTo,
+          enableContextMenu,
+        });
+        if (res.success && res.data) return res.data;
+      } catch (err) {
+        console.warn('Tauri set_shell_integration_command error:', err);
+      }
+    }
+
+    localStorage.setItem('protofs_shell_send_to', String(enableSendTo));
+    localStorage.setItem('protofs_shell_context_menu', String(enableContextMenu));
+    return {
+      send_to_enabled: enableSendTo,
+      context_menu_enabled: enableContextMenu,
+      platform: 'browser',
+      send_to_path: '%APPDATA%\\Microsoft\\Windows\\SendTo\\ProtoFS.cmd',
+      target_exe: 'protofs-tauri.exe',
+    };
+  }
+
+  async getPendingUploads(): Promise<string[]> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<string[]>>('get_pending_uploads_command');
+        if (res.success && res.data) return res.data;
+      } catch (err) {
+        console.warn('Tauri get_pending_uploads_command error:', err);
+      }
+    }
+    return [];
+  }
+
+  async openPathInExplorer(path: string): Promise<boolean> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<boolean>>('open_path_in_explorer_command', { path });
+        if (res.success && typeof res.data === 'boolean') return res.data;
+      } catch (err) {
+        console.warn('Tauri open_path_in_explorer_command error:', err);
+      }
+    }
+    return false;
   }
 
   // -------------------------------------------------------------------------

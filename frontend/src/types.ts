@@ -135,3 +135,11 @@ export interface UpdateInfo {
   channel: string;
 }
 
+export interface ShellIntegrationStatus {
+  send_to_enabled: boolean;
+  context_menu_enabled: boolean;
+  platform: string;
+  send_to_path: string;
+  target_exe: string;
+}
+
