@@ -224,17 +224,30 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ env.NDK_HOME }}
 
-      - name: Patch Android build.gradle.kts - ensure debug build type exists
+      - name: Patch Android build.gradle.kts (Robust)
         run: |
-          GRADLE="crates/protofs-tauri/gen/android/app/build.gradle.kts"
-          echo "--- Checking $GRADLE ---"
-          cat "$GRADLE" || echo "File not found"
-          if [ -f "$GRADLE" ] && ! grep -q 'getByName("debug")' "$GRADLE"; then
-            echo "Patching: adding debug build type to build.gradle.kts"
-            sed -i 's/buildTypes {/buildTypes {\n        getByName("debug") {\n            manifestPlaceholders["usesCleartextTraffic"] = "true"\n            isDebuggable = true\n            isJniDebuggable = true\n            isMinifyEnabled = false\n        }/' "$GRADLE"
-          else
-            echo "debug build type already present - no patch needed"
-          fi
+          python3 -c '
+          import os
+          gradle_path = "crates/protofs-tauri/gen/android/app/build.gradle.kts"
+          if os.path.exists(gradle_path):
+              with open(gradle_path, "r") as f:
+                  content = f.read()
+              if "getByName(\"debug\")" not in content:
+                  print("Injecting debug build type...")
+                  # Find the buildTypes block
+                  if "buildTypes {" in content:
+                      content = content.replace("buildTypes {", "buildTypes {\n        getByName(\"debug\") {\n            isDebuggable = true\n            isMinifyEnabled = false\n        }")
+                  elif "android {" in content:
+                      # If no buildTypes, inject it inside android block
+                      content = content.replace("android {", "android {\n    buildTypes {\n        getByName(\"debug\") {\n            isDebuggable = true\n            isMinifyEnabled = false\n        }\n    }")
+                  with open(gradle_path, "w") as f:
+                      f.write(content)
+                  print("Patch applied successfully.")
+              else:
+                  print("Debug build type already present.")
+          else:
+              print("File not found: " + gradle_path)
+          '
 
       - name: Build Android Debug APK
         run: ./frontend/node_modules/.bin/tauri android build --debug --apk
