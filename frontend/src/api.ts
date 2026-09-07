@@ -8,6 +8,7 @@ interface TauriCommandResponse<T> {
 }
 
 const STORAGE_KEY_SESSION = 'protofs_session';
+const STORAGE_KEY_ACCOUNTS = 'protofs_accounts';
 const STORAGE_KEY_DRIVES = 'protofs_drives';
 const STORAGE_KEY_FOLDERS = 'protofs_folders';
 const STORAGE_KEY_FILES = 'protofs_files';
@@ -113,6 +114,80 @@ export class ProtoFsApi {
     localStorage.removeItem(STORAGE_KEY_DRIVES);
     localStorage.removeItem(STORAGE_KEY_FOLDERS);
     localStorage.removeItem(STORAGE_KEY_FILES);
+  }
+
+  // Multi-Account Management
+  async listAccounts(): Promise<AuthSession[]> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<AuthSession[]>>('list_accounts_command');
+        if (res.success && res.data) {
+          localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(res.data));
+          return res.data;
+        }
+      } catch (err) {
+        console.warn('Tauri list_accounts_command error:', err);
+      }
+    }
+    const cached = localStorage.getItem(STORAGE_KEY_ACCOUNTS);
+    if (cached) return JSON.parse(cached);
+    const active = await this.getSessionStatus();
+    return active ? [active] : [];
+  }
+
+  async switchAccount(userId: number): Promise<AuthSession> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<AuthSession>>('switch_account_command', {
+          userId,
+        });
+        if (res.success && res.data) {
+          localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(res.data));
+          return res.data;
+        }
+        throw new Error(res.error || 'Failed to switch account');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    const accounts = await this.listAccounts();
+    const target = accounts.find(a => a.user_id === userId);
+    if (!target) throw new Error('Account not found');
+    localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(target));
+    return target;
+  }
+
+  async removeAccount(userId: number): Promise<AuthSession | null> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<AuthSession | null>>('remove_account_command', {
+          userId,
+        });
+        if (res.success) {
+          if (res.data) {
+            localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(res.data));
+          } else {
+            localStorage.removeItem(STORAGE_KEY_SESSION);
+          }
+          return res.data || null;
+        }
+        throw new Error(res.error || 'Failed to remove account');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    let accounts = await this.listAccounts();
+    accounts = accounts.filter(a => a.user_id !== userId);
+    localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(accounts));
+    const next = accounts[0] || null;
+    if (next) {
+      localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(next));
+    } else {
+      localStorage.removeItem(STORAGE_KEY_SESSION);
+    }
+    return next;
   }
 
   // -------------------------------------------------------------------------

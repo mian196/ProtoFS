@@ -19,6 +19,8 @@ class ProtoFsApp {
   private folders: FolderNode[] = [];
   private files: FileNode[] = [];
   private syncPairs: SyncPair[] = [];
+  private accounts: AuthSession[] = [];
+  private isAddingAccount = false;
 
   // Login flow state
   private loginStep: 'credentials' | 'code' = 'credentials';
@@ -57,6 +59,16 @@ class ProtoFsApp {
     appEl.innerHTML = `
       <div class="login-screen">
         <div class="login-card">
+          ${
+            this.isAddingAccount && this.session
+              ? `
+            <button type="button" class="btn-cancel-add-account" id="btnCancelAddAccount">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+              <span>Cancel and return to ${escapeHtml(this.session.first_name || 'Workspace')}</span>
+            </button>
+          `
+              : ''
+          }
           <div class="login-brand">
             <div class="login-logo">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -181,6 +193,15 @@ class ProtoFsApp {
       });
     }
 
+    const btnCancelAddAccount = document.getElementById('btnCancelAddAccount');
+    if (btnCancelAddAccount) {
+      btnCancelAddAccount.addEventListener('click', async () => {
+        this.isAddingAccount = false;
+        this.loginStep = 'credentials';
+        await this.initWorkspace();
+      });
+    }
+
     const btnBackToPhone = document.getElementById('btnBackToPhone');
     if (btnBackToPhone) {
       btnBackToPhone.addEventListener('click', () => {
@@ -205,6 +226,7 @@ class ProtoFsApp {
             twoFaEl ? twoFaEl.value.trim() : undefined
           );
           this.session = session;
+          this.isAddingAccount = false;
           if (!session.is_demo) {
             localStorage.removeItem('protofs_folders');
             localStorage.removeItem('protofs_files');
@@ -224,6 +246,7 @@ class ProtoFsApp {
   // -------------------------------------------------------------------------
 
   private async initWorkspace() {
+    this.accounts = await this.api.listAccounts();
     this.renderAppShell();
     this.bindEvents();
     await this.loadWorkspaceData();
@@ -288,6 +311,50 @@ class ProtoFsApp {
                 <span class="account-user-name">${escapeHtml(this.session?.first_name || 'ProtoFS User')}</span>
                 <span class="account-user-phone">${escapeHtml(userName)}</span>
               </div>
+
+              <!-- Multi-Account Section -->
+              <div class="account-section-heading">
+                <span>Accounts (${this.accounts.length})</span>
+              </div>
+              <div class="account-list" id="accountListContainer">
+                ${this.accounts
+                  .map(acc => {
+                    const isCurrent = acc.user_id === this.session?.user_id;
+                    const initial = acc.first_name ? acc.first_name.slice(0, 2).toUpperCase() : 'TG';
+                    const handle = acc.username ? `@${acc.username}` : acc.phone;
+                    return `
+                      <div class="account-item ${isCurrent ? 'active' : ''}" data-account-user-id="${acc.user_id}">
+                        <div class="account-mini-avatar">${initial}</div>
+                        <div class="account-info">
+                          <span class="account-item-name">${escapeHtml(acc.first_name || 'Telegram User')}</span>
+                          <span class="account-item-phone">${escapeHtml(handle)}</span>
+                        </div>
+                        ${
+                          isCurrent
+                            ? `
+                          <div class="account-check-badge" title="Active Account">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                          </div>
+                        `
+                            : `
+                          <button class="btn-remove-account" data-remove-user-id="${acc.user_id}" title="Remove Account">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          </button>
+                        `
+                        }
+                      </div>
+                    `;
+                  })
+                  .join('')}
+              </div>
+
+              <button class="account-menu-item" id="btnAddAccount">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>Add Telegram Account</span>
+              </button>
+
+              <div class="account-menu-divider"></div>
+
               <button class="account-menu-item" id="btnAccountSettings">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                 <span>Encryption Keys & Security</span>
@@ -298,7 +365,7 @@ class ProtoFsApp {
               </button>
               <button class="account-menu-item danger" id="btnLogout">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                <span>Log Out / Disconnect</span>
+                <span>Log Out Current Account</span>
               </button>
             </div>
           </div>
@@ -1228,12 +1295,93 @@ class ProtoFsApp {
       document.addEventListener('click', () => accountDropdown.classList.add('hidden'));
     }
 
-    // Account Logout button
-    document.getElementById('btnLogout')?.addEventListener('click', async () => {
-      await this.api.logout();
-      this.session = null;
+    // Multi-Account switching
+    document.querySelectorAll('.account-item[data-account-user-id]').forEach(item => {
+      item.addEventListener('click', async e => {
+        if ((e.target as HTMLElement).closest('.btn-remove-account')) {
+          return;
+        }
+        const uidStr = (item as HTMLElement).dataset.accountUserId;
+        if (!uidStr) return;
+        const uid = Number(uidStr);
+        if (uid === this.session?.user_id) {
+          accountDropdown?.classList.add('hidden');
+          return;
+        }
+        try {
+          const newSession = await this.api.switchAccount(uid);
+          this.session = newSession;
+          this.activeDriveId = newSession.active_drive_id || (newSession.is_demo ? 'personal' : `drive_${newSession.user_id}`);
+          this.currentFolderId = 'root';
+          this.activeFilter = null;
+          await this.initWorkspace();
+        } catch (err: any) {
+          alert(`Failed to switch account: ${err.message || err}`);
+        }
+      });
+    });
+
+    // Remove account button
+    document.querySelectorAll('.btn-remove-account[data-remove-user-id]').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
+        const uidStr = (btn as HTMLElement).dataset.removeUserId;
+        if (!uidStr) return;
+        const uid = Number(uidStr);
+        if (!confirm('Disconnect and remove this Telegram account from ProtoFS?')) {
+          return;
+        }
+        try {
+          const nextSession = await this.api.removeAccount(uid);
+          if (nextSession) {
+            this.session = nextSession;
+            this.activeDriveId = nextSession.active_drive_id || (nextSession.is_demo ? 'personal' : `drive_${nextSession.user_id}`);
+            this.currentFolderId = 'root';
+            this.activeFilter = null;
+            await this.initWorkspace();
+          } else {
+            this.session = null;
+            this.loginStep = 'credentials';
+            this.renderLoginScreen();
+          }
+        } catch (err: any) {
+          alert(`Failed to remove account: ${err.message || err}`);
+        }
+      });
+    });
+
+    // Add Telegram Account
+    document.getElementById('btnAddAccount')?.addEventListener('click', () => {
+      this.isAddingAccount = true;
       this.loginStep = 'credentials';
       this.renderLoginScreen();
+    });
+
+    // Account Logout button (disconnects current account and switches to another if available)
+    document.getElementById('btnLogout')?.addEventListener('click', async () => {
+      if (!confirm('Log out and disconnect your current Telegram account?')) {
+        return;
+      }
+      try {
+        if (this.session) {
+          const nextSession = await this.api.removeAccount(this.session.user_id);
+          if (nextSession) {
+            this.session = nextSession;
+            this.activeDriveId = nextSession.active_drive_id || (nextSession.is_demo ? 'personal' : `drive_${nextSession.user_id}`);
+            this.currentFolderId = 'root';
+            this.activeFilter = null;
+            await this.initWorkspace();
+            return;
+          }
+        } else {
+          await this.api.logout();
+        }
+        this.session = null;
+        this.loginStep = 'credentials';
+        this.renderLoginScreen();
+      } catch (err: any) {
+        alert(`Logout error: ${err.message || err}`);
+      }
     });
 
     // Account Security & Settings

@@ -23,6 +23,12 @@ pub struct AuthSession {
     pub is_demo: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AccountRegistry {
+    pub active_user_id: Option<i64>,
+    pub accounts: Vec<AuthSession>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub engine: Arc<SyncEngine<DynamicTelegramTransport>>,
@@ -145,6 +151,19 @@ pub async fn login_verify_code(
             is_demo: true,
         };
 
+        let mut registry = load_account_registry(&app);
+        if let Some(pos) = registry
+            .accounts
+            .iter()
+            .position(|a| a.user_id == session.user_id)
+        {
+            registry.accounts[pos] = session.clone();
+        } else {
+            registry.accounts.push(session.clone());
+        }
+        registry.active_user_id = Some(session.user_id);
+        save_account_registry(&app, &registry);
+
         let mut lock = state.session.write().await;
         *lock = Some(session.clone());
         let mut drives_lock = state.drives.write().await;
@@ -181,6 +200,21 @@ pub async fn login_verify_code(
         is_demo: false,
     };
 
+    save_real_telegram_session_for_user(&app, tg_user.id, &session_bytes);
+
+    let mut registry = load_account_registry(&app);
+    if let Some(pos) = registry
+        .accounts
+        .iter()
+        .position(|a| a.user_id == session.user_id)
+    {
+        registry.accounts[pos] = session.clone();
+    } else {
+        registry.accounts.push(session.clone());
+    }
+    registry.active_user_id = Some(session.user_id);
+    save_account_registry(&app, &registry);
+
     // Load or initialize user's real drives
     let mut user_drives = load_user_drives(&app, tg_user.id);
     if user_drives.is_empty() {
@@ -204,9 +238,38 @@ pub async fn login_verify_code(
     *lock = Some(session.clone());
 
     save_auth_session(&app, &session);
-    save_real_telegram_session(&app, &session_bytes);
 
     Ok(CommandResponse::ok(session))
+}
+
+fn get_accounts_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    let base_dir = if let Ok(dir) = app.path().app_data_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir)
+    } else if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::PathBuf::from(appdata).join("ProtoFS");
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir)
+    } else {
+        None
+    };
+
+    base_dir.map(|d| d.join("accounts.enc"))
+}
+
+fn get_user_session_path(app: &tauri::AppHandle, user_id: i64) -> Option<std::path::PathBuf> {
+    let base_dir = if let Ok(dir) = app.path().app_data_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir)
+    } else if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::PathBuf::from(appdata).join("ProtoFS");
+        let _ = std::fs::create_dir_all(&dir);
+        Some(dir)
+    } else {
+        None
+    };
+
+    base_dir.map(|d| d.join(format!("telegram_session_{}.enc", user_id)))
 }
 
 fn get_session_paths(
@@ -260,12 +323,81 @@ fn save_auth_session(app: &tauri::AppHandle, session: &AuthSession) {
     }
 }
 
-fn save_real_telegram_session(app: &tauri::AppHandle, session_bytes: &[u8]) {
+fn save_real_telegram_session_for_user(app: &tauri::AppHandle, user_id: i64, session_bytes: &[u8]) {
+    if let Some(path) = get_user_session_path(app, user_id) {
+        if let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes) {
+            let _ = std::fs::write(path, encrypted);
+        }
+    }
+    // Also save to legacy path for backward compatibility
     if let Some(path) = get_real_session_path(app) {
         if let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes) {
             let _ = std::fs::write(path, encrypted);
         }
     }
+}
+
+fn load_real_telegram_session_for_user(app: &tauri::AppHandle, user_id: i64) -> Option<Vec<u8>> {
+    if let Some(path) = get_user_session_path(app, user_id) {
+        if path.exists() {
+            if let Ok(encrypted_bytes) = std::fs::read(&path) {
+                if let Ok(decrypted) = protofs_core::crypto::unprotect_secret(&encrypted_bytes) {
+                    return Some(decrypted);
+                }
+            }
+        }
+    }
+    load_real_telegram_session(app)
+}
+
+fn save_account_registry(app: &tauri::AppHandle, registry: &AccountRegistry) {
+    if let Some(path) = get_accounts_path(app) {
+        if let Ok(json) = serde_json::to_string(registry) {
+            if let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes()) {
+                let _ = std::fs::write(path, encrypted);
+            }
+        }
+    }
+}
+
+fn load_account_registry(app: &tauri::AppHandle) -> AccountRegistry {
+    if let Some(path) = get_accounts_path(app) {
+        if path.exists() {
+            if let Ok(encrypted_bytes) = std::fs::read(&path) {
+                if let Ok(decrypted_bytes) =
+                    protofs_core::crypto::unprotect_secret(&encrypted_bytes)
+                {
+                    if let Ok(registry) =
+                        serde_json::from_slice::<AccountRegistry>(&decrypted_bytes)
+                    {
+                        return registry;
+                    }
+                }
+            }
+        }
+    }
+
+    // Migration from legacy single-session storage
+    if let Some(legacy_session) = load_auth_session(app) {
+        let user_id = legacy_session.user_id;
+        if let (Some(legacy_tg), Some(new_tg)) = (
+            get_real_session_path(app),
+            get_user_session_path(app, user_id),
+        ) {
+            if legacy_tg.exists() && !new_tg.exists() {
+                let _ = std::fs::copy(&legacy_tg, &new_tg);
+            }
+        }
+
+        let registry = AccountRegistry {
+            active_user_id: Some(user_id),
+            accounts: vec![legacy_session],
+        };
+        save_account_registry(app, &registry);
+        return registry;
+    }
+
+    AccountRegistry::default()
 }
 
 fn load_auth_session(app: &tauri::AppHandle) -> Option<AuthSession> {
@@ -316,31 +448,41 @@ pub async fn get_session_status(
     let state = app.state::<AppState>();
     let mut lock = state.session.write().await;
 
-    // If in-memory state is empty, restore hardware-encrypted session from disk
+    // If in-memory state is empty, restore active account from registry
     if lock.is_none() {
-        if let Some(session) = load_auth_session(&app) {
-            // Attempt to reconnect to real Telegram MTProto if session exists
-            if let Some(session_bytes) = load_real_telegram_session(&app) {
-                if let Ok(api_id_int) = session.api_id.trim().parse::<i32>() {
-                    if let Ok(real) = TelegramAuthClient::reconnect_from_session(
-                        api_id_int,
-                        session.api_hash.trim(),
-                        &session_bytes,
-                    )
-                    .await
+        let registry = load_account_registry(&app);
+        if let Some(active_id) = registry.active_user_id {
+            if let Some(account) = registry
+                .accounts
+                .iter()
+                .find(|a| a.user_id == active_id)
+                .cloned()
+            {
+                if account.is_demo {
+                    state.transport.switch_to_mock().await;
+                    let mut drives_lock = state.drives.write().await;
+                    *drives_lock = get_demo_drives();
+                } else {
+                    if let Some(session_bytes) =
+                        load_real_telegram_session_for_user(&app, active_id)
                     {
-                        state.transport.switch_to_real(real).await;
+                        if let Ok(api_id_int) = account.api_id.trim().parse::<i32>() {
+                            if let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                                api_id_int,
+                                account.api_hash.trim(),
+                                &session_bytes,
+                            )
+                            .await
+                            {
+                                state.transport.switch_to_real(real).await;
+                            }
+                        }
                     }
+                    let mut drives_lock = state.drives.write().await;
+                    *drives_lock = load_user_drives(&app, account.user_id);
                 }
+                *lock = Some(account);
             }
-            if session.is_demo {
-                let mut drives_lock = state.drives.write().await;
-                *drives_lock = get_demo_drives();
-            } else {
-                let mut drives_lock = state.drives.write().await;
-                *drives_lock = load_user_drives(&app, session.user_id);
-            }
-            *lock = Some(session);
         }
     }
 
@@ -348,29 +490,160 @@ pub async fn get_session_status(
 }
 
 #[tauri::command]
-pub async fn logout_command(app: tauri::AppHandle) -> Result<CommandResponse<()>, String> {
+pub async fn list_accounts_command(
+    app: tauri::AppHandle,
+) -> Result<CommandResponse<Vec<AuthSession>>, String> {
+    let registry = load_account_registry(&app);
+    Ok(CommandResponse::ok(registry.accounts))
+}
+
+#[tauri::command]
+pub async fn switch_account_command(
+    app: tauri::AppHandle,
+    user_id: i64,
+) -> Result<CommandResponse<AuthSession>, String> {
     let state = app.state::<AppState>();
-    let mut lock = state.session.write().await;
-    *lock = None;
+    let mut registry = load_account_registry(&app);
 
-    let mut drives_lock = state.drives.write().await;
-    drives_lock.clear();
+    let target_account = registry
+        .accounts
+        .iter()
+        .find(|a| a.user_id == user_id)
+        .cloned()
+        .ok_or_else(|| "Account not found in registered accounts".to_string())?;
 
-    state.transport.switch_to_mock().await;
+    registry.active_user_id = Some(user_id);
+    save_account_registry(&app, &registry);
 
-    if let (Some(enc_path), Some(legacy_path)) = get_session_paths(&app) {
-        if enc_path.exists() {
-            let _ = std::fs::remove_file(enc_path);
+    if target_account.is_demo {
+        state.transport.switch_to_mock().await;
+        let mut drives_lock = state.drives.write().await;
+        *drives_lock = get_demo_drives();
+    } else {
+        if let Some(session_bytes) = load_real_telegram_session_for_user(&app, user_id) {
+            if let Ok(api_id_int) = target_account.api_id.trim().parse::<i32>() {
+                if let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                    api_id_int,
+                    target_account.api_hash.trim(),
+                    &session_bytes,
+                )
+                .await
+                {
+                    state.transport.switch_to_real(real).await;
+                }
+            }
         }
-        if legacy_path.exists() {
-            let _ = std::fs::remove_file(legacy_path);
-        }
+        let mut drives_lock = state.drives.write().await;
+        *drives_lock = load_user_drives(&app, user_id);
     }
 
-    if let Some(path) = get_real_session_path(&app) {
+    let mut lock = state.session.write().await;
+    *lock = Some(target_account.clone());
+    save_auth_session(&app, &target_account);
+
+    Ok(CommandResponse::ok(target_account))
+}
+
+#[tauri::command]
+pub async fn remove_account_command(
+    app: tauri::AppHandle,
+    user_id: i64,
+) -> Result<CommandResponse<Option<AuthSession>>, String> {
+    let state = app.state::<AppState>();
+    let mut registry = load_account_registry(&app);
+
+    registry.accounts.retain(|a| a.user_id != user_id);
+
+    // Clean up per-user storage files
+    if let Some(path) = get_user_session_path(&app, user_id) {
         if path.exists() {
             let _ = std::fs::remove_file(path);
         }
+    }
+    if let Some(path) = get_drives_file_path(&app, user_id) {
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    let was_active = registry.active_user_id == Some(user_id);
+    let next_session = if was_active {
+        if let Some(next_acc) = registry.accounts.first().cloned() {
+            registry.active_user_id = Some(next_acc.user_id);
+            save_account_registry(&app, &registry);
+
+            if next_acc.is_demo {
+                state.transport.switch_to_mock().await;
+                let mut drives_lock = state.drives.write().await;
+                *drives_lock = get_demo_drives();
+            } else {
+                if let Some(session_bytes) =
+                    load_real_telegram_session_for_user(&app, next_acc.user_id)
+                {
+                    if let Ok(api_id_int) = next_acc.api_id.trim().parse::<i32>() {
+                        if let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                            api_id_int,
+                            next_acc.api_hash.trim(),
+                            &session_bytes,
+                        )
+                        .await
+                        {
+                            state.transport.switch_to_real(real).await;
+                        }
+                    }
+                }
+                let mut drives_lock = state.drives.write().await;
+                *drives_lock = load_user_drives(&app, next_acc.user_id);
+            }
+
+            let mut lock = state.session.write().await;
+            *lock = Some(next_acc.clone());
+            save_auth_session(&app, &next_acc);
+            Some(next_acc)
+        } else {
+            registry.active_user_id = None;
+            save_account_registry(&app, &registry);
+
+            let mut lock = state.session.write().await;
+            *lock = None;
+            let mut drives_lock = state.drives.write().await;
+            drives_lock.clear();
+            state.transport.switch_to_mock().await;
+
+            if let (Some(enc_path), Some(legacy_path)) = get_session_paths(&app) {
+                if enc_path.exists() {
+                    let _ = std::fs::remove_file(enc_path);
+                }
+                if legacy_path.exists() {
+                    let _ = std::fs::remove_file(legacy_path);
+                }
+            }
+            None
+        }
+    } else {
+        save_account_registry(&app, &registry);
+        state.session.read().await.clone()
+    };
+
+    Ok(CommandResponse::ok(next_session))
+}
+
+#[tauri::command]
+pub async fn logout_command(app: tauri::AppHandle) -> Result<CommandResponse<()>, String> {
+    let state = app.state::<AppState>();
+    let current_user_id = {
+        let lock = state.session.read().await;
+        lock.as_ref().map(|s| s.user_id)
+    };
+
+    if let Some(uid) = current_user_id {
+        let _ = remove_account_command(app, uid).await;
+    } else {
+        let mut lock = state.session.write().await;
+        *lock = None;
+        let mut drives_lock = state.drives.write().await;
+        drives_lock.clear();
+        state.transport.switch_to_mock().await;
     }
 
     Ok(CommandResponse::ok(()))
