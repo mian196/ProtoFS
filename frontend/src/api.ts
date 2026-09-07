@@ -1018,18 +1018,20 @@ export class ProtoFsApi {
     }
 
     return {
-      current_version: '0.2.0',
-      latest_version: '0.2.1',
-      update_available: true,
-      release_notes: `### ProtoFS v0.2.1 Release Highlights:
+      current_version: '0.3.0',
+      latest_version: '0.3.0',
+      update_available: false,
+      release_notes: `### ProtoFS v0.3.0 Release Highlights:
 
-- In-App Office Document Previewers: Full interactive support for docx, xlsx, pptx, and high-fidelity audio streams.
+- P2P Direct Sharing: Ephemeral direct file transfers between local network peers via pairing PIN and QR codes.
+- Native Virtual Drive Mount: Mount active drive directly to P:\\ on Windows with live Explorer integration.
+- Android DocumentsProvider & WorkManager: Native SAF document provider and periodic background sync.
+- In-App Office Document Previewers: Full interactive support for docx, xlsx, pptx, and audio streams.
 - Full Drive Local Export: One-click directory tree reconstruction to disk with root manifest portability.
 - File Version History: Non-destructive overwrite tracking with up to 10 versions and one-click restore.
-- Multi-Account Support: Instant switching between multiple linked Telegram accounts.
 - Zero-Knowledge Stream Encryption: Hardened 64KB AES-256-GCM chunk verification with Argon2id.`,
       release_date: '2026-09-07',
-      download_url: 'https://github.com/mian196/ProtoFS/releases/tag/v0.2.1',
+      download_url: 'https://github.com/mian196/ProtoFS/releases/tag/v0.3.0',
       signature_verified: true,
       channel: 'Stable (GitHub Releases)',
     };
