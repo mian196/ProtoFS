@@ -333,7 +333,11 @@ class ProtoFsApp {
               await this.initWorkspace();
             }
           } catch (err: any) {
-            alert(`Demo login error: ${err.message}`);
+            await this.showAlert({
+              title: 'Demo Mode Failed',
+              message: `Demo login error: ${err.message || err}`,
+              type: 'error',
+            });
           }
         }
       });
@@ -356,7 +360,11 @@ class ProtoFsApp {
           this.loginStep = 'code';
           this.renderLoginScreen();
         } catch (err: any) {
-          alert(`Login error: ${err.message}`);
+          await this.showAlert({
+            title: 'Authentication Error',
+            message: `Login error: ${err.message || err}`,
+            type: 'error',
+          });
         }
       });
     }
@@ -420,7 +428,11 @@ class ProtoFsApp {
             await this.initWorkspace();
           }
         } catch (err: any) {
-          alert(`Verification error: ${err.message}`);
+          await this.showAlert({
+            title: 'Verification Failed',
+            message: `Verification error: ${err.message || err}`,
+            type: 'error',
+          });
         }
       });
     }
@@ -451,7 +463,11 @@ class ProtoFsApp {
             await this.initWorkspace();
           }
         } catch (err: any) {
-          alert(`2FA verification error: ${err.message}`);
+          await this.showAlert({
+            title: '2FA Verification Failed',
+            message: `2FA verification error: ${err.message || err}`,
+            type: 'error',
+          });
         }
       });
     }
@@ -1209,7 +1225,14 @@ class ProtoFsApp {
         btn.addEventListener('click', async e => {
           e.stopPropagation();
           const id = (btn as HTMLElement).dataset.id;
-          if (id && confirm('Permanently delete this message from Telegram?')) {
+          if (!id) return;
+          const confirmed = await this.showConfirm({
+            title: 'Delete Permanently',
+            message: 'Permanently delete this message from Telegram? This action cannot be undone.',
+            confirmText: 'Delete Permanently',
+            isDanger: true,
+          });
+          if (confirmed) {
             await this.api.deleteNode(this.activeDriveId, id, true);
             await this.loadWorkspaceData();
           }
@@ -1341,7 +1364,14 @@ class ProtoFsApp {
     grid.querySelectorAll('.btn-del-sync').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = (btn as HTMLElement).dataset.syncId;
-        if (id && confirm('Remove this Sync Pair?')) {
+        if (!id) return;
+        const confirmed = await this.showConfirm({
+          title: 'Remove Sync Pair',
+          message: 'Are you sure you want to remove this sync pair? Local and remote files will remain intact.',
+          confirmText: 'Remove Pair',
+          isDanger: true,
+        });
+        if (confirmed) {
           await this.api.removeSyncPair(id);
           this.syncPairs = await this.api.getSyncPairs(this.activeDriveId);
           this.renderSyncPairsView();
@@ -1634,7 +1664,11 @@ class ProtoFsApp {
           this.activeFilter = null;
           await this.initWorkspace();
         } catch (err: any) {
-          alert(`Failed to switch account: ${err.message || err}`);
+          await this.showAlert({
+            title: 'Account Switch Failed',
+            message: `Failed to switch account: ${err.message || err}`,
+            type: 'error',
+          });
         }
       });
     });
@@ -1646,7 +1680,13 @@ class ProtoFsApp {
         const uidStr = (btn as HTMLElement).dataset.removeUserId;
         if (!uidStr) return;
         const uid = Number(uidStr);
-        if (!confirm('Disconnect and remove this Telegram account from ProtoFS?')) {
+        const confirmed = await this.showConfirm({
+          title: 'Disconnect Telegram Account',
+          message: 'Disconnect and remove this Telegram account from ProtoFS? Your remote Telegram files will remain safe.',
+          confirmText: 'Disconnect',
+          isDanger: true,
+        });
+        if (!confirmed) {
           return;
         }
         try {
@@ -1663,7 +1703,11 @@ class ProtoFsApp {
             this.renderLoginScreen();
           }
         } catch (err: any) {
-          alert(`Failed to remove account: ${err.message || err}`);
+          await this.showAlert({
+            title: 'Account Removal Failed',
+            message: `Failed to remove account: ${err.message || err}`,
+            type: 'error',
+          });
         }
       });
     });
@@ -1677,7 +1721,13 @@ class ProtoFsApp {
 
     // Account Logout button (disconnects current account and switches to another if available)
     document.getElementById('btnLogout')?.addEventListener('click', async () => {
-      if (!confirm('Log out and disconnect your current Telegram account?')) {
+      const confirmed = await this.showConfirm({
+        title: 'Log Out Account',
+        message: 'Log out and disconnect your current Telegram account?',
+        confirmText: 'Log Out',
+        isDanger: true,
+      });
+      if (!confirmed) {
         return;
       }
       try {
@@ -1698,7 +1748,11 @@ class ProtoFsApp {
         this.loginStep = 'credentials';
         this.renderLoginScreen();
       } catch (err: any) {
-        alert(`Logout error: ${err.message || err}`);
+        await this.showAlert({
+          title: 'Logout Error',
+          message: `Logout error: ${err.message || err}`,
+          type: 'error',
+        });
       }
     });
 
@@ -1910,7 +1964,11 @@ class ProtoFsApp {
                 this.closeModal();
                 await this.loadWorkspaceData();
               } catch (err: any) {
-                alert(`Failed to adopt channel: ${err.message || err}`);
+                await this.showAlert({
+                  title: 'Channel Adoption Failed',
+                  message: `Failed to adopt channel: ${err.message || err}`,
+                  type: 'error',
+                });
                 (btn as HTMLButtonElement).disabled = false;
                 (btn as HTMLButtonElement).innerText = 'Adopt as Drive';
               }
@@ -2330,7 +2388,11 @@ class ProtoFsApp {
               );
               document.getElementById('btnRestoredDone')?.addEventListener('click', () => this.closeModal());
             } catch (err: any) {
-              alert(`Failed to restore version: ${err.message || err}`);
+              await this.showAlert({
+                title: 'Version Restoration Failed',
+                message: `Failed to restore version: ${err.message || err}`,
+                type: 'error',
+              });
               (btn as HTMLButtonElement).disabled = false;
               (btn as HTMLButtonElement).textContent = `Restore v${targetVer}`;
             }
@@ -2420,7 +2482,11 @@ class ProtoFsApp {
         );
         document.getElementById('btnExportDone')?.addEventListener('click', () => this.closeModal());
       } catch (err: any) {
-        alert(`Export failed: ${err.message || err}`);
+        await this.showAlert({
+          title: 'Drive Export Failed',
+          message: `Export failed: ${err.message || err}`,
+          type: 'error',
+        });
         if (btnStart) {
           btnStart.disabled = false;
           btnStart.textContent = 'Start Export';
@@ -2432,7 +2498,13 @@ class ProtoFsApp {
   }
 
   private async handleEmptyTrash() {
-    if (confirm('Permanently delete all trashed files from Telegram? This action cannot be undone.')) {
+    const confirmed = await this.showConfirm({
+      title: 'Empty Trash',
+      message: 'Permanently delete all trashed files from Telegram? This action cannot be undone.',
+      confirmText: 'Empty Trash',
+      isDanger: true,
+    });
+    if (confirmed) {
       await this.api.emptyTrash(this.activeDriveId);
       await this.loadWorkspaceData();
     }
@@ -2468,6 +2540,166 @@ class ProtoFsApp {
   private closeModal() {
     const overlay = document.getElementById('dynamicModalOverlay');
     if (overlay) overlay.classList.add('hidden');
+  }
+
+  // -------------------------------------------------------------------------
+  // NATIVE IN-APP CONFIRMATION & ALERT POPUP SYSTEM
+  // -------------------------------------------------------------------------
+
+  private ensureDialogInDom(): HTMLElement {
+    let overlay = document.getElementById('customDialogOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.className = 'dialog-overlay hidden';
+      overlay.id = 'customDialogOverlay';
+      overlay.innerHTML = `
+        <div class="dialog-card" id="customDialogCard">
+          <div class="dialog-header">
+            <div class="dialog-icon" id="customDialogIcon"></div>
+            <div class="dialog-title" id="customDialogTitle">Dialog</div>
+          </div>
+          <div class="dialog-body" id="customDialogBody"></div>
+          <div class="dialog-footer" id="customDialogFooter"></div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+    }
+    return overlay;
+  }
+
+  public showConfirm(options: {
+    title?: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    isDanger?: boolean;
+  }): Promise<boolean> {
+    return new Promise(resolve => {
+      const overlay = this.ensureDialogInDom();
+      const card = document.getElementById('customDialogCard');
+      const iconEl = document.getElementById('customDialogIcon');
+      const titleEl = document.getElementById('customDialogTitle');
+      const bodyEl = document.getElementById('customDialogBody');
+      const footerEl = document.getElementById('customDialogFooter');
+
+      if (!card || !iconEl || !titleEl || !bodyEl || !footerEl) {
+        resolve(false);
+        return;
+      }
+
+      const isDanger = options.isDanger ?? false;
+      const title = options.title ?? (isDanger ? 'Confirm Action' : 'Confirmation');
+      const confirmText = options.confirmText ?? (isDanger ? 'Delete' : 'Confirm');
+      const cancelText = options.cancelText ?? 'Cancel';
+
+      card.className = `dialog-card ${isDanger ? 'danger' : 'info'}`;
+      iconEl.className = `dialog-icon ${isDanger ? 'danger' : 'info'}`;
+      iconEl.innerHTML = isDanger
+        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+        : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+
+      titleEl.textContent = title;
+      bodyEl.textContent = options.message;
+
+      footerEl.innerHTML = `
+        <button class="btn-action secondary" id="btnDialogCancel">${escapeHtml(cancelText)}</button>
+        <button class="btn-action ${isDanger ? 'danger' : 'primary'}" id="btnDialogConfirm">${escapeHtml(confirmText)}</button>
+      `;
+
+      const closeDialog = (result: boolean) => {
+        overlay.classList.add('hidden');
+        document.removeEventListener('keydown', handleKey);
+        resolve(result);
+      };
+
+      const handleKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeDialog(false);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          closeDialog(true);
+        }
+      };
+
+      document.addEventListener('keydown', handleKey);
+
+      document.getElementById('btnDialogCancel')?.addEventListener('click', () => closeDialog(false));
+      document.getElementById('btnDialogConfirm')?.addEventListener('click', () => closeDialog(true));
+      overlay.onclick = e => {
+        if (e.target === overlay) closeDialog(false);
+      };
+
+      overlay.classList.remove('hidden');
+      (document.getElementById('btnDialogConfirm') as HTMLElement)?.focus();
+    });
+  }
+
+  public showAlert(options: {
+    title?: string;
+    message: string;
+    type?: 'info' | 'error' | 'warning' | 'success';
+    okText?: string;
+  } | string): Promise<void> {
+    const opts = typeof options === 'string' ? { message: options } : options;
+    return new Promise(resolve => {
+      const overlay = this.ensureDialogInDom();
+      const card = document.getElementById('customDialogCard');
+      const iconEl = document.getElementById('customDialogIcon');
+      const titleEl = document.getElementById('customDialogTitle');
+      const bodyEl = document.getElementById('customDialogBody');
+      const footerEl = document.getElementById('customDialogFooter');
+
+      if (!card || !iconEl || !titleEl || !bodyEl || !footerEl) {
+        resolve();
+        return;
+      }
+
+      const type = opts.type ?? 'error';
+      const title = opts.title ?? (type === 'error' ? 'Error' : type === 'warning' ? 'Notice' : 'Information');
+      const okText = opts.okText ?? 'OK';
+
+      card.className = `dialog-card ${type}`;
+      iconEl.className = `dialog-icon ${type}`;
+
+      if (type === 'error') {
+        iconEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+      } else if (type === 'warning') {
+        iconEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+      } else {
+        iconEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="9 11 12 14 22 4"/></svg>`;
+      }
+
+      titleEl.textContent = title;
+      bodyEl.textContent = opts.message;
+
+      footerEl.innerHTML = `
+        <button class="btn-action primary" id="btnDialogOk">${escapeHtml(okText)}</button>
+      `;
+
+      const closeDialog = () => {
+        overlay.classList.add('hidden');
+        document.removeEventListener('keydown', handleKey);
+        resolve();
+      };
+
+      const handleKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' || e.key === 'Enter') {
+          e.preventDefault();
+          closeDialog();
+        }
+      };
+
+      document.addEventListener('keydown', handleKey);
+
+      document.getElementById('btnDialogOk')?.addEventListener('click', () => closeDialog());
+      overlay.onclick = e => {
+        if (e.target === overlay) closeDialog();
+      };
+
+      overlay.classList.remove('hidden');
+      (document.getElementById('btnDialogOk') as HTMLElement)?.focus();
+    });
   }
 }
 
