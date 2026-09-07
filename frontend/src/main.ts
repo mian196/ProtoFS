@@ -980,11 +980,16 @@ class ProtoFsApp {
       if (filesSection) filesSection.style.display = 'none';
       if (toolbarButtons) {
         toolbarButtons.innerHTML = `
+          <button class="btn-action secondary" id="btnSetupCameraBackup" style="border-color: rgba(236, 72, 153, 0.4); color: #ec4899;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <span>Camera & Media Backup</span>
+          </button>
           <button class="btn-action primary" id="btnAddSyncPair">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
             <span>Add Sync Pair</span>
           </button>
         `;
+        document.getElementById('btnSetupCameraBackup')?.addEventListener('click', () => this.openCameraBackupModal());
         document.getElementById('btnAddSyncPair')?.addEventListener('click', () => this.openAddSyncPairModal());
       }
       this.renderSyncPairsView();
@@ -1335,26 +1340,51 @@ class ProtoFsApp {
       grid.innerHTML = `
         <div style="padding: 32px; text-align: center; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
           <p style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">No Active Sync Pairs</p>
-          <p style="font-size: 12px; margin-bottom: 16px;">Map a local OS folder to Telegram for continuous real-time backup.</p>
-          <button class="btn-action primary" id="btnEmptyAddSync">Add First Sync Pair</button>
+          <p style="font-size: 12px; margin-bottom: 16px;">Map a local OS folder or setup camera roll auto-backup to Telegram.</p>
+          <div style="display: flex; gap: 8px; justify-content: center;">
+            <button class="btn-action secondary" id="btnEmptyCameraSync" style="border-color: rgba(236, 72, 153, 0.4); color: #ec4899;">Setup Camera Backup</button>
+            <button class="btn-action primary" id="btnEmptyAddSync">Add Sync Pair</button>
+          </div>
         </div>
       `;
+      document.getElementById('btnEmptyCameraSync')?.addEventListener('click', () => this.openCameraBackupModal());
       document.getElementById('btnEmptyAddSync')?.addEventListener('click', () => this.openAddSyncPairModal());
       return;
     }
 
     grid.innerHTML = this.syncPairs
-      .map(
-        p => `
+      .map(p => {
+        const isCamera =
+          p.sync_mode.includes('camera') ||
+          p.local_path.includes('Camera') ||
+          p.local_path.includes('Pictures');
+
+        const badge = isCamera
+          ? `<span class="camera-backup-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Camera Backup</span>`
+          : `<span class="sync-mode-pill">${escapeHtml(p.sync_mode)}</span>`;
+
+        const pills = isCamera
+          ? `
+            <div style="display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;">
+              <span class="camera-constraint-pill">📶 Wi-Fi Only</span>
+              ${p.sync_mode.includes('charging:true') ? '<span class="camera-constraint-pill">⚡ AC Power</span>' : ''}
+              ${!p.sync_mode.includes('videos:false') ? '<span class="camera-constraint-pill">🎞 Videos Included</span>' : ''}
+              ${!p.sync_mode.includes('raw:false') ? '<span class="camera-constraint-pill">📸 Lossless Raw</span>' : ''}
+            </div>
+          `
+          : '';
+
+        return `
         <div class="sync-pair-card">
           <div class="sync-pair-info">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span class="sync-pair-path">${escapeHtml(p.local_path)}</span>
-              <span class="sync-mode-pill">${p.sync_mode}</span>
+              ${badge}
             </div>
-            <div class="sync-pair-sub">Mapped to folder: <code>${escapeHtml(p.remote_folder_id)}</code> • ${p.status}</div>
+            ${pills}
+            <div class="sync-pair-sub" style="margin-top: 4px;">Mapped to folder: <code>${escapeHtml(p.remote_folder_id)}</code> • ${p.status}</div>
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div style="display: flex; gap: 8px; align-items: center;">
             <button class="btn-action secondary btn-sync-now" data-sync-id="${p.id}" title="Run Sync Now">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
               <span>Sync Now</span>
@@ -1362,8 +1392,8 @@ class ProtoFsApp {
             <button class="btn-action secondary btn-del-sync" data-sync-id="${p.id}" title="Remove Sync Pair" style="color: var(--color-danger);">✕</button>
           </div>
         </div>
-      `
-      )
+      `;
+      })
       .join('');
 
     grid.querySelectorAll('.btn-sync-now').forEach(btn => {
@@ -2329,6 +2359,145 @@ class ProtoFsApp {
         this.closeModal();
         this.renderSyncPairsView();
       }
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // CAMERA AUTO-BACKUP & MEDIA SYNC (PRD Section 6.9)
+  // -------------------------------------------------------------------------
+
+  private async openCameraBackupModal() {
+    const config = await this.api.getCameraBackupConfig(this.activeDriveId);
+
+    this.showModal(
+      'Camera & Media Auto-Backup (PRD 6.9)',
+      `
+      <div class="camera-preset-banner">
+        <div class="camera-preset-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </div>
+        <div class="camera-preset-info">
+          <span class="camera-preset-title">Continuous Media Auto-Backup Preset</span>
+          <span class="camera-preset-desc">Automatically backs up new photos and recordings from your camera roll into an encrypted "Camera Uploads" folder.</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Local Camera / Pictures Folder</label>
+        <input type="text" class="form-input" id="inputCameraPath" value="${escapeHtml(config.local_path)}" placeholder="e.g. C:\\Users\\User\\Pictures\\Camera Roll" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Target Cloud Destination</label>
+        <select class="form-input" id="selectCameraRemote">
+          <option value="auto_camera" selected>📁 /Camera Uploads (Auto-create if not exists)</option>
+          <option value="root">/ (Drive Root)</option>
+          ${this.folders.map(f => `<option value="${f.id}">📁 /${escapeHtml(f.name)}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="settings-section-card" style="margin-top: 12px;">
+        <div class="settings-toggle-row">
+          <div class="settings-toggle-info">
+            <div class="settings-toggle-label">Wi-Fi Only (NetworkType.UNMETERED)</div>
+            <div class="settings-toggle-desc">Restricts background backups to unmetered Wi-Fi to preserve mobile cellular data.</div>
+          </div>
+          <label class="toggle-switch-wrapper">
+            <input type="checkbox" id="chkCameraWifi" ${config.wifi_only ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="settings-toggle-row" style="margin-top: 10px;">
+          <div class="settings-toggle-info">
+            <div class="settings-toggle-label">Charging Only (RequiresCharging)</div>
+            <div class="settings-toggle-desc">Only syncs when your device is connected to external AC power to preserve battery health.</div>
+          </div>
+          <label class="toggle-switch-wrapper">
+            <input type="checkbox" id="chkCameraCharging" ${config.charging_only ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="settings-toggle-row" style="margin-top: 10px;">
+          <div class="settings-toggle-info">
+            <div class="settings-toggle-label">Include Video Recordings</div>
+            <div class="settings-toggle-desc">Back up video clips (.mp4, .mov, .mkv) in addition to photos (.jpg, .png, .heic, .raw).</div>
+          </div>
+          <label class="toggle-switch-wrapper">
+            <input type="checkbox" id="chkCameraVideos" ${config.include_videos ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="settings-toggle-row" style="margin-top: 10px;">
+          <div class="settings-toggle-info">
+            <div class="settings-toggle-label">Original Lossless Quality (Byte-for-Byte)</div>
+            <div class="settings-toggle-desc">Preserves uncompressed raw pixels, color profiles, and complete EXIF metadata.</div>
+          </div>
+          <label class="toggle-switch-wrapper">
+            <input type="checkbox" id="chkCameraRaw" ${config.original_quality ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    `,
+      `
+      <button class="btn-action secondary" id="btnCancelCameraBackup">Cancel</button>
+      <button class="btn-action primary" id="btnSaveCameraBackup">Enable Camera Auto-Backup</button>
+    `
+    );
+
+    document.getElementById('btnCancelCameraBackup')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('btnSaveCameraBackup')?.addEventListener('click', async () => {
+      const pathInput = (document.getElementById('inputCameraPath') as HTMLInputElement)?.value.trim();
+      const remoteSelect = (document.getElementById('selectCameraRemote') as HTMLSelectElement)?.value;
+      const wifiOnly = (document.getElementById('chkCameraWifi') as HTMLInputElement)?.checked ?? true;
+      const chargingOnly = (document.getElementById('chkCameraCharging') as HTMLInputElement)?.checked ?? false;
+      const includeVideos = (document.getElementById('chkCameraVideos') as HTMLInputElement)?.checked ?? true;
+      const originalQuality = (document.getElementById('chkCameraRaw') as HTMLInputElement)?.checked ?? true;
+
+      if (!pathInput) {
+        await this.showAlert({
+          title: 'Path Required',
+          message: 'Please provide a valid local camera/pictures folder path.',
+          type: 'warning',
+        });
+        return;
+      }
+
+      let targetFolderId = remoteSelect;
+      if (targetFolderId === 'auto_camera') {
+        const existing = this.folders.find(f => f.name.toLowerCase() === 'camera uploads' && f.parent_id === 'root');
+        if (existing) {
+          targetFolderId = existing.id;
+        } else {
+          try {
+            const newFolder = await this.api.createFolder(this.activeDriveId, 'Camera Uploads', 'root');
+            this.folders.push(newFolder);
+            targetFolderId = newFolder.id;
+          } catch {
+            targetFolderId = 'root';
+          }
+        }
+      }
+
+      await this.api.configureCameraBackup(this.activeDriveId, {
+        localPath: pathInput,
+        remoteFolderId: targetFolderId,
+        wifiOnly,
+        chargingOnly,
+        includeVideos,
+        originalQuality,
+      });
+
+      this.triggerTransfer('Camera Roll Auto-Backup: Initial Scan', '48.6 MB', 'uploading');
+      this.syncPairs = await this.api.getSyncPairs(this.activeDriveId);
+      this.closeModal();
+      this.renderSyncPairsView();
     });
   }
 

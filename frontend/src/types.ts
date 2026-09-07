@@ -143,3 +143,15 @@ export interface ShellIntegrationStatus {
   target_exe: string;
 }
 
+export interface CameraBackupConfig {
+  enabled: boolean;
+  sync_pair_id?: string;
+  local_path: string;
+  remote_folder_name: string;
+  wifi_only: boolean;
+  charging_only: boolean;
+  include_videos: boolean;
+  original_quality: boolean;
+  last_backup_at?: string;
+}
+

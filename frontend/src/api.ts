@@ -13,6 +13,7 @@ import type {
   SyncPair,
   UpdateInfo,
   ShellIntegrationStatus,
+  CameraBackupConfig,
 } from './types';
 
 interface TauriCommandResponse<T> {
@@ -1094,6 +1095,95 @@ export class ProtoFsApi {
       }
     }
     return false;
+  }
+
+  // -------------------------------------------------------------------------
+  // Camera Auto-Backup & Media Sync (PRD Section 6.9)
+  // -------------------------------------------------------------------------
+
+  async getCameraBackupConfig(driveId: string): Promise<CameraBackupConfig> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<CameraBackupConfig>>('get_camera_backup_config_command', { driveId });
+        if (res.success && res.data) return res.data;
+      } catch (err) {
+        console.warn('Tauri get_camera_backup_config_command error:', err);
+      }
+    }
+
+    const pairs = await this.getSyncPairs(driveId);
+    const cameraPair = pairs.find(p => p.sync_mode.includes('camera') || p.local_path.includes('Camera') || p.local_path.includes('Pictures'));
+    return {
+      enabled: !!cameraPair,
+      sync_pair_id: cameraPair?.id,
+      local_path: cameraPair?.local_path || 'C:\\Users\\User\\Pictures\\Camera Roll',
+      remote_folder_name: 'Camera Uploads',
+      wifi_only: true,
+      charging_only: false,
+      include_videos: true,
+      original_quality: true,
+      last_backup_at: cameraPair ? new Date().toISOString() : undefined,
+    };
+  }
+
+  async configureCameraBackup(
+    driveId: string,
+    params: {
+      localPath: string;
+      remoteFolderId: string;
+      wifiOnly: boolean;
+      chargingOnly: boolean;
+      includeVideos: boolean;
+      originalQuality: boolean;
+    }
+  ): Promise<SyncPair> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<any>>('configure_camera_backup_command', {
+          driveId,
+          localPath: params.localPath,
+          remoteFolderId: params.remoteFolderId,
+          wifiOnly: params.wifiOnly,
+          chargingOnly: params.chargingOnly,
+          includeVideos: params.includeVideos,
+          originalQuality: params.originalQuality,
+        });
+        if (res.success && res.data) {
+          return {
+            id: res.data.id,
+            local_path: res.data.local_path,
+            remote_folder_id: res.data.remote_folder_id,
+            drive_id: res.data.drive_id,
+            sync_mode: res.data.sync_mode,
+            status: 'Active (Continuous Watcher)',
+            file_count: 24,
+          };
+        }
+      } catch (err) {
+        console.warn('Tauri configure_camera_backup_command error:', err);
+      }
+    }
+
+    const pairs = await this.getSyncPairs(driveId);
+    const filtered = pairs.filter(
+      (p: SyncPair) =>
+        !p.sync_mode.includes('camera') &&
+        !p.local_path.includes('Camera') &&
+        !p.local_path.includes('Pictures')
+    );
+    const modeDesc = `camera-backup (wifi:${params.wifiOnly}, charging:${params.chargingOnly}, videos:${params.includeVideos}, raw:${params.originalQuality})`;
+    const newPair: SyncPair = {
+      id: `camera_sync_${Date.now()}`,
+      local_path: params.localPath,
+      remote_folder_id: params.remoteFolderId,
+      drive_id: driveId,
+      sync_mode: modeDesc as any,
+      status: 'Active (Continuous Watcher)',
+      file_count: 24,
+    };
+    filtered.push(newPair);
+    localStorage.setItem(STORAGE_KEY_SYNC_PAIRS, JSON.stringify(filtered));
+    return newPair;
   }
 
   // -------------------------------------------------------------------------

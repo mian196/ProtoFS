@@ -68,6 +68,8 @@ fn main() {
             commands::add_sync_pair_command,
             commands::remove_sync_pair_command,
             commands::trigger_sync_command,
+            commands::get_camera_backup_config_command,
+            commands::configure_camera_backup_command,
             commands::get_storage_usage_command,
             commands::save_secure_secret_command,
             commands::get_secure_secret_command,

@@ -1627,6 +1627,142 @@ pub async fn trigger_sync_command(
     Ok(CommandResponse::ok(()))
 }
 
+// ---------------------------------------------------------------------------
+// Camera Auto-Backup & Media Sync (PRD Section 6.9)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CameraBackupConfig {
+    pub enabled: bool,
+    pub sync_pair_id: Option<String>,
+    pub local_path: String,
+    pub remote_folder_name: String,
+    pub wifi_only: bool,
+    pub charging_only: bool,
+    pub include_videos: bool,
+    pub original_quality: bool,
+    pub last_backup_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[tauri::command]
+pub async fn get_camera_backup_config_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+) -> Result<CommandResponse<CameraBackupConfig>, String> {
+    let state = app.state::<AppState>();
+    let pairs = state.cache.list_sync_pairs(&drive_id).unwrap_or_default();
+    let camera_pair = pairs.into_iter().find(|p| {
+        p.sync_mode.contains("camera")
+            || p.local_path.contains("Camera")
+            || p.local_path.contains("Pictures")
+    });
+
+    let default_path = {
+        #[cfg(target_os = "windows")]
+        {
+            let user = std::env::var("USERPROFILE").unwrap_or_default();
+            let camera_roll = std::path::PathBuf::from(&user).join("Pictures\\Camera Roll");
+            if camera_roll.exists() {
+                camera_roll.to_string_lossy().to_string()
+            } else {
+                std::path::PathBuf::from(&user)
+                    .join("Pictures")
+                    .to_string_lossy()
+                    .to_string()
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let home = std::env::var("HOME").unwrap_or_default();
+            std::path::PathBuf::from(&home)
+                .join("Pictures/Camera")
+                .to_string_lossy()
+                .to_string()
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+        {
+            "/DCIM/Camera".to_string()
+        }
+    };
+
+    if let Some(pair) = camera_pair {
+        let is_wifi = !pair.sync_mode.contains("wifi:false");
+        let is_charging = pair.sync_mode.contains("charging:true");
+        let is_videos = !pair.sync_mode.contains("videos:false");
+        let is_raw = !pair.sync_mode.contains("raw:false");
+
+        Ok(CommandResponse::ok(CameraBackupConfig {
+            enabled: true,
+            sync_pair_id: Some(pair.id),
+            local_path: pair.local_path,
+            remote_folder_name: "Camera Uploads".to_string(),
+            wifi_only: is_wifi,
+            charging_only: is_charging,
+            include_videos: is_videos,
+            original_quality: is_raw,
+            last_backup_at: Some(pair.last_synced_at),
+        }))
+    } else {
+        Ok(CommandResponse::ok(CameraBackupConfig {
+            enabled: false,
+            sync_pair_id: None,
+            local_path: default_path,
+            remote_folder_name: "Camera Uploads".to_string(),
+            wifi_only: true,
+            charging_only: false,
+            include_videos: true,
+            original_quality: true,
+            last_backup_at: None,
+        }))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn configure_camera_backup_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+    local_path: String,
+    remote_folder_id: String,
+    wifi_only: bool,
+    charging_only: bool,
+    include_videos: bool,
+    original_quality: bool,
+) -> Result<CommandResponse<protofs_core::cache::SyncPairEntry>, String> {
+    let state = app.state::<AppState>();
+
+    let pairs = state.cache.list_sync_pairs(&drive_id).unwrap_or_default();
+    for p in pairs {
+        if p.sync_mode.contains("camera")
+            || p.local_path.contains("Camera")
+            || p.local_path.contains("Pictures")
+        {
+            let _ = state.cache.delete_sync_pair(&p.id);
+        }
+    }
+
+    let id = format!("camera_sync_{}", chrono::Utc::now().timestamp_millis());
+    let mode_desc = format!(
+        "camera-backup (wifi:{}, charging:{}, videos:{}, raw:{})",
+        wifi_only, charging_only, include_videos, original_quality
+    );
+
+    let entry = protofs_core::cache::SyncPairEntry {
+        id,
+        local_path,
+        remote_folder_id,
+        drive_id,
+        sync_mode: mode_desc,
+        last_synced_at: chrono::Utc::now(),
+    };
+
+    if let Err(e) = state.cache.insert_sync_pair(&entry) {
+        return Ok(CommandResponse::err(e.to_string()));
+    }
+
+    Ok(CommandResponse::ok(entry))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageUsage {
     pub total_bytes: u64,
