@@ -6,18 +6,13 @@ This document specifies the operational rules, architectural principles, build p
 
 ## 1. Core Behavioral Rules
 
-1. **Zero Em Dashes Rule**:
-   - Strictly do not use em dashes (`—`) anywhere in this project: not in commit messages, documentation, code comments, UI copy, or agent responses.
-   - Use standard hyphens (`-`), colons (`:`), or parentheses instead.
-
-2. **Frequent Atomic Git Commits**:
+1. **Frequent Atomic Git Commits**:
    - Commit code immediately after completing each discrete feature, bug fix, or refactoring step.
    - Never batch multiple unrelated changes into a single commit.
    - Write clear, conventional commit messages (e.g., `feat(...)`, `fix(...)`, `ci(...)`, `chore(...)`).
 
-3. **Production Completeness**:
+2. **Production Completeness**:
    - Never leave placeholder buttons, empty stub handlers, or broken bypasses in user interfaces.
-   - All features must adhere to the project specifications in `local-docs/PRD.md`.
    - The application must always support the full lifecycle: onboarding/login, drive creation, file/folder operations, search, offline caching, and trash management.
 
 ---
