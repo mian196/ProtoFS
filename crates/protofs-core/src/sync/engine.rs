@@ -53,12 +53,18 @@ impl<T: TelegramTransport> SyncEngine<T> {
 
                     info!(
                         "Drive '{}' successfully loaded from pinned manifest (v{}, {} folders, {} files)",
-                        drive_id, snapshot.header.version, snapshot.header.folder_count, snapshot.header.file_count
+                        drive_id,
+                        snapshot.header.version,
+                        snapshot.header.folder_count,
+                        snapshot.header.file_count
                     );
                     return Ok(tree);
                 }
                 Err(e) => {
-                    warn!("Failed to decompress pinned manifest: {}. Triggering self-healing rebuild scan.", e);
+                    warn!(
+                        "Failed to decompress pinned manifest: {}. Triggering self-healing rebuild scan.",
+                        e
+                    );
                 }
             }
         } else {
@@ -96,28 +102,28 @@ impl<T: TelegramTransport> SyncEngine<T> {
                 min_id = min_id.max(msg.id);
                 total_scanned += 1;
 
-                if let Some(ref caption) = msg.caption {
-                    if let Ok(parsed) = ParsedCaption::parse(caption) {
-                        let file_node = FileNode {
-                            id: format!("file_{}", msg.id),
-                            drive_id: drive_id.to_string(),
-                            parent_id: parsed.parent_id,
-                            name: parsed.name,
-                            size_bytes: msg.document_size.unwrap_or(0),
-                            mime_type: None,
-                            telegram_message_id: msg.id,
-                            is_encrypted: parsed.is_encrypted,
-                            encryption_iv: parsed.iv,
-                            sha256_hash: parsed.sha256_hash,
-                            is_pinned_offline: false,
-                            is_trashed: false,
-                            version: 1,
-                            history: Vec::new(),
-                            created_at: msg.date,
-                            updated_at: msg.date,
-                        };
-                        tree.insert(VfsNode::File(file_node));
-                    }
+                if let Some(ref caption) = msg.caption
+                    && let Ok(parsed) = ParsedCaption::parse(caption)
+                {
+                    let file_node = FileNode {
+                        id: format!("file_{}", msg.id),
+                        drive_id: drive_id.to_string(),
+                        parent_id: parsed.parent_id,
+                        name: parsed.name,
+                        size_bytes: msg.document_size.unwrap_or(0),
+                        mime_type: None,
+                        telegram_message_id: msg.id,
+                        is_encrypted: parsed.is_encrypted,
+                        encryption_iv: parsed.iv,
+                        sha256_hash: parsed.sha256_hash,
+                        is_pinned_offline: false,
+                        is_trashed: false,
+                        version: 1,
+                        history: Vec::new(),
+                        created_at: msg.date,
+                        updated_at: msg.date,
+                    };
+                    tree.insert(VfsNode::File(file_node));
                 }
             }
         }

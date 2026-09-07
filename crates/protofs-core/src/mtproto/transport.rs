@@ -63,7 +63,7 @@ pub trait TelegramTransport: Send + Sync {
         limit: u32,
     ) -> Result<Vec<u8>>;
     async fn edit_caption(&self, channel_id: i64, message_id: i32, new_caption: &str)
-        -> Result<()>;
+    -> Result<()>;
     async fn delete_message(&self, channel_id: i64, message_id: i32) -> Result<()>;
     async fn scan_messages(
         &self,

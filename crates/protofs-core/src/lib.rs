@@ -11,7 +11,7 @@ pub use error::{ProtoFsError, Result};
 pub use manifest::ManifestSnapshot;
 pub use mtproto::{MockTelegramTransport, ParsedCaption, TelegramTransport};
 pub use sync::SyncEngine;
-pub use vfs::{FileNode, FolderNode, VfsNode, VfsTree, ROOT_PARENT_ID};
+pub use vfs::{FileNode, FolderNode, ROOT_PARENT_ID, VfsNode, VfsTree};
 
 #[cfg(test)]
 mod tests {

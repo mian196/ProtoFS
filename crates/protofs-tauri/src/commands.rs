@@ -209,7 +209,7 @@ pub async fn login_send_code(
         Err(_) => {
             return Ok(CommandResponse::err(
                 "API ID must be a numeric integer from my.telegram.org",
-            ))
+            ));
         }
     };
 
@@ -617,70 +617,59 @@ fn get_real_session_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 }
 
 fn save_auth_session(app: &tauri::AppHandle, session: &AuthSession) {
-    if let (Some(enc_path), Some(legacy_path)) = get_session_paths(app) {
-        if let Ok(json) = serde_json::to_string(session) {
-            if let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes()) {
-                let _ = std::fs::write(enc_path, encrypted);
-                if legacy_path.exists() {
-                    let _ = std::fs::remove_file(legacy_path);
-                }
-            }
+    if let (Some(enc_path), Some(legacy_path)) = get_session_paths(app)
+        && let Ok(json) = serde_json::to_string(session)
+        && let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes())
+    {
+        let _ = std::fs::write(enc_path, encrypted);
+        if legacy_path.exists() {
+            let _ = std::fs::remove_file(legacy_path);
         }
     }
 }
 
 fn save_real_telegram_session_for_user(app: &tauri::AppHandle, user_id: i64, session_bytes: &[u8]) {
-    if let Some(path) = get_user_session_path(app, user_id) {
-        if let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes) {
-            let _ = std::fs::write(path, encrypted);
-        }
+    if let Some(path) = get_user_session_path(app, user_id)
+        && let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes)
+    {
+        let _ = std::fs::write(path, encrypted);
     }
     // Also save to legacy path for backward compatibility
-    if let Some(path) = get_real_session_path(app) {
-        if let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes) {
-            let _ = std::fs::write(path, encrypted);
-        }
+    if let Some(path) = get_real_session_path(app)
+        && let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes)
+    {
+        let _ = std::fs::write(path, encrypted);
     }
 }
 
 fn load_real_telegram_session_for_user(app: &tauri::AppHandle, user_id: i64) -> Option<Vec<u8>> {
-    if let Some(path) = get_user_session_path(app, user_id) {
-        if path.exists() {
-            if let Ok(encrypted_bytes) = std::fs::read(&path) {
-                if let Ok(decrypted) = protofs_core::crypto::unprotect_secret(&encrypted_bytes) {
-                    return Some(decrypted);
-                }
-            }
-        }
+    if let Some(path) = get_user_session_path(app, user_id)
+        && path.exists()
+        && let Ok(encrypted_bytes) = std::fs::read(&path)
+        && let Ok(decrypted) = protofs_core::crypto::unprotect_secret(&encrypted_bytes)
+    {
+        return Some(decrypted);
     }
     load_real_telegram_session(app)
 }
 
 fn save_account_registry(app: &tauri::AppHandle, registry: &AccountRegistry) {
-    if let Some(path) = get_accounts_path(app) {
-        if let Ok(json) = serde_json::to_string(registry) {
-            if let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes()) {
-                let _ = std::fs::write(path, encrypted);
-            }
-        }
+    if let Some(path) = get_accounts_path(app)
+        && let Ok(json) = serde_json::to_string(registry)
+        && let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes())
+    {
+        let _ = std::fs::write(path, encrypted);
     }
 }
 
 fn load_account_registry(app: &tauri::AppHandle) -> AccountRegistry {
-    if let Some(path) = get_accounts_path(app) {
-        if path.exists() {
-            if let Ok(encrypted_bytes) = std::fs::read(&path) {
-                if let Ok(decrypted_bytes) =
-                    protofs_core::crypto::unprotect_secret(&encrypted_bytes)
-                {
-                    if let Ok(registry) =
-                        serde_json::from_slice::<AccountRegistry>(&decrypted_bytes)
-                    {
-                        return registry;
-                    }
-                }
-            }
-        }
+    if let Some(path) = get_accounts_path(app)
+        && path.exists()
+        && let Ok(encrypted_bytes) = std::fs::read(&path)
+        && let Ok(decrypted_bytes) = protofs_core::crypto::unprotect_secret(&encrypted_bytes)
+        && let Ok(registry) = serde_json::from_slice::<AccountRegistry>(&decrypted_bytes)
+    {
+        return registry;
     }
 
     // Migration from legacy single-session storage
@@ -689,10 +678,10 @@ fn load_account_registry(app: &tauri::AppHandle) -> AccountRegistry {
         if let (Some(legacy_tg), Some(new_tg)) = (
             get_real_session_path(app),
             get_user_session_path(app, user_id),
-        ) {
-            if legacy_tg.exists() && !new_tg.exists() {
-                let _ = std::fs::copy(&legacy_tg, &new_tg);
-            }
+        ) && legacy_tg.exists()
+            && !new_tg.exists()
+        {
+            let _ = std::fs::copy(&legacy_tg, &new_tg);
         }
 
         let registry = AccountRegistry {
@@ -709,40 +698,34 @@ fn load_account_registry(app: &tauri::AppHandle) -> AccountRegistry {
 fn load_auth_session(app: &tauri::AppHandle) -> Option<AuthSession> {
     if let (Some(enc_path), Some(legacy_path)) = get_session_paths(app) {
         if enc_path.exists() {
-            if let Ok(encrypted_bytes) = std::fs::read(&enc_path) {
-                if let Ok(decrypted_bytes) =
+            if let Ok(encrypted_bytes) = std::fs::read(&enc_path)
+                && let Ok(decrypted_bytes) =
                     protofs_core::crypto::unprotect_secret(&encrypted_bytes)
-                {
-                    if let Ok(persisted) = serde_json::from_slice::<AuthSession>(&decrypted_bytes) {
-                        return Some(persisted);
-                    }
-                }
+                && let Ok(persisted) = serde_json::from_slice::<AuthSession>(&decrypted_bytes)
+            {
+                return Some(persisted);
             }
-        } else if legacy_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&legacy_path) {
-                if let Ok(persisted) = serde_json::from_str::<AuthSession>(&content) {
-                    if let Ok(encrypted) = protofs_core::crypto::protect_secret(content.as_bytes())
-                    {
-                        let _ = std::fs::write(enc_path, encrypted);
-                        let _ = std::fs::remove_file(legacy_path);
-                    }
-                    return Some(persisted);
-                }
+        } else if legacy_path.exists()
+            && let Ok(content) = std::fs::read_to_string(&legacy_path)
+            && let Ok(persisted) = serde_json::from_str::<AuthSession>(&content)
+        {
+            if let Ok(encrypted) = protofs_core::crypto::protect_secret(content.as_bytes()) {
+                let _ = std::fs::write(enc_path, encrypted);
+                let _ = std::fs::remove_file(legacy_path);
             }
+            return Some(persisted);
         }
     }
     None
 }
 
 fn load_real_telegram_session(app: &tauri::AppHandle) -> Option<Vec<u8>> {
-    if let Some(path) = get_real_session_path(app) {
-        if path.exists() {
-            if let Ok(encrypted_bytes) = std::fs::read(&path) {
-                if let Ok(decrypted) = protofs_core::crypto::unprotect_secret(&encrypted_bytes) {
-                    return Some(decrypted);
-                }
-            }
-        }
+    if let Some(path) = get_real_session_path(app)
+        && path.exists()
+        && let Ok(encrypted_bytes) = std::fs::read(&path)
+        && let Ok(decrypted) = protofs_core::crypto::unprotect_secret(&encrypted_bytes)
+    {
+        return Some(decrypted);
     }
     None
 }
@@ -757,38 +740,33 @@ pub async fn get_session_status(
     // If in-memory state is empty, restore active account from registry
     if lock.is_none() {
         let registry = load_account_registry(&app);
-        if let Some(active_id) = registry.active_user_id {
-            if let Some(account) = registry
+        if let Some(active_id) = registry.active_user_id
+            && let Some(account) = registry
                 .accounts
                 .iter()
                 .find(|a| a.user_id == active_id)
                 .cloned()
-            {
-                if account.is_demo {
-                    state.transport.switch_to_mock().await;
-                    let mut drives_lock = state.drives.write().await;
-                    *drives_lock = get_demo_drives();
-                } else {
-                    if let Some(session_bytes) =
-                        load_real_telegram_session_for_user(&app, active_id)
-                    {
-                        if let Ok(api_id_int) = account.api_id.trim().parse::<i32>() {
-                            if let Ok(real) = TelegramAuthClient::reconnect_from_session(
-                                api_id_int,
-                                account.api_hash.trim(),
-                                &session_bytes,
-                            )
-                            .await
-                            {
-                                state.transport.switch_to_real(real).await;
-                            }
-                        }
-                    }
-                    let mut drives_lock = state.drives.write().await;
-                    *drives_lock = load_user_drives(&app, account.user_id);
+        {
+            if account.is_demo {
+                state.transport.switch_to_mock().await;
+                let mut drives_lock = state.drives.write().await;
+                *drives_lock = get_demo_drives();
+            } else {
+                if let Some(session_bytes) = load_real_telegram_session_for_user(&app, active_id)
+                    && let Ok(api_id_int) = account.api_id.trim().parse::<i32>()
+                    && let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                        api_id_int,
+                        account.api_hash.trim(),
+                        &session_bytes,
+                    )
+                    .await
+                {
+                    state.transport.switch_to_real(real).await;
                 }
-                *lock = Some(account);
+                let mut drives_lock = state.drives.write().await;
+                *drives_lock = load_user_drives(&app, account.user_id);
             }
+            *lock = Some(account);
         }
     }
 
@@ -826,18 +804,16 @@ pub async fn switch_account_command(
         let mut drives_lock = state.drives.write().await;
         *drives_lock = get_demo_drives();
     } else {
-        if let Some(session_bytes) = load_real_telegram_session_for_user(&app, user_id) {
-            if let Ok(api_id_int) = target_account.api_id.trim().parse::<i32>() {
-                if let Ok(real) = TelegramAuthClient::reconnect_from_session(
-                    api_id_int,
-                    target_account.api_hash.trim(),
-                    &session_bytes,
-                )
-                .await
-                {
-                    state.transport.switch_to_real(real).await;
-                }
-            }
+        if let Some(session_bytes) = load_real_telegram_session_for_user(&app, user_id)
+            && let Ok(api_id_int) = target_account.api_id.trim().parse::<i32>()
+            && let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                api_id_int,
+                target_account.api_hash.trim(),
+                &session_bytes,
+            )
+            .await
+        {
+            state.transport.switch_to_real(real).await;
         }
         let mut drives_lock = state.drives.write().await;
         *drives_lock = load_user_drives(&app, user_id);
@@ -861,15 +837,15 @@ pub async fn remove_account_command(
     registry.accounts.retain(|a| a.user_id != user_id);
 
     // Clean up per-user storage files
-    if let Some(path) = get_user_session_path(&app, user_id) {
-        if path.exists() {
-            let _ = std::fs::remove_file(path);
-        }
+    if let Some(path) = get_user_session_path(&app, user_id)
+        && path.exists()
+    {
+        let _ = std::fs::remove_file(path);
     }
-    if let Some(path) = get_drives_file_path(&app, user_id) {
-        if path.exists() {
-            let _ = std::fs::remove_file(path);
-        }
+    if let Some(path) = get_drives_file_path(&app, user_id)
+        && path.exists()
+    {
+        let _ = std::fs::remove_file(path);
     }
 
     let was_active = registry.active_user_id == Some(user_id);
@@ -885,18 +861,15 @@ pub async fn remove_account_command(
             } else {
                 if let Some(session_bytes) =
                     load_real_telegram_session_for_user(&app, next_acc.user_id)
+                    && let Ok(api_id_int) = next_acc.api_id.trim().parse::<i32>()
+                    && let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                        api_id_int,
+                        next_acc.api_hash.trim(),
+                        &session_bytes,
+                    )
+                    .await
                 {
-                    if let Ok(api_id_int) = next_acc.api_id.trim().parse::<i32>() {
-                        if let Ok(real) = TelegramAuthClient::reconnect_from_session(
-                            api_id_int,
-                            next_acc.api_hash.trim(),
-                            &session_bytes,
-                        )
-                        .await
-                        {
-                            state.transport.switch_to_real(real).await;
-                        }
-                    }
+                    state.transport.switch_to_real(real).await;
                 }
                 let mut drives_lock = state.drives.write().await;
                 *drives_lock = load_user_drives(&app, next_acc.user_id);
@@ -1039,22 +1012,20 @@ fn get_drives_file_path(app: &tauri::AppHandle, user_id: i64) -> Option<std::pat
 }
 
 fn save_user_drives(app: &tauri::AppHandle, user_id: i64, drives: &[DriveMetadata]) {
-    if let Some(path) = get_drives_file_path(app, user_id) {
-        if let Ok(json) = serde_json::to_string_pretty(drives) {
-            let _ = std::fs::write(path, json);
-        }
+    if let Some(path) = get_drives_file_path(app, user_id)
+        && let Ok(json) = serde_json::to_string_pretty(drives)
+    {
+        let _ = std::fs::write(path, json);
     }
 }
 
 fn load_user_drives(app: &tauri::AppHandle, user_id: i64) -> Vec<DriveMetadata> {
-    if let Some(path) = get_drives_file_path(app, user_id) {
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(path) {
-                if let Ok(drives) = serde_json::from_str::<Vec<DriveMetadata>>(&content) {
-                    return drives;
-                }
-            }
-        }
+    if let Some(path) = get_drives_file_path(app, user_id)
+        && path.exists()
+        && let Ok(content) = std::fs::read_to_string(path)
+        && let Ok(drives) = serde_json::from_str::<Vec<DriveMetadata>>(&content)
+    {
+        return drives;
     }
     Vec::new()
 }
@@ -1147,10 +1118,10 @@ pub async fn create_drive_command(
     drives.push(new_drive.clone());
 
     let session_guard = state.session.read().await;
-    if let Some(ref s) = *session_guard {
-        if !s.is_demo {
-            save_user_drives(&app, s.user_id, &drives);
-        }
+    if let Some(ref s) = *session_guard
+        && !s.is_demo
+    {
+        save_user_drives(&app, s.user_id, &drives);
     }
     drop(session_guard);
 
@@ -1173,7 +1144,7 @@ pub async fn get_owned_channels_command(
             return Ok(CommandResponse::err(format!(
                 "Failed to retrieve owned channels: {}",
                 e
-            )))
+            )));
         }
     };
 
@@ -1214,10 +1185,10 @@ pub async fn adopt_channel_as_drive_command(
         drives.push(new_drive.clone());
 
         let session_guard = state.session.read().await;
-        if let Some(ref s) = *session_guard {
-            if !s.is_demo {
-                save_user_drives(&app, s.user_id, &drives);
-            }
+        if let Some(ref s) = *session_guard
+            && !s.is_demo
+        {
+            save_user_drives(&app, s.user_id, &drives);
         }
         drop(session_guard);
 
@@ -1236,11 +1207,11 @@ pub async fn load_drive_command(
     let state = app.state::<AppState>();
 
     // Only attempt remote channel scan if a valid non-zero channel ID is provided
-    if channel_id != 0 {
-        if let Ok(tree) = state.engine.load_drive(&drive_id, channel_id).await {
-            let nodes: Vec<VfsNode> = tree.all_nodes().cloned().collect();
-            return Ok(CommandResponse::ok(nodes));
-        }
+    if channel_id != 0
+        && let Ok(tree) = state.engine.load_drive(&drive_id, channel_id).await
+    {
+        let nodes: Vec<VfsNode> = tree.all_nodes().cloned().collect();
+        return Ok(CommandResponse::ok(nodes));
     }
 
     // Otherwise get or create the local in-memory tree for this drive
@@ -1958,8 +1929,8 @@ pub struct ShellIntegrationStatus {
 }
 
 #[tauri::command]
-pub async fn get_shell_integration_status_command(
-) -> Result<CommandResponse<ShellIntegrationStatus>, String> {
+pub async fn get_shell_integration_status_command()
+-> Result<CommandResponse<ShellIntegrationStatus>, String> {
     let target_exe = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| "protofs-tauri.exe".to_string());
@@ -2286,10 +2257,10 @@ pub async fn generate_share_link_command(
         file.is_encrypted
     );
 
-    if let Some(ref key) = include_key {
-        if !key.trim().is_empty() {
-            protofs_app_link.push_str(&format!("#key={}", url_encode(key.trim())));
-        }
+    if let Some(ref key) = include_key
+        && !key.trim().is_empty()
+    {
+        protofs_app_link.push_str(&format!("#key={}", url_encode(key.trim())));
     }
 
     let zero_knowledge_note = if file.is_encrypted {
@@ -2430,7 +2401,7 @@ pub async fn import_shared_link_command(
                 parsed_res
                     .error
                     .unwrap_or_else(|| "Invalid share link".to_string()),
-            ))
+            ));
         }
     };
 
@@ -2485,11 +2456,11 @@ pub async fn import_shared_link_command(
     }
 
     let key_to_store = custom_key.or(parsed.encryption_key);
-    if let Some(key) = key_to_store {
-        if !key.trim().is_empty() {
-            let secret_key = format!("protofs_key_{}_{}", target_drive_id, id);
-            let _ = save_secure_secret_command(app, secret_key, key).await;
-        }
+    if let Some(key) = key_to_store
+        && !key.trim().is_empty()
+    {
+        let secret_key = format!("protofs_key_{}_{}", target_drive_id, id);
+        let _ = save_secure_secret_command(app, secret_key, key).await;
     }
 
     Ok(CommandResponse::ok(new_file))
@@ -2596,12 +2567,11 @@ fn get_protofs_mount_dir(app: &tauri::AppHandle, drive_id: &str) -> std::path::P
 
 fn load_mount_state(app: &tauri::AppHandle) -> PersistedMountState {
     let path = get_protofs_mount_dir(app, "_system").join("mount_state.json");
-    if path.exists() {
-        if let Ok(bytes) = std::fs::read(&path) {
-            if let Ok(state) = serde_json::from_slice::<PersistedMountState>(&bytes) {
-                return state;
-            }
-        }
+    if path.exists()
+        && let Ok(bytes) = std::fs::read(&path)
+        && let Ok(state) = serde_json::from_slice::<PersistedMountState>(&bytes)
+    {
+        return state;
     }
     PersistedMountState::default()
 }
@@ -2646,10 +2616,9 @@ fn is_winfsp_installed() -> bool {
         if let Ok(out) = std::process::Command::new("reg")
             .args(["query", r"HKLM\Software\WinFsp", "/v", "InstallDir"])
             .output()
+            && out.status.success()
         {
-            if out.status.success() {
-                return true;
-            }
+            return true;
         }
     }
     false
@@ -2725,11 +2694,7 @@ async fn project_vfs_to_disk(
         .all_nodes()
         .filter_map(|n| {
             if let VfsNode::File(f) = n {
-                if !f.is_trashed {
-                    Some(f.clone())
-                } else {
-                    None
-                }
+                if !f.is_trashed { Some(f.clone()) } else { None }
             } else {
                 None
             }

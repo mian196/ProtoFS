@@ -1,5 +1,5 @@
 use crate::error::{ProtoFsError, Result};
-use crate::vfs::model::{FileNode, FileVersion, FolderNode, VfsNode, ROOT_PARENT_ID};
+use crate::vfs::model::{FileNode, FileVersion, FolderNode, ROOT_PARENT_ID, VfsNode};
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 

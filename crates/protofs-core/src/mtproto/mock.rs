@@ -108,16 +108,15 @@ impl TelegramTransport for MockTelegramTransport {
 
     async fn get_pinned_manifest(&self, channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {
         let messages = self.messages.read().await;
-        if let Some(msg_list) = messages.get(&channel_id) {
-            if let Some(pinned_msg) = msg_list
+        if let Some(msg_list) = messages.get(&channel_id)
+            && let Some(pinned_msg) = msg_list
                 .iter()
                 .rev()
                 .find(|m| m.is_pinned && m.document_name.as_deref() == Some("manifest.json.zst"))
-            {
-                let payloads = self.payloads.read().await;
-                if let Some(bytes) = payloads.get(&(channel_id, pinned_msg.id)) {
-                    return Ok(Some((pinned_msg.id, bytes.clone())));
-                }
+        {
+            let payloads = self.payloads.read().await;
+            if let Some(bytes) = payloads.get(&(channel_id, pinned_msg.id)) {
+                return Ok(Some((pinned_msg.id, bytes.clone())));
             }
         }
         Ok(None)

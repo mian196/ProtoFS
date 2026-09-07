@@ -47,7 +47,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::Info => {
             println!("ProtoFS CLI v0.2.0");
-            println!("Storage Architecture: Parent ID Pattern + Zstd Compressed Manifest + SQLite FTS5 Cache");
+            println!(
+                "Storage Architecture: Parent ID Pattern + Zstd Compressed Manifest + SQLite FTS5 Cache"
+            );
             println!("Encryption: Chunked AEAD (AES-256-GCM via STREAM) + Argon2id");
         }
         Commands::Manifest { sub } => match sub {

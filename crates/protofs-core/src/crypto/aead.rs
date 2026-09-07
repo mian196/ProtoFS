@@ -1,6 +1,6 @@
 use crate::error::{ProtoFsError, Result};
 use rand::RngCore;
-use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
+use ring::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
 
 pub const CHUNK_PLAINTEXT_SIZE: usize = 64 * 1024; // 64 KB
 pub const TAG_SIZE: usize = 16;

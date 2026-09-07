@@ -11,7 +11,7 @@ mod platform {
     }
 
     #[link(name = "crypt32")]
-    extern "system" {
+    unsafe extern "system" {
         fn CryptProtectData(
             p_data_in: *const DataBlob,
             sz_data_descr: *const u16,
@@ -34,7 +34,7 @@ mod platform {
     }
 
     #[link(name = "kernel32")]
-    extern "system" {
+    unsafe extern "system" {
         fn LocalFree(h_mem: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
     }
 
@@ -115,7 +115,7 @@ mod platform {
 mod platform {
     // Cross-platform fallback using local hardware-bound AES-256-GCM
     use rand::RngCore;
-    use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
+    use ring::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
 
     fn get_machine_key() -> [u8; 32] {
         let id = std::fs::read_to_string("/etc/machine-id")
