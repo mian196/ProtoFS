@@ -18,9 +18,14 @@ tracing-subscriber = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 
+[lib]
+name = "protofs_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
