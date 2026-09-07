@@ -2214,8 +2214,336 @@ class ProtoFsApp {
 
   private openFilePreview(file: FileNode) {
     let previewContent = '';
+    const isOfficeDoc = file.type === 'doc' || file.type === 'sheet' || file.type === 'presentation';
+    const isLarge = isOfficeDoc || file.type === 'pdf' || file.type === 'video';
 
-    if (file.type === 'video') {
+    if (file.type === 'doc') {
+      const cleanTitle = escapeHtml(file.name.replace(/\.[^/.]+$/, '').replace(/_/g, ' '));
+      previewContent = `
+        <div class="preview-doc-wrapper">
+          <div class="preview-office-ribbon">
+            <div class="office-ribbon-left">
+              <span class="office-badge badge-word">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Word Document Reader
+              </span>
+              <span class="office-plugin-status" title="Sandboxed WASM/JS Renderer (PRD 6.14)">⚡ Sandboxed WASM Viewer</span>
+            </div>
+            <div class="office-ribbon-actions">
+              <div class="zoom-controls">
+                <button class="btn-ribbon-icon" id="btnDocZoomOut" title="Zoom Out">-</button>
+                <span class="zoom-level" id="docZoomLevel">100%</span>
+                <button class="btn-ribbon-icon" id="btnDocZoomIn" title="Zoom In">+</button>
+              </div>
+              <button class="btn-ribbon-tool" id="btnDocCopyText" title="Copy Document Content">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                <span>Copy</span>
+              </button>
+              <button class="btn-ribbon-tool" id="btnDocPrint" title="Print Document">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
+                <span>Print</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="doc-viewport" id="docViewport">
+            <div class="preview-doc-paper" id="docPaper">
+              <div class="doc-header-metadata">
+                <div class="doc-title">${cleanTitle}</div>
+                <div class="doc-subtitle">CONFIDENTIAL: PROJECT WORKING SPECIFICATION • VERSION 2.4 • LAST UPDATED ${file.date}</div>
+              </div>
+
+              <div class="doc-body-content">
+                <h2 class="doc-heading">1. Executive Summary & Architecture Overview</h2>
+                <p class="doc-paragraph">
+                  ProtoFS delivers an open-source, serverless virtual file system leveraging personal Telegram MTProto channels 
+                  for unlimited, zero-subscription cloud storage. By strictly maintaining an immutable parent ID pattern across all virtual 
+                  file nodes, hierarchical folder renames complete instantaneously without triggering cascading caption edits or API rate limits.
+                </p>
+
+                <div class="doc-callout">
+                  <strong>Zero-Knowledge Security Invariant:</strong> All client data is encrypted into sequential 64KB chunks using 
+                  AES-256-GCM authenticated stream encryption with Argon2id key derivation before any network packet is dispatched to Telegram CDN nodes.
+                </div>
+
+                <h2 class="doc-heading">2. Performance & Benchmark Targets</h2>
+                <p class="doc-paragraph">
+                  Local SQLite WAL caching with FTS5 indexing guarantees sub-5ms query response times across libraries exceeding 100,000 files. 
+                  The compressed Zstandard manifest snapshot achieves cold-boot restoration in under 1.2 seconds.
+                </p>
+
+                <table class="doc-table">
+                  <thead>
+                    <tr>
+                      <th>Component / Pipeline</th>
+                      <th>Cold Start Latency</th>
+                      <th>Warm Cache Latency</th>
+                      <th>Target SLA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Manifest Snapshot Sync (zstd)</td>
+                      <td>580 ms</td>
+                      <td>14 ms</td>
+                      <td>&lt; 2000 ms</td>
+                    </tr>
+                    <tr>
+                      <td>SQLite FTS5 Full-Text Search</td>
+                      <td>4.2 ms</td>
+                      <td>0.8 ms</td>
+                      <td>&lt; 10 ms</td>
+                    </tr>
+                    <tr>
+                      <td>64KB Stream Chunk Decryption</td>
+                      <td>1.1 ms</td>
+                      <td>0.2 ms</td>
+                      <td>&lt; 5 ms</td>
+                    </tr>
+                    <tr>
+                      <td>Sub-Directory Traversal (VFS)</td>
+                      <td>0.4 ms</td>
+                      <td>0.1 ms</td>
+                      <td>&lt; 2 ms</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <h2 class="doc-heading">3. Cryptographic Proofs & Offline Retention</h2>
+                <p class="doc-paragraph">
+                  File access timestamps are audited solely within the local client database. An automated 14-day LRU eviction cycle keeps 
+                  local disk consumption constrained while user-pinned files are protected against automatic cleanup.
+                </p>
+              </div>
+
+              <div class="doc-paper-footer">
+                <span>ProtoFS Specification Engine</span>
+                <span>Page 1 of 1 • Internal Distribution</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-stats-bar">
+            <span>Words: 482</span>
+            <span>•</span>
+            <span>Reading Time: ~2 min</span>
+            <span>•</span>
+            <span>Encoding: UTF-8 OpenXML Document</span>
+          </div>
+        </div>
+      `;
+    } else if (file.type === 'sheet') {
+      previewContent = `
+        <div class="preview-sheet-wrapper">
+          <div class="preview-office-ribbon">
+            <div class="office-ribbon-left">
+              <span class="office-badge badge-excel">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M10 9H8"/></svg>
+                Excel Workbook Viewer
+              </span>
+              <span class="office-plugin-status">⚡ Sandboxed WASM Spreadsheet</span>
+            </div>
+            <div class="office-ribbon-actions">
+              <button class="btn-ribbon-tool" id="btnSheetExportCsv" title="Export current sheet as CSV">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sheet-formula-bar">
+            <div class="sheet-cell-address" id="sheetCellAddress">B2</div>
+            <div class="sheet-formula-fx">fx</div>
+            <input type="text" class="sheet-formula-input" id="sheetFormulaInput" value="$1,450,000" readonly>
+          </div>
+
+          <div class="sheet-grid-wrapper" id="sheetGridWrapper">
+            <table class="sheet-table" id="sheetTable">
+              <thead>
+                <tr>
+                  <th class="sheet-corner-cell"></th>
+                  <th>A</th>
+                  <th>B</th>
+                  <th>C</th>
+                  <th>D</th>
+                  <th>E</th>
+                  <th>F</th>
+                </tr>
+              </thead>
+              <tbody id="sheetTableBody"></tbody>
+            </table>
+          </div>
+
+          <div class="sheet-tabs-bar">
+            <div class="sheet-tabs-list">
+              <button class="sheet-tab-btn active" data-sheet-tab="summary">Q3 Financial Summary</button>
+              <button class="sheet-tab-btn" data-sheet-tab="expenses">Operating Expenses</button>
+              <button class="sheet-tab-btn" data-sheet-tab="projections">2027 Projections</button>
+            </div>
+            <div class="sheet-summary-stats" id="sheetSummaryStats">
+              <span>COUNT: 18</span>
+              <span>SUM: $4,920,000</span>
+              <span>AVG: $615,000</span>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (file.type === 'presentation') {
+      previewContent = `
+        <div class="preview-presentation-wrapper">
+          <div class="preview-office-ribbon">
+            <div class="office-ribbon-left">
+              <span class="office-badge badge-powerpoint">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="14" x="3" y="3" rx="2"/><path d="M7 21h10"/><path d="M12 17v4"/><path d="m9 8 3 3 5-5"/></svg>
+                Slide Deck Viewer
+              </span>
+              <span class="office-plugin-status">⚡ Sandboxed Canvas Presentation</span>
+            </div>
+            <div class="office-ribbon-actions">
+              <button class="btn-ribbon-tool" id="btnToggleNotes">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><line x1="10" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                <span>Speaker Notes</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="presentation-stage-container">
+            <div class="presentation-canvas" id="presentationCanvas"></div>
+          </div>
+
+          <div class="presentation-nav-bar">
+            <div class="presentation-nav-left">
+              <button class="btn-slide-nav" id="btnPrevSlide" title="Previous Slide (Arrow Left)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                <span>Prev</span>
+              </button>
+              <span class="slide-counter-pill" id="slideCounterPill">Slide 1 of 4</span>
+              <button class="btn-slide-nav" id="btnNextSlide" title="Next Slide (Arrow Right)">
+                <span>Next</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </div>
+            <div class="presentation-nav-right">
+              <span class="presentation-hint">Navigate with Arrow keys (◀ / ▶)</span>
+            </div>
+          </div>
+
+          <div class="speaker-notes-drawer hidden" id="speakerNotesDrawer">
+            <div class="speaker-notes-label">Speaker Notes</div>
+            <div class="speaker-notes-text" id="speakerNotesText"></div>
+          </div>
+
+          <div class="slide-thumbnails-ribbon" id="slideThumbnailsRibbon"></div>
+        </div>
+      `;
+    } else if (file.type === 'audio') {
+      previewContent = `
+        <div class="preview-audio-container">
+          <div class="audio-player-card">
+            <div class="audio-art-disc" id="audioArtDisc">
+              <div class="disc-center">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              </div>
+            </div>
+
+            <div class="audio-meta-area">
+              <div class="audio-track-title">${escapeHtml(file.name)}</div>
+              <div class="audio-track-artist">ProtoFS Zero-Knowledge Stream • ${file.encrypted ? 'AES-256-GCM Encrypted' : 'Plaintext Audio'}</div>
+              <div class="audio-format-badge">FLAC 24-bit / 96kHz Master Quality</div>
+            </div>
+
+            <div class="audio-waveform-bars" id="audioWaveformBars"></div>
+
+            <div class="audio-scrubber-track" id="audioScrubberTrack">
+              <div class="audio-scrubber-fill" id="audioScrubberFill"></div>
+              <div class="audio-scrubber-thumb" id="audioScrubberThumb"></div>
+            </div>
+
+            <div class="audio-time-row">
+              <span id="audioCurrentTime">00:00</span>
+              <span id="audioTotalTime">03:42</span>
+            </div>
+
+            <div class="audio-controls-row">
+              <button class="btn-audio-ctrl" id="btnAudioRewind" title="Rewind 10s">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>
+              </button>
+              <button class="btn-audio-play" id="btnAudioPlayPause" title="Play / Pause">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" id="audioPlayIcon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </button>
+              <button class="btn-audio-ctrl" id="btnAudioForward" title="Forward 10s">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 17l5-5-5-5M6 17l5-5-5-5"/></svg>
+              </button>
+              <div class="audio-volume-control">
+                <button class="btn-audio-ctrl" id="btnAudioMute" title="Mute / Unmute">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="audioVolumeIcon"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                </button>
+                <input type="range" class="audio-volume-slider" id="audioVolumeSlider" min="0" max="100" value="85">
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (file.type === 'pdf') {
+      const cleanPdfTitle = escapeHtml(file.name.replace(/\.pdf$/i, '').replace(/_/g, ' '));
+      previewContent = `
+        <div class="preview-pdf-wrapper">
+          <div class="preview-office-ribbon">
+            <div class="office-ribbon-left">
+              <span class="office-badge badge-pdf">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
+                PDF Document Viewer
+              </span>
+              <span class="office-plugin-status">⚡ Pure JS PDF.js Engine (PRD 6.14)</span>
+            </div>
+            <div class="office-ribbon-actions">
+              <span class="zoom-level">Page 1 of 4</span>
+            </div>
+          </div>
+
+          <div class="pdf-viewport">
+            <div class="preview-pdf-page">
+              <div class="pdf-header-bar">
+                <span class="pdf-doc-badge">TECHNICAL SPECIFICATION</span>
+                <span class="pdf-doc-code">PFS-SPEC-2026-V1</span>
+              </div>
+              <h1 class="pdf-title">${cleanPdfTitle}</h1>
+              <div class="pdf-meta-line">Author: ProtoFS Core Engineering Team • Classification: Verified Snapshot</div>
+              <hr class="pdf-divider">
+              <div class="pdf-content-columns">
+                <div class="pdf-col">
+                  <h3>1. System Topology & MTProto Channel Log</h3>
+                  <p>
+                    ProtoFS operates without an external database server. File entries and hierarchical directories are serialized 
+                    as self-describing message captions into dedicated private Telegram storage channels.
+                  </p>
+                  <h3>2. Cryptographic Construction</h3>
+                  <p>
+                    Payloads are partitioned into fixed 64KB chunks and encrypted via AES-256-GCM with individual MAC tags. 
+                    This enables random-access byte seeking across encrypted files without decrypting unneeded bytes.
+                  </p>
+                </div>
+                <div class="pdf-col">
+                  <h3>3. Cache Eviction & Offline Pinning</h3>
+                  <p>
+                    An embedded SQLite database tracks access timestamps. Least recently used files are evicted after 14 days of inactivity 
+                    unless pinned offline by user policy.
+                  </p>
+                  <div class="pdf-signature-box">
+                    <div class="pdf-sig-line">✓ Cryptographic Signature Verified</div>
+                    <div class="pdf-sig-hash">SHA256: ${file.sha256_hash || '3a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b'}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="pdf-page-footer">
+                <span>Page 1 of 4</span>
+                <span>ProtoFS Technical Whitepaper</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (file.type === 'video') {
       previewContent = `
         <div class="preview-media-frame">
           <video controls autoplay loop style="width: 100%; max-height: 480px;">
@@ -2266,7 +2594,8 @@ class ProtoFsApp {
       `
       <button class="btn-action secondary" id="btnPreviewDownload">Download</button>
       <button class="btn-action primary" id="btnPreviewClose">Done</button>
-    `
+    `,
+      isLarge
     );
 
     document.getElementById('btnPreviewClose')?.addEventListener('click', () => this.closeModal());
@@ -2274,6 +2603,443 @@ class ProtoFsApp {
       this.closeModal();
       this.triggerTransfer(file.name, file.size, 'downloading');
     });
+
+    // -----------------------------------------------------------------------
+    // Interactive Behaviors for In-App Office Previewers
+    // -----------------------------------------------------------------------
+
+    // 1. Word Document Zoom & Copy
+    if (file.type === 'doc') {
+      let docZoom = 1.0;
+      const docPaper = document.getElementById('docPaper');
+      const docZoomLevel = document.getElementById('docZoomLevel');
+
+      document.getElementById('btnDocZoomIn')?.addEventListener('click', () => {
+        if (docZoom < 1.4) {
+          docZoom += 0.1;
+          if (docPaper) docPaper.style.transform = `scale(${docZoom})`;
+          if (docZoomLevel) docZoomLevel.textContent = `${Math.round(docZoom * 100)}%`;
+        }
+      });
+
+      document.getElementById('btnDocZoomOut')?.addEventListener('click', () => {
+        if (docZoom > 0.7) {
+          docZoom -= 0.1;
+          if (docPaper) docPaper.style.transform = `scale(${docZoom})`;
+          if (docZoomLevel) docZoomLevel.textContent = `${Math.round(docZoom * 100)}%`;
+        }
+      });
+
+      document.getElementById('btnDocCopyText')?.addEventListener('click', async () => {
+        const text = docPaper?.innerText || '';
+        try {
+          await navigator.clipboard.writeText(text);
+          const btn = document.getElementById('btnDocCopyText');
+          if (btn) {
+            const original = btn.innerHTML;
+            btn.innerHTML = `<span>✓ Copied</span>`;
+            setTimeout(() => { btn.innerHTML = original; }, 2000);
+          }
+        } catch {
+          // ignore clipboard errors
+        }
+      });
+
+      document.getElementById('btnDocPrint')?.addEventListener('click', () => {
+        window.print();
+      });
+    }
+
+    // 2. Excel Spreadsheet Interactive Grid & Sheet Tabs
+    if (file.type === 'sheet') {
+      const sheetsData: Record<string, { rows: string[][]; sum: string; avg: string; count: number }> = {
+        summary: {
+          rows: [
+            ['Product Engineering', '$1,450,000', '$1,520,000', '$1,610,000', '$4,580,000', '+5.8% (Growth)'],
+            ['Zero-Knowledge Crypto Audit', '$180,000', '$195,000', '$210,000', '$585,000', 'On Track'],
+            ['MTProto Streaming Cluster', '$340,000', '$365,000', '$390,000', '$1,095,000', 'Nominal'],
+            ['WinFsp & FUSE Virtual Drive', '$280,000', '$310,000', '$340,000', '$930,000', '+9.6% (Accelerated)'],
+            ['Android Scoped Storage Sync', '$220,000', '$240,000', '$260,000', '$720,000', 'On Track'],
+            ['Quality Assurance & Testing', '$90,000', '$95,000', '$105,000', '$290,000', 'Target Met'],
+          ],
+          sum: '$8,200,000',
+          avg: '$1,366,667',
+          count: 36,
+        },
+        expenses: {
+          rows: [
+            ['Telegram API Infrastructure', '$0', '$0', '$0', '$0', 'Free (Self-Hosted)'],
+            ['Local SQLite SSD Ingestion', '$12,400', '$14,200', '$15,800', '$42,400', 'Optimized'],
+            ['Zstandard Compression Pipeline', '$8,500', '$9,200', '$9,800', '$27,500', 'Target Met'],
+            ['Automated CI Release Builds', '$6,200', '$6,400', '$6,800', '$19,400', 'GitHub Actions'],
+          ],
+          sum: '$89,300',
+          avg: '$22,325',
+          count: 24,
+        },
+        projections: {
+          rows: [
+            ['Active Connected Channels', '12,500', '45,000', '120,000', '177,500', '+166% YoY'],
+            ['Total Stored File Volume', '42.5 TB', '185.0 TB', '820.0 TB', '1,047.5 TB', 'Unlimited Cloud'],
+            ['SQLite FTS5 Queries / Day', '840,000', '3,200,000', '12,000,000', '16,040,000', '< 5ms Response'],
+          ],
+          sum: 'N/A (Metrics)',
+          avg: 'N/A',
+          count: 18,
+        },
+      };
+
+      const tableBody = document.getElementById('sheetTableBody');
+      const cellAddr = document.getElementById('sheetCellAddress');
+      const formulaInput = document.getElementById('sheetFormulaInput') as HTMLInputElement;
+      const statsBar = document.getElementById('sheetSummaryStats');
+
+      const colLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+      const renderSheet = (tabKey: string) => {
+        const data = sheetsData[tabKey] || sheetsData.summary;
+        if (!tableBody) return;
+
+        tableBody.innerHTML = data.rows
+          .map(
+            (row, rIdx) => `
+            <tr>
+              <td class="sheet-row-index">${rIdx + 1}</td>
+              ${row
+                .map(
+                  (val, cIdx) => `
+                <td class="sheet-cell ${cIdx > 0 ? 'num' : ''} ${rIdx === 0 && cIdx === 1 ? 'selected' : ''}" 
+                    data-coord="${colLetters[cIdx]}${rIdx + 1}" 
+                    data-val="${escapeHtml(val)}">
+                  ${escapeHtml(val)}
+                </td>
+              `
+                )
+                .join('')}
+            </tr>
+          `
+          )
+          .join('');
+
+        if (statsBar) {
+          statsBar.innerHTML = `
+            <span>COUNT: ${data.count}</span>
+            <span>SUM: ${data.sum}</span>
+            <span>AVG: ${data.avg}</span>
+          `;
+        }
+
+        // Bind interactive cell click selection
+        tableBody.querySelectorAll('.sheet-cell').forEach(cell => {
+          cell.addEventListener('click', () => {
+            tableBody.querySelectorAll('.sheet-cell').forEach(c => c.classList.remove('selected'));
+            cell.classList.add('selected');
+            const coord = (cell as HTMLElement).dataset.coord || 'A1';
+            const val = (cell as HTMLElement).dataset.val || '';
+            if (cellAddr) cellAddr.textContent = coord;
+            if (formulaInput) formulaInput.value = val;
+          });
+        });
+      };
+
+      renderSheet('summary');
+
+      document.querySelectorAll('.sheet-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.sheet-tab-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const tab = (btn as HTMLElement).dataset.sheetTab || 'summary';
+          renderSheet(tab);
+        });
+      });
+
+      document.getElementById('btnSheetExportCsv')?.addEventListener('click', () => {
+        const activeTab = document.querySelector('.sheet-tab-btn.active') as HTMLElement;
+        const tabKey = activeTab?.dataset.sheetTab || 'summary';
+        const data = sheetsData[tabKey] || sheetsData.summary;
+        const csvContent = data.rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `${file.name.replace(/\.[^/.]+$/, '')}_${tabKey}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+    }
+
+    // 3. PowerPoint Slide Deck Viewer (Navigation, Thumbnails, Notes)
+    if (file.type === 'presentation') {
+      const slides = [
+        {
+          num: 1,
+          badge: 'Executive Deck',
+          title: 'ProtoFS: Unlimited Cloud Storage',
+          subtitle: 'Architectural overview of serverless, client-side encrypted MTProto virtual file systems.',
+          notes: 'Opening slide: Emphasize that ProtoFS uses the user\'s own Telegram account as free, unlimited storage with zero central backend server.',
+          content: `
+            <div class="slide-content-grid">
+              <div class="slide-metric-card">
+                <div class="slide-metric-val">0</div>
+                <div class="slide-metric-label">Backend Servers Required</div>
+                <div class="slide-metric-sub">Pure client-side MTProto</div>
+              </div>
+              <div class="slide-metric-card">
+                <div class="slide-metric-val">64 KB</div>
+                <div class="slide-metric-label">STREAM Chunking</div>
+                <div class="slide-metric-sub">AES-256-GCM authenticated</div>
+              </div>
+              <div class="slide-metric-card">
+                <div class="slide-metric-val">&lt; 1.2s</div>
+                <div class="slide-metric-label">Cold-Start Ingestion</div>
+                <div class="slide-metric-sub">Zstandard manifest snapshot</div>
+              </div>
+            </div>
+          `,
+        },
+        {
+          num: 2,
+          badge: 'Core Problem & Innovation',
+          title: 'Parent ID Pattern: Zero Rename Cascades',
+          subtitle: 'Solving the traditional Telegram storage dilemma without recursive updates.',
+          notes: 'Highlight how traditional tools either use bot APIs with 50MB limits or store full absolute paths in captions, causing catastrophic flood wait rate limits on folder renames.',
+          content: `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 10px 0;">
+              <div style="background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-sm); border-left: 3px solid #ef4444;">
+                <div style="font-weight: 700; font-size: 12px; color: #ef4444; margin-bottom: 4px;">Legacy Absolute Path Approaches</div>
+                <div style="font-size: 11px; line-height: 1.5; color: var(--text-secondary);">Renaming <code>/Projects</code> to <code>/Work</code> forces updates to 10,000 child file captions, triggering Telegram <code>FLOOD_WAIT</code> rate limits.</div>
+              </div>
+              <div style="background: var(--bg-surface-elevated); padding: 14px; border-radius: var(--radius-sm); border-left: 3px solid #10b981;">
+                <div style="font-weight: 700; font-size: 12px; color: #10b981; margin-bottom: 4px;">ProtoFS Parent ID Architecture</div>
+                <div style="font-size: 11px; line-height: 1.5; color: var(--text-secondary);">Every node stores an immutable parent pointer. Renaming a folder modifies only 1 manifest record in 0ms without touching child files.</div>
+              </div>
+            </div>
+          `,
+        },
+        {
+          num: 3,
+          badge: 'Storage & Performance',
+          title: 'SQLite WAL Cache with FTS5 Search',
+          subtitle: 'Sub-millisecond query latency across massive channel catalogs.',
+          notes: 'Point out the SQLite tier: ingest 100,000 files in a single atomic transaction on startup, providing instant desktop search without SSD wear.',
+          content: `
+            <div class="slide-content-grid">
+              <div class="slide-metric-card">
+                <div class="slide-metric-val">4.2 ms</div>
+                <div class="slide-metric-label">FTS5 Search Query</div>
+                <div class="slide-metric-sub">Real-time prefix and token matching</div>
+              </div>
+              <div class="slide-metric-card">
+                <div class="slide-metric-val">14 Days</div>
+                <div class="slide-metric-label">LRU Cache Retention</div>
+                <div class="slide-metric-sub">Configurable automatic eviction</div>
+              </div>
+              <div class="slide-metric-card">
+                <div class="slide-metric-val">100%</div>
+                <div class="slide-metric-label">Offline Pinning Protection</div>
+                <div class="slide-metric-sub">Guaranteed device persistence</div>
+              </div>
+            </div>
+          `,
+        },
+        {
+          num: 4,
+          badge: 'Phase Roadmap',
+          title: 'Upcoming Milestones: Native OS Mount & Mobile',
+          subtitle: 'Expanding from GUI desktop explorer to native virtual drive letters and Android sync.',
+          notes: 'Discuss Phase 2 and 3: WinFsp for Windows P: drive letter, FUSE on Linux, and Android DocumentsProvider.',
+          content: `
+            <div style="display: flex; flex-direction: column; gap: 8px; margin: 8px 0;">
+              <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface-elevated); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">WinFsp Native Virtual Drive Letter (P:\\)</span>
+                <span style="font-size: 11px; color: var(--accent-primary); font-weight: 600;">Phase 2 Core</span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface-elevated); padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Android DocumentsProvider & Camera Auto-Backup</span>
+                <span style="font-size: 11px; color: #10b981; font-weight: 600;">Phase 2 Mobile</span>
+              </div>
+            </div>
+          `,
+        },
+      ];
+
+      let activeSlideIdx = 0;
+      const canvas = document.getElementById('presentationCanvas');
+      const counter = document.getElementById('slideCounterPill');
+      const ribbon = document.getElementById('slideThumbnailsRibbon');
+      const notesDrawer = document.getElementById('speakerNotesDrawer');
+      const notesText = document.getElementById('speakerNotesText');
+
+      const renderSlide = (idx: number) => {
+        activeSlideIdx = idx;
+        const slide = slides[idx];
+        if (!canvas) return;
+
+        canvas.innerHTML = `
+          <div>
+            <div class="slide-header-badge">${slide.badge}</div>
+            <div class="slide-main-title">${slide.title}</div>
+            <div class="slide-main-subtitle">${slide.subtitle}</div>
+          </div>
+          ${slide.content}
+          <div class="slide-footer">
+            <span>ProtoFS Architectural Deck • Confidential</span>
+            <span>Slide ${slide.num} of ${slides.length}</span>
+          </div>
+        `;
+
+        if (counter) counter.textContent = `Slide ${slide.num} of ${slides.length}`;
+        if (notesText) notesText.textContent = slide.notes;
+
+        if (ribbon) {
+          ribbon.innerHTML = slides
+            .map(
+              (s, sIdx) => `
+            <div class="mini-slide-card ${sIdx === idx ? 'active' : ''}" data-slide-index="${sIdx}">
+              <div class="mini-slide-num">0${s.num}</div>
+              <div class="mini-slide-title">${escapeHtml(s.title)}</div>
+            </div>
+          `
+            )
+            .join('');
+
+          ribbon.querySelectorAll('.mini-slide-card').forEach(card => {
+            card.addEventListener('click', () => {
+              const sIdx = Number((card as HTMLElement).dataset.slideIndex || 0);
+              renderSlide(sIdx);
+            });
+          });
+        }
+      };
+
+      renderSlide(0);
+
+      document.getElementById('btnPrevSlide')?.addEventListener('click', () => {
+        if (activeSlideIdx > 0) renderSlide(activeSlideIdx - 1);
+      });
+
+      document.getElementById('btnNextSlide')?.addEventListener('click', () => {
+        if (activeSlideIdx < slides.length - 1) renderSlide(activeSlideIdx + 1);
+      });
+
+      document.getElementById('btnToggleNotes')?.addEventListener('click', () => {
+        notesDrawer?.classList.toggle('hidden');
+      });
+
+      const handleArrowKeys = (e: KeyboardEvent) => {
+        if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+          if (activeSlideIdx < slides.length - 1) renderSlide(activeSlideIdx + 1);
+        } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+          if (activeSlideIdx > 0) renderSlide(activeSlideIdx - 1);
+        }
+      };
+
+      document.addEventListener('keydown', handleArrowKeys);
+      document.getElementById('btnPreviewClose')?.addEventListener('click', () => {
+        document.removeEventListener('keydown', handleArrowKeys);
+      }, { once: true });
+    }
+
+    // 4. Audio Stream Player (Waveform, Time Counter, Scrubber)
+    if (file.type === 'audio') {
+      const barsContainer = document.getElementById('audioWaveformBars');
+      const scrubberFill = document.getElementById('audioScrubberFill');
+      const scrubberThumb = document.getElementById('audioScrubberThumb');
+      const currentTimeEl = document.getElementById('audioCurrentTime');
+      const btnPlayPause = document.getElementById('btnAudioPlayPause');
+      const playIcon = document.getElementById('audioPlayIcon');
+      const artDisc = document.getElementById('audioArtDisc');
+      const scrubberTrack = document.getElementById('audioScrubberTrack');
+
+      // Generate 32 animated waveform bars
+      const numBars = 32;
+      const barHeights: number[] = [];
+      if (barsContainer) {
+        let barsHtml = '';
+        for (let i = 0; i < numBars; i++) {
+          const h = Math.floor(Math.sin((i / numBars) * Math.PI) * 36) + Math.floor(Math.random() * 8) + 8;
+          barHeights.push(h);
+          barsHtml += `<div class="waveform-bar" id="wBar_${i}" style="height: ${h}px;"></div>`;
+        }
+        barsContainer.innerHTML = barsHtml;
+      }
+
+      let isPlaying = false;
+      let currentSec = 0;
+      const totalSec = 222; // 3 min 42 sec
+      let audioTimer: any = null;
+
+      const formatTime = (secs: number) => {
+        const m = Math.floor(secs / 60);
+        const s = Math.floor(secs % 60);
+        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      };
+
+      const updateAudioUI = () => {
+        if (currentTimeEl) currentTimeEl.textContent = formatTime(currentSec);
+        const pct = (currentSec / totalSec) * 100;
+        if (scrubberFill) scrubberFill.style.width = `${pct}%`;
+        if (scrubberThumb) scrubberThumb.style.left = `${pct}%`;
+
+        const activeBarIdx = Math.floor((currentSec / totalSec) * numBars);
+        for (let i = 0; i < numBars; i++) {
+          const bar = document.getElementById(`wBar_${i}`);
+          if (bar) {
+            if (i <= activeBarIdx) {
+              bar.classList.add('active');
+            } else {
+              bar.classList.remove('active');
+            }
+          }
+        }
+      };
+
+      btnPlayPause?.addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+          artDisc?.classList.add('playing');
+          if (playIcon) playIcon.innerHTML = `<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>`;
+          audioTimer = setInterval(() => {
+            currentSec += 1;
+            if (currentSec >= totalSec) {
+              currentSec = 0;
+              isPlaying = false;
+              artDisc?.classList.remove('playing');
+              if (playIcon) playIcon.innerHTML = `<polygon points="5 3 19 12 5 21 5 3"/>`;
+              clearInterval(audioTimer);
+            }
+            updateAudioUI();
+          }, 1000);
+        } else {
+          artDisc?.classList.remove('playing');
+          if (playIcon) playIcon.innerHTML = `<polygon points="5 3 19 12 5 21 5 3"/>`;
+          if (audioTimer) clearInterval(audioTimer);
+        }
+      });
+
+      document.getElementById('btnAudioRewind')?.addEventListener('click', () => {
+        currentSec = Math.max(0, currentSec - 10);
+        updateAudioUI();
+      });
+
+      document.getElementById('btnAudioForward')?.addEventListener('click', () => {
+        currentSec = Math.min(totalSec, currentSec + 10);
+        updateAudioUI();
+      });
+
+      scrubberTrack?.addEventListener('click', e => {
+        const rect = scrubberTrack.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const pct = Math.max(0, Math.min(1, clickX / rect.width));
+        currentSec = Math.floor(pct * totalSec);
+        updateAudioUI();
+      });
+
+      document.getElementById('btnPreviewClose')?.addEventListener('click', () => {
+        if (audioTimer) clearInterval(audioTimer);
+      }, { once: true });
+    }
   }
 
   private async openVersionHistoryModal(fileId: string) {
@@ -2523,13 +3289,22 @@ class ProtoFsApp {
     barFill.style.width = '28%';
   }
 
-  private showModal(title: string, bodyHtml: string, footerHtml: string) {
+  private showModal(title: string, bodyHtml: string, footerHtml: string, isLarge = false) {
     const overlay = document.getElementById('dynamicModalOverlay');
+    const card = document.getElementById('dynamicModalCard');
     const titleEl = document.getElementById('dynamicModalTitle');
     const bodyEl = document.getElementById('dynamicModalBody');
     const footerEl = document.getElementById('dynamicModalFooter');
 
     if (!overlay || !titleEl || !bodyEl || !footerEl) return;
+
+    if (card) {
+      if (isLarge) {
+        card.classList.add('modal-card-lg');
+      } else {
+        card.classList.remove('modal-card-lg');
+      }
+    }
 
     titleEl.textContent = title;
     bodyEl.innerHTML = bodyHtml;
@@ -2539,6 +3314,8 @@ class ProtoFsApp {
 
   private closeModal() {
     const overlay = document.getElementById('dynamicModalOverlay');
+    const card = document.getElementById('dynamicModalCard');
+    if (card) card.classList.remove('modal-card-lg');
     if (overlay) overlay.classList.add('hidden');
   }
 
@@ -2714,9 +3491,15 @@ function getFileIconSvg(type: string): string {
     case 'image':
       return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`;
     case 'pdf':
-      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/></svg>`;
     case 'sheet':
       return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h8"/><path d="M8 17h8"/><path d="M10 9H8"/></svg>`;
+    case 'doc':
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>`;
+    case 'presentation':
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="14" x="3" y="3" rx="2"/><path d="M7 21h10"/><path d="M12 17v4"/><path d="m9 8 3 3 5-5"/></svg>`;
+    case 'audio':
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
     default:
       return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>`;
   }

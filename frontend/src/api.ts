@@ -1089,9 +1089,121 @@ export class ProtoFsApi {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
+        {
+          id: 'file_5',
+          drive_id: 'personal',
+          parent_id: 'root',
+          name: 'ProtoFS_Product_Specification.docx',
+          size: '1.24 MB',
+          size_bytes: 1300234,
+          type: 'doc',
+          telegram_message_id: 10410,
+          encrypted: false,
+          pinned: true,
+          trashed: false,
+          date: 'Aug 29, 2026',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 'file_6',
+          drive_id: 'personal',
+          parent_id: 'root',
+          name: 'Investor_Pitch_Deck_2026.pptx',
+          size: '8.65 MB',
+          size_bytes: 9070200,
+          type: 'presentation',
+          telegram_message_id: 10398,
+          encrypted: false,
+          pinned: false,
+          trashed: false,
+          date: 'Aug 25, 2026',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 'file_7',
+          drive_id: 'personal',
+          parent_id: 'root',
+          name: 'Security_Architecture_Briefing.mp3',
+          size: '14.2 MB',
+          size_bytes: 14889780,
+          type: 'audio',
+          telegram_message_id: 10382,
+          encrypted: true,
+          encryption_iv: 'c3d4e5f6a7b8c9d0',
+          pinned: false,
+          trashed: false,
+          date: 'Aug 20, 2026',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
       ];
       localStorage.setItem(STORAGE_KEY_FOLDERS, JSON.stringify(folders));
       localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
+    } else {
+      let updated = false;
+      if (!files.some(f => f.type === 'doc')) {
+        files.push({
+          id: 'file_5',
+          drive_id: 'personal',
+          parent_id: 'root',
+          name: 'ProtoFS_Product_Specification.docx',
+          size: '1.24 MB',
+          size_bytes: 1300234,
+          type: 'doc',
+          telegram_message_id: 10410,
+          encrypted: false,
+          pinned: true,
+          trashed: false,
+          date: 'Aug 29, 2026',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        updated = true;
+      }
+      if (!files.some(f => f.type === 'presentation')) {
+        files.push({
+          id: 'file_6',
+          drive_id: 'personal',
+          parent_id: 'root',
+          name: 'Investor_Pitch_Deck_2026.pptx',
+          size: '8.65 MB',
+          size_bytes: 9070200,
+          type: 'presentation',
+          telegram_message_id: 10398,
+          encrypted: false,
+          pinned: false,
+          trashed: false,
+          date: 'Aug 25, 2026',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        updated = true;
+      }
+      if (!files.some(f => f.type === 'audio')) {
+        files.push({
+          id: 'file_7',
+          drive_id: 'personal',
+          parent_id: 'root',
+          name: 'Security_Architecture_Briefing.mp3',
+          size: '14.2 MB',
+          size_bytes: 14889780,
+          type: 'audio',
+          telegram_message_id: 10382,
+          encrypted: true,
+          encryption_iv: 'c3d4e5f6a7b8c9d0',
+          pinned: false,
+          trashed: false,
+          date: 'Aug 20, 2026',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        updated = true;
+      }
+      if (updated) {
+        localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
+      }
     }
 
     return {
@@ -1101,13 +1213,14 @@ export class ProtoFsApi {
   }
 }
 
-function detectFileType(name: string): 'video' | 'image' | 'pdf' | 'audio' | 'sheet' | 'binary' {
+function detectFileType(name: string): 'video' | 'image' | 'pdf' | 'audio' | 'sheet' | 'doc' | 'presentation' | 'binary' {
   const ext = name.split('.').pop()?.toLowerCase();
   switch (ext) {
     case 'mp4':
     case 'mkv':
     case 'webm':
     case 'mov':
+    case 'avi':
       return 'video';
     case 'jpg':
     case 'jpeg':
@@ -1115,6 +1228,8 @@ function detectFileType(name: string): 'video' | 'image' | 'pdf' | 'audio' | 'sh
     case 'gif':
     case 'svg':
     case 'webp':
+    case 'bmp':
+    case 'ico':
       return 'image';
     case 'pdf':
       return 'pdf';
@@ -1122,11 +1237,27 @@ function detectFileType(name: string): 'video' | 'image' | 'pdf' | 'audio' | 'sh
     case 'flac':
     case 'wav':
     case 'ogg':
+    case 'm4a':
+    case 'aac':
       return 'audio';
     case 'xlsx':
     case 'xls':
     case 'csv':
+    case 'tsv':
+    case 'ods':
       return 'sheet';
+    case 'docx':
+    case 'doc':
+    case 'odt':
+    case 'rtf':
+    case 'txt':
+    case 'md':
+      return 'doc';
+    case 'pptx':
+    case 'ppt':
+    case 'odp':
+    case 'key':
+      return 'presentation';
     default:
       return 'binary';
   }

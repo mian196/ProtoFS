@@ -2283,4 +2283,1074 @@ body {
   background: var(--bg-sidebar);
 }
 
+/* ===========================================================================
+   IN-APP OFFICE & MEDIA DOCUMENT PREVIEW SYSTEM (PRD 6.14)
+   =========================================================================== */
+
+.modal-card.modal-card-lg {
+  max-width: 960px;
+  width: 95%;
+  max-height: 92vh;
+}
+
+.modal-card.modal-card-lg .modal-body {
+  max-height: calc(92vh - 125px);
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* File Type Signature Colors */
+.file-card-icon-area.file-type-doc, .file-icon-box.file-type-doc { color: #3b82f6; }
+.file-card-icon-area.file-type-sheet, .file-icon-box.file-type-sheet { color: #10b981; }
+.file-card-icon-area.file-type-presentation, .file-icon-box.file-type-presentation { color: #f97316; }
+.file-card-icon-area.file-type-pdf, .file-icon-box.file-type-pdf { color: #ef4444; }
+.file-card-icon-area.file-type-video, .file-icon-box.file-type-video { color: #8b5cf6; }
+.file-card-icon-area.file-type-audio, .file-icon-box.file-type-audio { color: #06b6d4; }
+.file-card-icon-area.file-type-image, .file-icon-box.file-type-image { color: #ec4899; }
+.file-card-icon-area.file-type-binary, .file-icon-box.file-type-binary { color: var(--text-muted); }
+
+/* Preview Common Elements */
+.preview-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.preview-media-frame {
+  background: var(--bg-surface-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+}
+
+.preview-media-frame img {
+  max-width: 100%;
+  max-height: 480px;
+  object-fit: contain;
+}
+
+.preview-text-box {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.preview-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-surface-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.preview-meta-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.preview-meta-val {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Office Ribbon Header */
+.preview-office-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  gap: 12px;
+}
+
+.office-ribbon-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.office-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+}
+
+.office-badge.badge-word {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.office-badge.badge-excel {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.office-badge.badge-powerpoint {
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.office-badge.badge-pdf {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.office-plugin-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.office-ribbon-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  background: var(--bg-surface-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 2px;
+}
+
+.btn-ribbon-icon {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: bold;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.btn-ribbon-icon:hover {
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+}
+
+.zoom-level {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0 6px;
+  min-width: 44px;
+  text-align: center;
+}
+
+.btn-ribbon-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-surface-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-ribbon-tool:hover {
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+  background: var(--bg-surface-elevated);
+}
+
+/* ---------------------------------------------------------------------------
+   1. WORD DOCUMENT VIEWER
+   --------------------------------------------------------------------------- */
+.preview-doc-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.doc-viewport {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  max-height: 480px;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.preview-doc-paper {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 40px 48px;
+  width: 100%;
+  max-width: 760px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transform-origin: top center;
+  transition: transform 0.2s ease;
+}
+
+.doc-header-metadata {
+  border-bottom: 2px solid var(--border-subtle);
+  padding-bottom: 14px;
+}
+
+.doc-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+
+.doc-subtitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.doc-body-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.doc-heading {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  margin-top: 8px;
+}
+
+.doc-paragraph {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  text-align: justify;
+}
+
+.doc-callout {
+  padding: 12px 16px;
+  background: var(--bg-surface-input);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.doc-table th {
+  background: var(--bg-surface-input);
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--border-subtle);
+}
+
+.doc-table td {
+  padding: 8px 12px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.doc-table tr:nth-child(even) td {
+  background: var(--bg-surface-elevated);
+}
+
+.doc-paper-footer {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.doc-stats-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+
+/* ---------------------------------------------------------------------------
+   2. EXCEL SPREADSHEET VIEWER
+   --------------------------------------------------------------------------- */
+.preview-sheet-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sheet-formula-bar {
+  display: flex;
+  align-items: center;
+  background: var(--bg-surface-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 4px 8px;
+  gap: 8px;
+}
+
+.sheet-cell-address {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  min-width: 44px;
+  padding: 2px 6px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+}
+
+.sheet-formula-fx {
+  font-style: italic;
+  font-family: serif;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--text-muted);
+}
+
+.sheet-formula-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.sheet-grid-wrapper {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+
+.sheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  user-select: none;
+}
+
+.sheet-table th {
+  background: var(--bg-surface-input);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: center;
+  padding: 6px 14px;
+  border: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  font-family: monospace;
+}
+
+.sheet-table .sheet-corner-cell {
+  background: var(--bg-sidebar);
+  width: 44px;
+  min-width: 44px;
+}
+
+.sheet-table .sheet-row-index {
+  background: var(--bg-surface-input);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: center;
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  font-family: monospace;
+}
+
+.sheet-cell {
+  padding: 6px 12px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  cursor: cell;
+  white-space: nowrap;
+}
+
+.sheet-cell.num {
+  text-align: right;
+  font-family: monospace;
+}
+
+.sheet-cell:hover {
+  background: var(--bg-surface-hover);
+}
+
+.sheet-cell.selected {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+  background: var(--accent-soft) !important;
+}
+
+.sheet-tabs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  gap: 12px;
+}
+
+.sheet-tabs-list {
+  display: flex;
+  gap: 4px;
+}
+
+.sheet-tab-btn {
+  background: var(--bg-surface-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sheet-tab-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-focus);
+}
+
+.sheet-tab-btn.active {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
+}
+
+.sheet-summary-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   3. POWERPOINT SLIDE DECK VIEWER
+   --------------------------------------------------------------------------- */
+.preview-presentation-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.presentation-stage-container {
+  display: flex;
+  justify-content: center;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.presentation-canvas {
+  width: 100%;
+  max-width: 780px;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 28px 36px;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+
+.slide-header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  width: fit-content;
+}
+
+.slide-main-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 6px 0 4px 0;
+}
+
+.slide-main-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.slide-content-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 12px 0;
+}
+
+.slide-metric-card {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slide-metric-val {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--accent-primary);
+}
+
+.slide-metric-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.slide-metric-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.slide-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.presentation-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+}
+
+.presentation-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-slide-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-slide-nav:hover {
+  background: var(--bg-surface-input);
+  border-color: var(--border-focus);
+}
+
+.slide-counter-pill {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  background: var(--bg-surface-input);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+}
+
+.presentation-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.slide-thumbnails-ribbon {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 8px 4px;
+}
+
+.mini-slide-card {
+  flex: 0 0 130px;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-surface-elevated);
+  border: 2px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.mini-slide-card:hover {
+  border-color: var(--border-focus);
+  transform: translateY(-2px);
+}
+
+.mini-slide-card.active {
+  border-color: var(--accent-primary);
+  background: var(--accent-soft);
+}
+
+.mini-slide-num {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.mini-slide-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speaker-notes-drawer {
+  background: var(--bg-surface-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.speaker-notes-drawer.hidden {
+  display: none;
+}
+
+.speaker-notes-label {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--accent-primary);
+  margin-bottom: 4px;
+}
+
+/* ---------------------------------------------------------------------------
+   4. AUDIO STREAM PLAYER
+   --------------------------------------------------------------------------- */
+.preview-audio-container {
+  display: flex;
+  justify-content: center;
+  padding: 10px;
+}
+
+.audio-player-card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.audio-art-disc {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #2a2d34 30%, #111317 70%);
+  border: 4px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  position: relative;
+  animation: discSpin 12s linear infinite;
+  animation-play-state: paused;
+}
+
+.audio-art-disc.playing {
+  animation-play-state: running;
+}
+
+@keyframes discSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.disc-center {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.audio-meta-area {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.audio-track-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-track-artist {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.audio-format-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  background: rgba(6, 182, 212, 0.15);
+  color: #06b6d4;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  border-radius: var(--radius-pill);
+  width: fit-content;
+  margin: 4px auto 0 auto;
+}
+
+.audio-waveform-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  height: 48px;
+  padding: 8px 0;
+}
+
+.waveform-bar {
+  flex: 1;
+  max-width: 8px;
+  background: var(--accent-primary);
+  border-radius: 3px;
+  opacity: 0.4;
+  transition: height 0.15s ease, opacity 0.15s ease;
+}
+
+.waveform-bar.active {
+  opacity: 1;
+}
+
+.audio-scrubber-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-surface-input);
+  border-radius: 3px;
+  position: relative;
+  cursor: pointer;
+}
+
+.audio-scrubber-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: 3px;
+  width: 0%;
+  pointer-events: none;
+}
+
+.audio-scrubber-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.audio-time-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.audio-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.btn-audio-play {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: #ffffff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px var(--accent-soft);
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.btn-audio-play:hover {
+  transform: scale(1.06);
+  filter: brightness(1.1);
+}
+
+.btn-audio-ctrl {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 50%;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-audio-ctrl:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-input);
+}
+
+.audio-volume-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+}
+
+.audio-volume-slider {
+  width: 70px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+   5. PDF DOCUMENT VIEWER
+   --------------------------------------------------------------------------- */
+.preview-pdf-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pdf-viewport {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  max-height: 480px;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.preview-pdf-page {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 36px 44px;
+  width: 100%;
+  max-width: 740px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pdf-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pdf-doc-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border-radius: var(--radius-xs);
+}
+
+.pdf-doc-code {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.pdf-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.pdf-meta-line {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.pdf-divider {
+  border: none;
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 0;
+}
+
+.pdf-content-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.pdf-col h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 10px 0 4px 0;
+}
+
+.pdf-col p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.pdf-signature-box {
+  margin-top: 18px;
+  padding: 10px 12px;
+  background: var(--bg-surface-input);
+  border-radius: var(--radius-xs);
+  border: 1px dashed var(--border-subtle);
+}
+
+.pdf-sig-line {
+  font-size: 11px;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.pdf-sig-hash {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  word-break: break-all;
+  margin-top: 2px;
+}
+
+.pdf-page-footer {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
 

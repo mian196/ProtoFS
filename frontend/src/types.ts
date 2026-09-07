@@ -42,7 +42,7 @@ export interface FileNode {
   name: string;
   size: string;
   size_bytes: number;
-  type: 'video' | 'image' | 'pdf' | 'audio' | 'sheet' | 'binary';
+  type: 'video' | 'image' | 'pdf' | 'audio' | 'sheet' | 'doc' | 'presentation' | 'binary';
   mime_type?: string;
   telegram_message_id: number;
   encrypted: boolean;
