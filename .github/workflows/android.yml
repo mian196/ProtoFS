@@ -1,5 +1,5 @@
 name: Build Android APK
-Description: Dedicated workflow to build and package the ProtoFS Android APK
+# Dedicated workflow to build and package the ProtoFS Android APK
 
 on:
   workflow_dispatch:
