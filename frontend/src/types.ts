@@ -198,3 +198,25 @@ export interface VirtualDriveStatus {
   last_mounted_at?: string;
 }
 
+export interface DocumentsProviderStatus {
+  is_enabled: boolean;
+  authority: string;
+  root_count: number;
+  active_drive_id: string;
+  saf_uri: string;
+  cached_documents_count: number;
+  is_android: boolean;
+  last_sync_timestamp?: string;
+}
+
+export interface SafTestQueryResult {
+  authority: string;
+  document_id: string;
+  display_name: string;
+  mime_type: string;
+  size_bytes: number;
+  flags: string[];
+  child_count: number;
+}
+
+

@@ -2,7 +2,7 @@ import './style.css';
 import QRCode from 'qrcode';
 import { ProtoFsApi } from './api';
 import { ThemeManager } from './theme';
-import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo, ParsedShareLink, VirtualDriveStatus } from './types';
+import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo, ParsedShareLink, VirtualDriveStatus, DocumentsProviderStatus } from './types';
 
 class ProtoFsApp {
   private api = new ProtoFsApi();
@@ -562,7 +562,7 @@ class ProtoFsApp {
     const appEl = document.getElementById('app');
     if (!appEl) return;
 
-    const userInitial = this.session?.first_name ? this.session.first_name.slice(0, 2).toUpperCase() : 'MZ';
+    const userInitial = this.session?.first_name ? this.session.first_name.slice(0, 2).toUpperCase() : 'PF';
     const userName = this.session?.username ? `@${this.session.username}` : (this.session?.phone || 'Connected');
 
     appEl.innerHTML = `
@@ -679,6 +679,10 @@ class ProtoFsApp {
               <button class="account-menu-item" id="btnStorageDashboard">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                 <span>Storage Breakdown Dashboard</span>
+              </button>
+              <button class="account-menu-item" id="btnMenuAndroidSaf">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                <span>Android SAF Integration (PRD 6.8)</span>
               </button>
               <button class="account-menu-item" id="btnMenuCheckUpdates">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
@@ -2043,6 +2047,13 @@ class ProtoFsApp {
     });
     document.getElementById('btnMountVirtualDrive')?.addEventListener('click', () => {
       this.openVirtualDriveModal();
+    });
+
+    // Android DocumentsProvider & Storage Access Framework (SAF) (PRD 6.8)
+    document.getElementById('btnMenuAndroidSaf')?.addEventListener('click', () => {
+      const dropdown = document.getElementById('accountDropdown');
+      if (dropdown) dropdown.classList.add('hidden');
+      this.openDocumentsProviderModal();
     });
 
     // Export Drive Modal button in sidebar
@@ -4080,6 +4091,18 @@ class ProtoFsApp {
             <strong>How it works:</strong> ProtoFS projects your virtual file system directly to a native Windows drive letter. External applications such as Windows Explorer, VLC Media Player, and office suites can open files directly with zero manual exports.
           </div>
 
+          <!-- Android SAF Integration Banner -->
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);">
+            <div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                <span>Android Storage Access Framework (SAF)</span>
+              </div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Expose this drive to the native Android Files app and system document pickers.</div>
+            </div>
+            <button class="btn-action secondary" id="btnOpenSafModalFromMount" style="padding: 4px 10px; font-size: 11px; flex-shrink: 0;">Configure SAF</button>
+          </div>
+
           <div id="mountActionStatusArea" class="hidden" style="padding: 10px; background: var(--bg-surface-input); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted); text-align: center;">
             <div class="modal-loading-spinner" style="display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: middle;"></div>
             <span id="mountActionStatusText">Applying changes...</span>
@@ -4109,6 +4132,9 @@ class ProtoFsApp {
 
       // Action Handlers
       document.getElementById('btnCloseMountModalDone')?.addEventListener('click', () => this.closeModal());
+      document.getElementById('btnOpenSafModalFromMount')?.addEventListener('click', () => {
+        this.openDocumentsProviderModal();
+      });
 
       document.getElementById('btnOpenInExplorer')?.addEventListener('click', async () => {
         try {
@@ -4208,6 +4234,221 @@ class ProtoFsApp {
     };
 
     await refreshModalView();
+  }
+
+  private async openDocumentsProviderModal() {
+    const drive = this.drives.find(d => d.id === this.activeDriveId);
+    const driveName = drive ? drive.name : 'ProtoFS Drive';
+
+    this.showModal(
+      'Android DocumentsProvider Integration (PRD 6.8)',
+      `
+      <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
+        <div class="modal-loading-spinner" style="display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle;"></div>
+        Loading Android Storage Access Framework (SAF) configuration...
+      </div>
+    `,
+      `<button class="btn-action secondary" id="btnCloseSafModal">Close</button>`
+    );
+    document.getElementById('btnCloseSafModal')?.addEventListener('click', () => this.closeModal());
+
+    const refreshSafModalView = async () => {
+      let status: DocumentsProviderStatus;
+      try {
+        status = await this.api.getDocumentsProviderStatus(this.activeDriveId);
+      } catch (err: any) {
+        console.error('Failed to get DocumentsProvider status:', err);
+        status = {
+          is_enabled: true,
+          authority: 'com.protofs.app.documents',
+          root_count: 1,
+          active_drive_id: this.activeDriveId,
+          saf_uri: `content://com.protofs.app.documents/root/${this.activeDriveId}`,
+          cached_documents_count: this.files.length + this.folders.length,
+          is_android: false,
+        };
+      }
+
+      const modalBody = document.getElementById('dynamicModalBody');
+      const modalFooter = document.getElementById('dynamicModalFooter');
+      if (!modalBody || !modalFooter) return;
+
+      modalBody.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 14px; font-size: 13px;">
+          <!-- Hero Card -->
+          <div class="saf-hero-card ${status.is_enabled ? 'active' : ''}">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: var(--radius-sm); background: ${status.is_enabled ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-surface)'}; display: flex; align-items: center; justify-content: center; color: ${status.is_enabled ? '#10b981' : 'var(--text-muted)'};">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style="font-weight: 600; font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                    <span>${escapeHtml(driveName)}</span>
+                    <span style="font-size: 11px; background: var(--bg-surface-input); padding: 2px 6px; border-radius: var(--radius-xs); color: var(--text-muted); font-family: monospace;">${escapeHtml(status.authority)}</span>
+                  </div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                    ${status.is_enabled ? 'Active in Android Storage Access Framework' : 'DocumentsProvider registration disabled'}
+                  </div>
+                </div>
+              </div>
+              <span class="badge ${status.is_enabled ? 'badge-success' : 'badge-neutral'}" style="font-size: 11px; padding: 4px 10px;">
+                ${status.is_enabled ? 'SAF Active' : 'Disabled'}
+              </span>
+            </div>
+
+            <!-- Content URI Box -->
+            <div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px; font-weight: 500;">Native Android Document Content URI:</div>
+              <div class="saf-code-box">
+                <span id="txtSafUri">${escapeHtml(status.saf_uri)}</span>
+                <button class="btn-action secondary" id="btnCopySafUri" style="padding: 2px 8px; font-size: 10px; margin-left: 8px; flex-shrink: 0;">Copy URI</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Feature Cards -->
+          <div class="saf-feature-grid">
+            <div class="saf-feature-item">
+              <div class="saf-feature-title">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>Files App Picker</span>
+              </div>
+              <div class="saf-feature-desc">Exposes virtual folders directly to the system document picker and Android Files app.</div>
+            </div>
+            <div class="saf-feature-item">
+              <div class="saf-feature-title">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>3rd-Party Streaming</span>
+              </div>
+              <div class="saf-feature-desc">VLC, QuickEdit, and office suites read files on-demand via ParcelFileDescriptor pipes.</div>
+            </div>
+            <div class="saf-feature-item">
+              <div class="saf-feature-title">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>ContentResolver Sync</span>
+              </div>
+              <div class="saf-feature-desc">VFS updates notify Android ContentResolver to refresh third-party apps automatically.</div>
+            </div>
+          </div>
+
+          <!-- Interactive SAF Query Tester -->
+          <div class="saf-test-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <div style="font-weight: 600; font-size: 12px; color: var(--text-primary);">Interactive SAF Query Tester</div>
+              <button class="btn-action secondary" id="btnRunSafTestQuery" style="padding: 4px 10px; font-size: 11px;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: middle;"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Run Query Test
+              </button>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+              Simulates the Android OS <code>DocumentsProvider.queryDocument()</code> call resolving MatrixCursor metadata for this drive root.
+            </div>
+            <div class="saf-test-matrix" id="safQueryOutput">// Click "Run Query Test" to simulate Android DocumentsProvider MatrixCursor output...</div>
+          </div>
+
+          <!-- Status indicator message -->
+          <div id="safActionStatusArea" class="hidden" style="padding: 10px; background: var(--bg-surface-input); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted); text-align: center;">
+            <div class="modal-loading-spinner" style="display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: middle;"></div>
+            <span id="safActionStatusText">Updating...</span>
+          </div>
+        </div>
+      `;
+
+      modalFooter.innerHTML = `
+        <button class="btn-action secondary" id="btnCloseSafModalDone">Close</button>
+        <button class="btn-action secondary" id="btnNotifySafChange">Notify ContentResolver</button>
+        <button class="btn-action ${status.is_enabled ? 'secondary' : 'primary'}" id="btnToggleSafState">
+          ${status.is_enabled ? 'Disable SAF' : 'Enable SAF'}
+        </button>
+      `;
+
+      // Event handlers
+      document.getElementById('btnCloseSafModalDone')?.addEventListener('click', () => this.closeModal());
+
+      document.getElementById('btnCopySafUri')?.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(status.saf_uri);
+          const btn = document.getElementById('btnCopySafUri');
+          if (btn) {
+            const orig = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(() => {
+              btn.textContent = orig;
+            }, 2000);
+          }
+        } catch {
+          await this.showAlert({
+            title: 'Copy URI',
+            message: `Content URI: ${status.saf_uri}`,
+            type: 'info',
+          });
+        }
+      });
+
+      document.getElementById('btnToggleSafState')?.addEventListener('click', async () => {
+        const newTarget = !status.is_enabled;
+        try {
+          await this.api.toggleDocumentsProvider(this.activeDriveId, newTarget);
+          await refreshSafModalView();
+        } catch (err: any) {
+          await this.showAlert({
+            title: 'SAF Toggle Failed',
+            message: `Could not update DocumentsProvider: ${err.message || err}`,
+            type: 'error',
+          });
+        }
+      });
+
+      document.getElementById('btnNotifySafChange')?.addEventListener('click', async () => {
+        try {
+          await this.api.notifyDocumentsProviderChange(this.activeDriveId);
+          await this.showAlert({
+            title: 'ContentResolver Notified',
+            message: `Dispatched notifyChange() for authority ${status.authority} to refresh connected Android file pickers.`,
+            type: 'info',
+          });
+        } catch (err: any) {
+          await this.showAlert({
+            title: 'Notification Failed',
+            message: `Could not dispatch notification: ${err.message || err}`,
+            type: 'error',
+          });
+        }
+      });
+
+      document.getElementById('btnRunSafTestQuery')?.addEventListener('click', async () => {
+        const out = document.getElementById('safQueryOutput');
+        if (out) out.textContent = 'Executing test SAF document query...';
+        try {
+          const res = await this.api.testSafDocumentQuery(this.activeDriveId);
+          if (out) {
+            out.textContent = JSON.stringify(
+              {
+                "MatrixCursor": {
+                  "authority": res.authority,
+                  "document_id": res.document_id,
+                  "display_name": res.display_name,
+                  "mime_type": res.mime_type,
+                  "size_bytes": res.size_bytes,
+                  "flags": res.flags,
+                  "child_count": res.child_count,
+                  "status": "VALID_DOCUMENT_ROOT"
+                }
+              },
+              null,
+              2
+            );
+          }
+        } catch (err: any) {
+          if (out) out.textContent = `Error executing query: ${err.message || err}`;
+        }
+      });
+    };
+
+    await refreshSafModalView();
   }
 
   private async handleEmptyTrash() {

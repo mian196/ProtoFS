@@ -3141,7 +3141,7 @@ dependencies = [
 
 [[package]]
 name = "protofs-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "indicatif",
@@ -3155,7 +3155,7 @@ dependencies = [
 
 [[package]]
 name = "protofs-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -3183,7 +3183,7 @@ dependencies = [
 
 [[package]]
 name = "protofs-tauri"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "protofs-core",

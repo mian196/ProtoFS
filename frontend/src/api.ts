@@ -17,6 +17,8 @@ import type {
   ShareLinkInfo,
   ParsedShareLink,
   VirtualDriveStatus,
+  DocumentsProviderStatus,
+  SafTestQueryResult,
 } from './types';
 
 interface TauriCommandResponse<T> {
@@ -111,9 +113,9 @@ export class ProtoFsApi {
       phone,
       api_id: apiId,
       api_hash: apiHash,
-      username: 'MuzAmMaL',
-      first_name: 'MuzAmMaL',
-      user_id: 1049281720,
+      username: 'protofs_user',
+      first_name: 'ProtoFS User',
+      user_id: 11100000,
       active_drive_id: 'personal',
       is_demo: true,
     };
@@ -147,12 +149,12 @@ export class ProtoFsApi {
 
     const session: AuthSession = {
       is_authenticated: true,
-      phone: '+1 (202) 555-0196',
+      phone: '+11100000000',
       api_id: apiId,
       api_hash: apiHash,
-      username: 'MuzAmMaL',
-      first_name: 'MuzAmMaL',
-      user_id: 1049281720,
+      username: 'protofs_user',
+      first_name: 'ProtoFS User',
+      user_id: 11100000,
       active_drive_id: 'personal',
       is_demo: true,
     };
@@ -1473,6 +1475,101 @@ export class ProtoFsApi {
       }
     }
     return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // Android DocumentsProvider & Storage Access Framework (SAF) (PRD 6.8)
+  // -------------------------------------------------------------------------
+
+  async getDocumentsProviderStatus(driveId: string): Promise<DocumentsProviderStatus> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<DocumentsProviderStatus>>('get_documents_provider_status_command', { driveId });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        console.warn('Tauri get_documents_provider_status_command error:', err);
+      }
+    }
+
+    const isEnabled = localStorage.getItem(`protofs_saf_enabled_${driveId}`) !== 'false';
+    return {
+      is_enabled: isEnabled,
+      authority: 'com.protofs.app.documents',
+      root_count: 1,
+      active_drive_id: driveId,
+      saf_uri: `content://com.protofs.app.documents/root/${driveId}`,
+      cached_documents_count: 24,
+      is_android: false,
+      last_sync_timestamp: new Date().toISOString(),
+    };
+  }
+
+  async toggleDocumentsProvider(driveId: string, enable: boolean): Promise<DocumentsProviderStatus> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<DocumentsProviderStatus>>('toggle_documents_provider_command', {
+          driveId,
+          enable,
+        });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    localStorage.setItem(`protofs_saf_enabled_${driveId}`, String(enable));
+    return {
+      is_enabled: enable,
+      authority: 'com.protofs.app.documents',
+      root_count: 1,
+      active_drive_id: driveId,
+      saf_uri: `content://com.protofs.app.documents/root/${driveId}`,
+      cached_documents_count: 24,
+      is_android: false,
+      last_sync_timestamp: new Date().toISOString(),
+    };
+  }
+
+  async notifyDocumentsProviderChange(driveId: string, documentId?: string): Promise<boolean> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<boolean>>('notify_documents_provider_change_command', {
+          driveId,
+          documentId,
+        });
+        if (res.success && typeof res.data === 'boolean') return res.data;
+      } catch (err) {
+        console.warn('Tauri notify_documents_provider_change_command error:', err);
+      }
+    }
+    return true;
+  }
+
+  async testSafDocumentQuery(driveId: string, documentId?: string): Promise<SafTestQueryResult> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<SafTestQueryResult>>('test_saf_document_query_command', {
+          driveId,
+          documentId,
+        });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    return {
+      authority: 'com.protofs.app.documents',
+      document_id: documentId || `root:${driveId}`,
+      display_name: 'Personal Cloud Drive',
+      mime_type: 'vnd.android.document/directory',
+      size_bytes: 0,
+      flags: ['FLAG_DIR_SUPPORTS_CREATE', 'FLAG_SUPPORTS_IS_CHILD'],
+      child_count: 12,
+    };
   }
 
   // -------------------------------------------------------------------------

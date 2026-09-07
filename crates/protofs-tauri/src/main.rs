@@ -87,6 +87,10 @@ fn main() {
             commands::unmount_virtual_drive_command,
             commands::open_virtual_drive_in_explorer_command,
             commands::clear_virtual_drive_cache_command,
+            commands::get_documents_provider_status_command,
+            commands::toggle_documents_provider_command,
+            commands::notify_documents_provider_change_command,
+            commands::test_saf_document_query_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs desktop application");

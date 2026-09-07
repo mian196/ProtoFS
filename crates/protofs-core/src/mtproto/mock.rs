@@ -24,10 +24,10 @@ impl MockTelegramTransport {
     pub fn new() -> Self {
         Self {
             user: TelegramUser {
-                id: 99887766,
-                first_name: "MuzAmMaL".to_string(),
-                username: Some("MuzAmMaL".to_string()),
-                phone: Some("+15550199284".to_string()),
+                id: 11100000,
+                first_name: "ProtoFS User".to_string(),
+                username: Some("protofs_user".to_string()),
+                phone: Some("+11100000000".to_string()),
             },
             channels: Arc::new(RwLock::new(HashMap::new())),
             messages: Arc::new(RwLock::new(HashMap::new())),
