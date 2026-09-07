@@ -250,7 +250,7 @@ jobs:
           '
 
       - name: Build Android Debug APK
-        run: ./frontend/node_modules/.bin/tauri android build --debug --apk --verbose -- --stacktrace
+        run: ./frontend/node_modules/.bin/tauri android build --debug --apk --verbose
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ env.NDK_HOME }}
