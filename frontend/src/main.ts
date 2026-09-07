@@ -2,7 +2,7 @@ import './style.css';
 import QRCode from 'qrcode';
 import { ProtoFsApi } from './api';
 import { ThemeManager } from './theme';
-import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo, ParsedShareLink, VirtualDriveStatus, DocumentsProviderStatus } from './types';
+import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo, ParsedShareLink, VirtualDriveStatus, DocumentsProviderStatus, WorkManagerSyncConfig } from './types';
 
 class ProtoFsApp {
   private api = new ProtoFsApi();
@@ -683,6 +683,10 @@ class ProtoFsApp {
               <button class="account-menu-item" id="btnMenuAndroidSaf">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
                 <span>Android SAF Integration (PRD 6.8)</span>
+              </button>
+              <button class="account-menu-item" id="btnMenuAndroidWorkManager">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>Android Background Sync (PRD 6.6)</span>
               </button>
               <button class="account-menu-item" id="btnMenuCheckUpdates">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
@@ -2054,6 +2058,13 @@ class ProtoFsApp {
       const dropdown = document.getElementById('accountDropdown');
       if (dropdown) dropdown.classList.add('hidden');
       this.openDocumentsProviderModal();
+    });
+
+    // Android WorkManager Background Sync (PRD 6.6)
+    document.getElementById('btnMenuAndroidWorkManager')?.addEventListener('click', () => {
+      const dropdown = document.getElementById('accountDropdown');
+      if (dropdown) dropdown.classList.add('hidden');
+      this.openWorkManagerSyncModal();
     });
 
     // Export Drive Modal button in sidebar
@@ -4358,6 +4369,10 @@ class ProtoFsApp {
       `;
 
       modalFooter.innerHTML = `
+        <button class="btn-action secondary" id="btnOpenWorkManagerFromSaf">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          <span>Background Sync (PRD 6.6)</span>
+        </button>
         <button class="btn-action secondary" id="btnCloseSafModalDone">Close</button>
         <button class="btn-action secondary" id="btnNotifySafChange">Notify ContentResolver</button>
         <button class="btn-action ${status.is_enabled ? 'secondary' : 'primary'}" id="btnToggleSafState">
@@ -4366,6 +4381,9 @@ class ProtoFsApp {
       `;
 
       // Event handlers
+      document.getElementById('btnOpenWorkManagerFromSaf')?.addEventListener('click', () => {
+        this.openWorkManagerSyncModal();
+      });
       document.getElementById('btnCloseSafModalDone')?.addEventListener('click', () => this.closeModal());
 
       document.getElementById('btnCopySafUri')?.addEventListener('click', async () => {
@@ -4449,6 +4467,220 @@ class ProtoFsApp {
     };
 
     await refreshSafModalView();
+  }
+
+  // -------------------------------------------------------------------------
+  // ANDROID JETPACK WORKMANAGER BACKGROUND SYNC (PRD Section 6.6)
+  // -------------------------------------------------------------------------
+
+  private async openWorkManagerSyncModal() {
+    let status = await this.api.getWorkManagerSyncStatus();
+    let selectedInterval = status.config.interval_minutes;
+
+    const intervals = [
+      { minutes: 15, label: '15 Min' },
+      { minutes: 30, label: '30 Min' },
+      { minutes: 60, label: '1 Hour' },
+      { minutes: 360, label: '6 Hours' },
+      { minutes: 720, label: '12 Hours' },
+      { minutes: 1440, label: '24 Hours' },
+    ];
+
+    const renderModalBody = () => {
+      const isEnabled = status.config.enabled;
+      const historyRows =
+        status.recent_history.length > 0
+          ? status.recent_history
+              .map(
+                h => `
+            <div class="workmanager-history-row">
+              <span style="font-family: monospace;">${escapeHtml(h.formatted_time.split('T')[0] || h.formatted_time)}</span>
+              <span>${escapeHtml(h.message)}</span>
+              <span style="color: var(--text-muted); text-align: right;">${h.files_synced} files (${h.formatted_bytes})</span>
+              <span style="text-align: right;">
+                <span class="workmanager-status-badge-ok">${h.duration_ms}ms OK</span>
+              </span>
+            </div>
+          `
+              )
+              .join('')
+          : `<div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 11.5px;">No background sync passes recorded yet.</div>`;
+
+      return `
+        <div class="workmanager-hero-card ${isEnabled ? 'active' : ''}">
+          <div class="workmanager-header-row">
+            <div class="workmanager-status-indicator">
+              <span class="workmanager-dot-pulse ${isEnabled ? '' : 'inactive'}"></span>
+              <span>${isEnabled ? 'WorkManager Service Active (Periodic Schedule Enqueued)' : 'Background Sync Service Paused'}</span>
+            </div>
+            <label class="toggle-switch-wrapper">
+              <input type="checkbox" id="chkWorkManagerEnable" ${isEnabled ? 'checked' : ''}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
+            Android Jetpack WorkManager runs resilient periodic background synchronization even when ProtoFS is closed or the device reboots. Sync jobs strictly honor your battery and network constraints.
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; font-size: 11.5px; color: var(--text-muted); border-top: 1px solid var(--border-subtle); padding-top: 10px;">
+            <span>Next run: <strong>${status.next_scheduled_run ? escapeHtml(status.next_scheduled_run) : 'Not scheduled'}</strong></span>
+            <span>Target sync pairs: <strong>${this.syncPairs.length || status.active_pairs_count || 1} registered</strong></span>
+            <span>Architecture: <strong>${status.is_android ? 'Native AndroidX KTX' : 'Desktop / Android Emulation'}</strong></span>
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <label class="form-label" style="font-weight: 700;">Sync Execution Interval</label>
+          <div class="workmanager-interval-picker">
+            ${intervals
+              .map(
+                iv => `
+              <button class="workmanager-interval-btn ${selectedInterval === iv.minutes ? 'selected' : ''}" data-interval="${iv.minutes}">
+                ${iv.label}
+              </button>
+            `
+              )
+              .join('')}
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">
+            Note: Android WorkManager enforces a minimum periodic work interval of 15 minutes to preserve battery life.
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <label class="form-label" style="font-weight: 700;">Execution Constraints (WorkManager Constraints.Builder)</label>
+          <div class="workmanager-constraints-box">
+            <label class="workmanager-constraint-item">
+              <div>
+                <div style="font-weight: 600; color: var(--text-primary);">Wi-Fi Only (NetworkType.UNMETERED)</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Never consume mobile carrier cellular data for background syncing.</div>
+              </div>
+              <input type="checkbox" id="chkWmWifi" ${status.config.wifi_only ? 'checked' : ''}>
+            </label>
+            <label class="workmanager-constraint-item">
+              <div>
+                <div style="font-weight: 600; color: var(--text-primary);">Require Device Charging (RequiresCharging)</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Only run background sync jobs while connected to AC power.</div>
+              </div>
+              <input type="checkbox" id="chkWmCharging" ${status.config.requires_charging ? 'checked' : ''}>
+            </label>
+            <label class="workmanager-constraint-item">
+              <div>
+                <div style="font-weight: 600; color: var(--text-primary);">Battery Safeguard (RequiresBatteryNotLow > 15%)</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Prevent sync jobs from running when the battery is low.</div>
+              </div>
+              <input type="checkbox" id="chkWmBattery" ${status.config.requires_battery_not_low ? 'checked' : ''}>
+            </label>
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <label class="form-label" style="margin-bottom: 0; font-weight: 700;">Recent Background Sync Passes</label>
+            <button class="btn-action secondary" id="btnTestRunWorkManagerNow" style="padding: 4px 10px; font-size: 11px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Run Sync Pass Now</span>
+            </button>
+          </div>
+          <div class="workmanager-history-container">
+            <div class="workmanager-history-row workmanager-history-header">
+              <span>Timestamp</span>
+              <span>Details</span>
+              <span style="text-align: right;">Payload</span>
+              <span style="text-align: right;">Status</span>
+            </div>
+            ${historyRows}
+          </div>
+        </div>
+      `;
+    };
+
+    const renderFooter = () => `
+      <button class="btn-action secondary" id="btnCancelWorkManager">Close</button>
+      <button class="btn-action primary" id="btnSaveWorkManager">Save Configuration</button>
+    `;
+
+    const refreshModal = () => {
+      const bodyEl = document.getElementById('dynamicModalBody');
+      if (bodyEl) {
+        bodyEl.innerHTML = renderModalBody();
+        bindModalEvents();
+      }
+    };
+
+    const bindModalEvents = () => {
+      document.getElementById('btnCancelWorkManager')?.addEventListener('click', () => this.closeModal());
+
+      document.querySelectorAll('.workmanager-interval-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedInterval = Number((btn as HTMLElement).dataset.interval) || 60;
+          document.querySelectorAll('.workmanager-interval-btn').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+        });
+      });
+
+      document.getElementById('btnTestRunWorkManagerNow')?.addEventListener('click', async () => {
+        const testBtn = document.getElementById('btnTestRunWorkManagerNow') as HTMLButtonElement;
+        if (testBtn) {
+          testBtn.disabled = true;
+          testBtn.innerText = 'Syncing...';
+        }
+        try {
+          const record = await this.api.triggerImmediateBackgroundSync();
+          status = await this.api.getWorkManagerSyncStatus();
+          refreshModal();
+          await this.showAlert({
+            title: 'Background Sync Pass Executed',
+            message: `${record.message}`,
+            type: 'success',
+          });
+        } catch (err: any) {
+          await this.showAlert({
+            title: 'Sync Execution Failed',
+            message: `Background sync error: ${err.message || err}`,
+            type: 'error',
+          });
+        }
+      });
+
+      document.getElementById('btnSaveWorkManager')?.addEventListener('click', async () => {
+        const enabled = (document.getElementById('chkWorkManagerEnable') as HTMLInputElement)?.checked ?? false;
+        const wifiOnly = (document.getElementById('chkWmWifi') as HTMLInputElement)?.checked ?? true;
+        const requiresCharging = (document.getElementById('chkWmCharging') as HTMLInputElement)?.checked ?? false;
+        const requiresBatteryNotLow = (document.getElementById('chkWmBattery') as HTMLInputElement)?.checked ?? true;
+
+        const updatedConfig: WorkManagerSyncConfig = {
+          enabled,
+          interval_minutes: selectedInterval,
+          wifi_only: wifiOnly,
+          requires_charging: requiresCharging,
+          requires_battery_not_low: requiresBatteryNotLow,
+          last_sync_timestamp: status.config.last_sync_timestamp,
+          last_sync_status: status.config.last_sync_status,
+          sync_pair_ids: status.config.sync_pair_ids,
+        };
+
+        try {
+          status = await this.api.configureWorkManagerSync(updatedConfig);
+          this.closeModal();
+          await this.showAlert({
+            title: 'WorkManager Schedule Updated',
+            message: enabled
+              ? `Periodic background sync scheduled every ${selectedInterval} minutes with WorkManager constraints.`
+              : 'Background sync service is now paused.',
+            type: 'success',
+          });
+        } catch (err: any) {
+          await this.showAlert({
+            title: 'Save Failed',
+            message: `Could not update WorkManager configuration: ${err.message || err}`,
+            type: 'error',
+          });
+        }
+      });
+    };
+
+    this.showModal('Android Background Sync via WorkManager (PRD 6.6)', renderModalBody(), renderFooter(), true);
+    bindModalEvents();
   }
 
   private async handleEmptyTrash() {

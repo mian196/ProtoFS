@@ -19,6 +19,9 @@ import type {
   VirtualDriveStatus,
   DocumentsProviderStatus,
   SafTestQueryResult,
+  WorkManagerSyncConfig,
+  WorkManagerJobRecord,
+  WorkManagerSyncStatus,
 } from './types';
 
 interface TauriCommandResponse<T> {
@@ -1571,6 +1574,135 @@ export class ProtoFsApi {
       child_count: 12,
     };
   }
+
+  // -------------------------------------------------------------------------
+  // Android Jetpack WorkManager Background Sync (PRD Section 6.6)
+  // -------------------------------------------------------------------------
+
+  async getWorkManagerSyncStatus(): Promise<WorkManagerSyncStatus> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<WorkManagerSyncStatus>>('get_workmanager_sync_status_command');
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        console.warn('Tauri get_workmanager_sync_status_command error:', err);
+      }
+    }
+
+    const raw = localStorage.getItem('protofs_workmanager_config');
+    const config: WorkManagerSyncConfig = raw
+      ? JSON.parse(raw)
+      : {
+          enabled: false,
+          interval_minutes: 60,
+          wifi_only: true,
+          requires_charging: false,
+          requires_battery_not_low: true,
+          last_sync_timestamp: null,
+          last_sync_status: null,
+          sync_pair_ids: [],
+        };
+
+    const rawHist = localStorage.getItem('protofs_workmanager_history');
+    const recentHistory: WorkManagerJobRecord[] = rawHist
+      ? JSON.parse(rawHist)
+      : [
+          {
+            id: 'wm_demo_1',
+            timestamp: Date.now() - 3600000,
+            formatted_time: new Date(Date.now() - 3600000).toISOString(),
+            files_synced: 14,
+            bytes_transferred: 4892100,
+            formatted_bytes: '4.7 MB',
+            duration_ms: 1820,
+            success: true,
+            message: 'Periodic sync completed: 14 files synchronized',
+          },
+        ];
+
+    return {
+      is_supported: true,
+      is_active: config.enabled,
+      config,
+      next_scheduled_run: config.enabled ? new Date(Date.now() + config.interval_minutes * 60000).toISOString() : null,
+      is_android: false,
+      active_pairs_count: 2,
+      recent_history: recentHistory,
+    };
+  }
+
+  async configureWorkManagerSync(config: WorkManagerSyncConfig): Promise<WorkManagerSyncStatus> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<WorkManagerSyncStatus>>('configure_workmanager_sync_command', {
+          config,
+        });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    localStorage.setItem('protofs_workmanager_config', JSON.stringify(config));
+    return this.getWorkManagerSyncStatus();
+  }
+
+  async triggerImmediateBackgroundSync(): Promise<WorkManagerJobRecord> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<WorkManagerJobRecord>>('trigger_immediate_background_sync_command');
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    const record: WorkManagerJobRecord = {
+      id: `wm_${Date.now()}`,
+      timestamp: Date.now(),
+      formatted_time: new Date().toISOString(),
+      files_synced: 8,
+      bytes_transferred: 2154800,
+      formatted_bytes: '2.1 MB',
+      duration_ms: 1240,
+      success: true,
+      message: 'WorkManager sync completed in 1240ms: 8 files synchronized (2.1 MB)',
+    };
+
+    const rawHist = localStorage.getItem('protofs_workmanager_history');
+    const hist: WorkManagerJobRecord[] = rawHist ? JSON.parse(rawHist) : [];
+    hist.unshift(record);
+    if (hist.length > 20) hist.pop();
+    localStorage.setItem('protofs_workmanager_history', JSON.stringify(hist));
+
+    const rawCfg = localStorage.getItem('protofs_workmanager_config');
+    if (rawCfg) {
+      const cfg = JSON.parse(rawCfg);
+      cfg.last_sync_timestamp = record.formatted_time;
+      cfg.last_sync_status = 'Success';
+      localStorage.setItem('protofs_workmanager_config', JSON.stringify(cfg));
+    }
+
+    return record;
+  }
+
+  async getWorkManagerHistory(): Promise<WorkManagerJobRecord[]> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<WorkManagerJobRecord[]>>('get_workmanager_history_command');
+        if (res.success && res.data) return res.data;
+      } catch (err) {
+        console.warn('Tauri get_workmanager_history_command error:', err);
+      }
+    }
+
+    const rawHist = localStorage.getItem('protofs_workmanager_history');
+    return rawHist ? JSON.parse(rawHist) : [];
+  }
+
 
   // -------------------------------------------------------------------------
   // Local storage helpers

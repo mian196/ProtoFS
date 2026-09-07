@@ -91,6 +91,10 @@ fn main() {
             commands::toggle_documents_provider_command,
             commands::notify_documents_provider_change_command,
             commands::test_saf_document_query_command,
+            commands::get_workmanager_sync_status_command,
+            commands::configure_workmanager_sync_command,
+            commands::trigger_immediate_background_sync_command,
+            commands::get_workmanager_history_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs desktop application");

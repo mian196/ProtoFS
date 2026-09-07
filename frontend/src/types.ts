@@ -219,4 +219,38 @@ export interface SafTestQueryResult {
   child_count: number;
 }
 
+export interface WorkManagerSyncConfig {
+  enabled: boolean;
+  interval_minutes: number;
+  wifi_only: boolean;
+  requires_charging: boolean;
+  requires_battery_not_low: boolean;
+  last_sync_timestamp?: string | null;
+  last_sync_status?: string | null;
+  sync_pair_ids: string[];
+}
+
+export interface WorkManagerJobRecord {
+  id: string;
+  timestamp: number;
+  formatted_time: string;
+  files_synced: number;
+  bytes_transferred: number;
+  formatted_bytes: string;
+  duration_ms: number;
+  success: boolean;
+  message: string;
+}
+
+export interface WorkManagerSyncStatus {
+  is_supported: boolean;
+  is_active: boolean;
+  config: WorkManagerSyncConfig;
+  next_scheduled_run?: string | null;
+  is_android: boolean;
+  active_pairs_count: number;
+  recent_history: WorkManagerJobRecord[];
+}
+
+
 
