@@ -2,7 +2,7 @@ import './style.css';
 import QRCode from 'qrcode';
 import { ProtoFsApi } from './api';
 import { ThemeManager } from './theme';
-import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo } from './types';
+import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo, ParsedShareLink } from './types';
 
 class ProtoFsApp {
   private api = new ProtoFsApi();
@@ -788,6 +788,10 @@ class ProtoFsApp {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             <span>History</span>
           </button>
+          <button class="btn-selection-tool" id="btnSelShare" title="Share Link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            <span>Share</span>
+          </button>
           <button class="btn-selection-tool" id="btnSelRename" title="Rename item">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             <span>Rename</span>
@@ -1035,6 +1039,10 @@ class ProtoFsApp {
     // 3. STANDARD NAVIGATION & FILTERS
     if (toolbarButtons) {
       toolbarButtons.innerHTML = `
+        <button class="btn-action secondary" id="btnImportSharedLink" title="Import from Telegram or ProtoFS Link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span>Import Link</span>
+        </button>
         <button class="btn-action secondary" id="btnNewFolder">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
           <span>New Folder</span>
@@ -1044,6 +1052,7 @@ class ProtoFsApp {
           <span>Upload</span>
         </button>
       `;
+      document.getElementById('btnImportSharedLink')?.addEventListener('click', () => this.openImportSharedLinkModal());
       document.getElementById('btnNewFolder')?.addEventListener('click', () => this.openNewFolderModal());
       document.getElementById('btnUpload')?.addEventListener('click', () => this.openUploadModal());
     }
@@ -1174,6 +1183,9 @@ class ProtoFsApp {
             </button>
           `
               : `
+            <button class="btn-icon-subtle btn-share-file" data-id="${f.id}" title="Share Link">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            </button>
             <button class="btn-icon-subtle btn-history-file" data-id="${f.id}" title="Version History">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </button>
@@ -1259,6 +1271,13 @@ class ProtoFsApp {
         });
       });
     } else {
+      document.querySelectorAll('.btn-share-file').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const id = (btn as HTMLElement).dataset.id;
+          if (id) this.openShareModal(id);
+        });
+      });
       document.querySelectorAll('.btn-history-file').forEach(btn => {
         btn.addEventListener('click', e => {
           e.stopPropagation();
@@ -1307,6 +1326,7 @@ class ProtoFsApp {
     const countPill = document.getElementById('selectionCountPill');
     const btnSelPreview = document.getElementById('btnSelPreview');
     const btnSelHistory = document.getElementById('btnSelHistory');
+    const btnSelShare = document.getElementById('btnSelShare');
     const btnSelRename = document.getElementById('btnSelRename');
 
     if (!bar || !countPill) return;
@@ -1322,9 +1342,10 @@ class ProtoFsApp {
 
     const isSingleFile = count === 1 && this.files.some(f => f.id === Array.from(this.selectedIds)[0]);
 
-    // Preview, History and Rename are only active for single item selection
+    // Preview, History, Share and Rename are only active for single item selection
     if (btnSelPreview) btnSelPreview.style.display = isSingleFile ? 'flex' : 'none';
     if (btnSelHistory) btnSelHistory.style.display = isSingleFile ? 'flex' : 'none';
+    if (btnSelShare) btnSelShare.style.display = isSingleFile ? 'flex' : 'none';
     if (btnSelRename) btnSelRename.style.display = count === 1 ? 'flex' : 'none';
   }
 
@@ -1612,6 +1633,14 @@ class ProtoFsApp {
       if (selected.length === 1) {
         const file = this.files.find(f => f.id === selected[0]);
         if (file) this.openVersionHistoryModal(file.id);
+      }
+    });
+
+    document.getElementById('btnSelShare')?.addEventListener('click', () => {
+      const selected = Array.from(this.selectedIds);
+      if (selected.length === 1) {
+        const file = this.files.find(f => f.id === selected[0]);
+        if (file) this.openShareModal(file.id);
       }
     });
 
@@ -2881,6 +2910,7 @@ class ProtoFsApp {
       </div>
     `,
       `
+      <button class="btn-action secondary" id="btnPreviewShare">Share Link</button>
       <button class="btn-action secondary" id="btnPreviewDownload">Download</button>
       <button class="btn-action primary" id="btnPreviewClose">Done</button>
     `,
@@ -2888,6 +2918,10 @@ class ProtoFsApp {
     );
 
     document.getElementById('btnPreviewClose')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('btnPreviewShare')?.addEventListener('click', () => {
+      this.closeModal();
+      this.openShareModal(file.id);
+    });
     document.getElementById('btnPreviewDownload')?.addEventListener('click', () => {
       this.closeModal();
       this.triggerTransfer(file.name, file.size, 'downloading');
@@ -3460,6 +3494,327 @@ class ProtoFsApp {
         modalBody.innerHTML = `<div style="padding: 16px; color: var(--color-danger); font-size: 12px;">Failed to load version history: ${escapeHtml(err.message || String(err))}</div>`;
       }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // SHAREABLE LINKS (PRD Section 6.11)
+  // -------------------------------------------------------------------------
+
+  private async openShareModal(fileId: string) {
+    const file = this.files.find(f => f.id === fileId);
+    if (!file) return;
+
+    this.showModal(
+      `Share File: ${escapeHtml(file.name)}`,
+      `
+      <div class="share-modal-container">
+        <div style="display: flex; align-items: center; justify-content: center; padding: 24px; color: var(--text-muted); font-size: 13px;">
+          <div class="modal-loading-spinner" style="display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px;"></div>
+          Generating shareable links...
+        </div>
+      </div>
+    `,
+      `<button class="btn-action secondary" id="btnCloseShareModal">Close</button>`
+    );
+    document.getElementById('btnCloseShareModal')?.addEventListener('click', () => this.closeModal());
+
+    try {
+      let includeKey = false;
+      let passphrase = '';
+      let activeTab: 'protofs' | 'telegram' = 'protofs';
+
+      const updateModalUI = async () => {
+        const info = await this.api.generateShareLink(this.activeDriveId, fileId, includeKey ? (passphrase || 'user_passphrase') : undefined);
+        if (!info) return;
+
+        const modalBody = document.getElementById('dynamicModalBody');
+        if (!modalBody) return;
+
+        modalBody.innerHTML = `
+          <div class="share-modal-container">
+            <div class="share-file-banner">
+              <div class="share-file-icon">
+                ${getFileIconSvg(file.type)}
+              </div>
+              <div class="share-file-details">
+                <span class="share-file-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
+                <div class="share-file-meta">
+                  <span>${file.size}</span>
+                  <span>•</span>
+                  <span>${file.encrypted ? '🔒 Zero-Knowledge Encrypted' : 'Plaintext Document'}</span>
+                  <span>•</span>
+                  <span>Message #${info.telegram_message_id}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="share-tab-bar">
+              <button class="share-tab-btn ${activeTab === 'protofs' ? 'active' : ''}" id="tabProtofsLink">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                <span>ProtoFS Deep Link</span>
+              </button>
+              <button class="share-tab-btn ${activeTab === 'telegram' ? 'active' : ''}" id="tabTelegramLink">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2 2 11.5l8 3.5 3.5 8L21.5 2z"/></svg>
+                <span>Telegram Direct Link</span>
+              </button>
+            </div>
+
+            ${activeTab === 'protofs' ? `
+              <div class="share-link-group">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">ProtoFS Universal Share URI</label>
+                <div class="share-link-input-wrap">
+                  <input type="text" class="share-link-input" id="inputProtofsShareLink" value="${escapeHtml(info.protofs_app_link)}" readonly>
+                  <button class="share-copy-btn" id="btnCopyProtofsLink">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    <span>Copy</span>
+                  </button>
+                </div>
+              </div>
+
+              ${file.encrypted ? `
+                <div class="share-key-toggle-card">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                      <div style="font-size: 12.5px; font-weight: 600; color: var(--text-primary);">Embed Decryption Key in URL Fragment</div>
+                      <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">RFC 3986 fragment hashes (#key=...) are never sent over the network.</div>
+                    </div>
+                    <label class="toggle-switch-wrapper">
+                      <input type="checkbox" id="chkIncludeKey" ${includeKey ? 'checked' : ''}>
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                  ${includeKey ? `
+                    <div style="margin-top: 8px;">
+                      <input type="password" class="share-link-input" id="inputPassphrase" placeholder="Enter passphrase to encode into fragment" value="${escapeHtml(passphrase)}" style="width: 100%;">
+                    </div>
+                  ` : ''}
+                </div>
+              ` : ''}
+
+              <div class="share-zk-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>${escapeHtml(info.zero_knowledge_note)}</span>
+              </div>
+            ` : `
+              <div class="share-link-group">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Telegram Cloud Message Link</label>
+                <div class="share-link-input-wrap">
+                  <input type="text" class="share-link-input" id="inputTelegramShareLink" value="${escapeHtml(info.telegram_message_link)}" readonly>
+                  <button class="share-copy-btn" id="btnCopyTelegramLink">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    <span>Copy</span>
+                  </button>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 8px; margin-top: 4px;">
+                <button class="btn-action secondary" id="btnOpenTelegramWeb" style="flex: 1; font-size: 12px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  <span>Open Telegram Web</span>
+                </button>
+              </div>
+
+              <div class="settings-section-card" style="font-size: 12px; line-height: 1.5; color: var(--text-secondary);">
+                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">Channel Access Prerequisite</div>
+                Direct Telegram links open inside the official Telegram client. For private drives, recipients must be invited to the channel (Channel ID: <code>${info.channel_id}</code>).
+              </div>
+            `}
+          </div>
+        `;
+
+        document.getElementById('tabProtofsLink')?.addEventListener('click', () => {
+          activeTab = 'protofs';
+          updateModalUI();
+        });
+
+        document.getElementById('tabTelegramLink')?.addEventListener('click', () => {
+          activeTab = 'telegram';
+          updateModalUI();
+        });
+
+        document.getElementById('chkIncludeKey')?.addEventListener('change', (e) => {
+          includeKey = (e.target as HTMLInputElement).checked;
+          updateModalUI();
+        });
+
+        document.getElementById('inputPassphrase')?.addEventListener('input', (e) => {
+          passphrase = (e.target as HTMLInputElement).value;
+          const inputEl = document.getElementById('inputProtofsShareLink') as HTMLInputElement;
+          if (inputEl) {
+            let updated = info.protofs_app_link.split('#')[0];
+            if (passphrase.trim()) {
+              updated += `#key=${encodeURIComponent(passphrase.trim())}`;
+            }
+            inputEl.value = updated;
+          }
+        });
+
+        const setupCopyButton = (btnId: string, inputId: string) => {
+          document.getElementById(btnId)?.addEventListener('click', async () => {
+            const inputEl = document.getElementById(inputId) as HTMLInputElement;
+            if (!inputEl) return;
+            try {
+              await navigator.clipboard.writeText(inputEl.value);
+              const btn = document.getElementById(btnId);
+              if (btn) {
+                btn.classList.add('copied');
+                btn.innerHTML = `<span>✓ Copied!</span>`;
+                setTimeout(() => {
+                  btn.classList.remove('copied');
+                  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><span>Copy</span>`;
+                }, 2000);
+              }
+            } catch {
+              inputEl.select();
+            }
+          });
+        };
+
+        setupCopyButton('btnCopyProtofsLink', 'inputProtofsShareLink');
+        setupCopyButton('btnCopyTelegramLink', 'inputTelegramShareLink');
+
+        document.getElementById('btnOpenTelegramWeb')?.addEventListener('click', () => {
+          window.open(info.telegram_web_link, '_blank');
+        });
+      };
+
+      await updateModalUI();
+    } catch (err: any) {
+      const modalBody = document.getElementById('dynamicModalBody');
+      if (modalBody) {
+        modalBody.innerHTML = `<div style="padding: 16px; color: var(--color-danger); font-size: 12px;">Failed to generate share link: ${escapeHtml(err.message || String(err))}</div>`;
+      }
+    }
+  }
+
+  private openImportSharedLinkModal() {
+    this.showModal(
+      'Import Shared Link to Current Folder',
+      `
+      <div class="share-modal-container">
+        <div style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">
+          Paste a <strong>ProtoFS Deep Link</strong> (<code>protofs://share?...</code>) or a direct <strong>Telegram Link</strong> (<code>https://t.me/c/...</code>) to link the file directly into your active folder.
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Share Link URL</label>
+          <input type="text" class="form-input" id="inputImportLinkUrl" placeholder="protofs://share?drive=... or https://t.me/c/..." required autofocus>
+        </div>
+
+        <div id="importPreviewArea" class="hidden"></div>
+
+        <div class="form-group hidden" id="groupImportCustomKey">
+          <label class="form-label">Decryption Passphrase (AES-256-GCM)</label>
+          <input type="password" class="form-input" id="inputImportKey" placeholder="Enter passphrase to decrypt this file">
+        </div>
+
+        <div class="form-group hidden" id="groupImportCustomName">
+          <label class="form-label">File Name (Optional Override)</label>
+          <input type="text" class="form-input" id="inputImportName" placeholder="Leave blank to use original name">
+        </div>
+      </div>
+    `,
+      `
+      <button class="btn-action secondary" id="btnCancelImportLink">Cancel</button>
+      <button class="btn-action primary" id="btnConfirmImportLink" disabled>Import File</button>
+    `
+    );
+
+    document.getElementById('btnCancelImportLink')?.addEventListener('click', () => this.closeModal());
+
+    const inputUrl = document.getElementById('inputImportLinkUrl') as HTMLInputElement;
+    const previewArea = document.getElementById('importPreviewArea');
+    const groupKey = document.getElementById('groupImportCustomKey');
+    const groupName = document.getElementById('groupImportCustomName');
+    const btnConfirm = document.getElementById('btnConfirmImportLink') as HTMLButtonElement;
+
+    let currentParsed: ParsedShareLink | null = null;
+
+    const parseAndRender = async () => {
+      const url = inputUrl?.value.trim();
+      if (!url) {
+        if (previewArea) previewArea.classList.add('hidden');
+        if (groupKey) groupKey.classList.add('hidden');
+        if (groupName) groupName.classList.add('hidden');
+        if (btnConfirm) btnConfirm.disabled = true;
+        currentParsed = null;
+        return;
+      }
+
+      const parsed = await this.api.parseShareLink(url);
+      if (parsed && parsed.is_valid) {
+        currentParsed = parsed;
+        if (previewArea) {
+          previewArea.classList.remove('hidden');
+          previewArea.innerHTML = `
+            <div class="share-import-preview-box">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-weight: 600; font-size: 13px; color: var(--text-primary);">${escapeHtml(parsed.name)}</span>
+                <span style="font-size: 11px; padding: 2px 6px; border-radius: var(--radius-xs); background: ${parsed.is_encrypted ? 'var(--accent-soft)' : 'var(--bg-surface-input)'}; color: ${parsed.is_encrypted ? 'var(--accent-primary)' : 'var(--text-secondary)'}; font-weight: 500;">
+                  ${parsed.is_encrypted ? '🔒 Encrypted' : 'Plaintext'}
+                </span>
+              </div>
+              <div style="font-size: 11.5px; color: var(--text-muted); display: flex; gap: 8px;">
+                ${parsed.size_bytes > 0 ? `<span>Size: ${formatBytes(parsed.size_bytes)}</span>•` : ''}
+                <span>Message #${parsed.telegram_message_id || 'N/A'}</span>
+                ${parsed.encryption_key ? `<span>• Key Embedded in Hash</span>` : ''}
+              </div>
+            </div>
+          `;
+        }
+
+        if (groupKey) {
+          groupKey.classList.toggle('hidden', !parsed.is_encrypted || !!parsed.encryption_key);
+        }
+        if (groupName) {
+          groupName.classList.remove('hidden');
+        }
+        if (btnConfirm) {
+          btnConfirm.disabled = false;
+        }
+      } else {
+        currentParsed = null;
+        if (previewArea) {
+          previewArea.classList.remove('hidden');
+          previewArea.innerHTML = `
+            <div style="padding: 10px; font-size: 11.5px; color: var(--color-danger); background: rgba(239, 68, 68, 0.08); border-radius: var(--radius-sm); border: 1px solid rgba(239, 68, 68, 0.2);">
+              Unrecognized link format. Please provide a valid <code>protofs://share</code> or <code>https://t.me/c/...</code> URL.
+            </div>
+          `;
+        }
+        if (groupKey) groupKey.classList.add('hidden');
+        if (groupName) groupName.classList.add('hidden');
+        if (btnConfirm) btnConfirm.disabled = true;
+      }
+    };
+
+    inputUrl?.addEventListener('input', parseAndRender);
+    inputUrl?.addEventListener('paste', () => setTimeout(parseAndRender, 50));
+
+    btnConfirm?.addEventListener('click', async () => {
+      if (!currentParsed) return;
+      const url = inputUrl.value.trim();
+      const customName = (document.getElementById('inputImportName') as HTMLInputElement)?.value.trim() || undefined;
+      const customKey = (document.getElementById('inputImportKey') as HTMLInputElement)?.value.trim() || undefined;
+
+      btnConfirm.disabled = true;
+      btnConfirm.textContent = 'Importing...';
+
+      try {
+        await this.api.importSharedLink(this.activeDriveId, this.currentFolderId, url, customName, customKey);
+        await this.loadWorkspaceData();
+        this.closeModal();
+        this.triggerTransfer(customName || currentParsed.name, formatBytes(currentParsed.size_bytes), 'downloading');
+      } catch (err: any) {
+        await this.showAlert({
+          title: 'Import Failed',
+          message: `Could not import shared link: ${err.message || err}`,
+          type: 'error',
+        });
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = 'Import File';
+      }
+    });
   }
 
   private openExportDriveModal() {

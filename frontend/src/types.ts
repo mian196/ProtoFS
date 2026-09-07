@@ -155,3 +155,33 @@ export interface CameraBackupConfig {
   last_backup_at?: string;
 }
 
+export interface ShareLinkInfo {
+  file_id: string;
+  file_name: string;
+  drive_id: string;
+  drive_name: string;
+  channel_id: number;
+  telegram_message_id: number;
+  size_bytes: number;
+  mime_type?: string;
+  is_encrypted: boolean;
+  telegram_message_link: string;
+  telegram_web_link: string;
+  protofs_app_link: string;
+  channel_invite_url?: string;
+  zero_knowledge_note: string;
+}
+
+export interface ParsedShareLink {
+  is_valid: boolean;
+  drive_id?: string;
+  file_id?: string;
+  channel_id?: number;
+  telegram_message_id?: number;
+  name: string;
+  size_bytes: number;
+  is_encrypted: boolean;
+  encryption_key?: string;
+  original_url: string;
+}
+

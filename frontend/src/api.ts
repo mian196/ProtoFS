@@ -14,6 +14,8 @@ import type {
   UpdateInfo,
   ShellIntegrationStatus,
   CameraBackupConfig,
+  ShareLinkInfo,
+  ParsedShareLink,
 } from './types';
 
 interface TauriCommandResponse<T> {
@@ -1184,6 +1186,178 @@ export class ProtoFsApi {
     filtered.push(newPair);
     localStorage.setItem(STORAGE_KEY_SYNC_PAIRS, JSON.stringify(filtered));
     return newPair;
+  }
+
+  // -------------------------------------------------------------------------
+  // Shareable Links (PRD Section 6.11)
+  // -------------------------------------------------------------------------
+
+  async generateShareLink(driveId: string, fileId: string, includeKey?: string): Promise<ShareLinkInfo | null> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<ShareLinkInfo>>('generate_share_link_command', {
+          driveId,
+          fileId,
+          includeKey,
+        });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        console.warn('Tauri generate_share_link_command error:', err);
+      }
+    }
+
+    const files = this.getStoredFiles();
+    const file = files.find(f => f.id === fileId);
+    if (!file) return null;
+
+    const drives = await this.getDrives();
+    const drive = drives.find(d => d.id === driveId) || { id: driveId, name: 'Personal Cloud Drive', channel_id: 1982736450 };
+    const cleanCid = Math.abs(drive.channel_id);
+    const strippedCid = cleanCid.toString().startsWith('100') ? cleanCid.toString().substring(3) : cleanCid.toString();
+    const msgId = file.telegram_message_id || 10420;
+
+    let protofsUrl = `protofs://share?drive=${encodeURIComponent(driveId)}&file=${encodeURIComponent(fileId)}&channel=${drive.channel_id}&msg=${msgId}&name=${encodeURIComponent(file.name)}&size=${file.size_bytes || 0}&enc=${file.encrypted}`;
+    if (includeKey && includeKey.trim()) {
+      protofsUrl += `#key=${encodeURIComponent(includeKey.trim())}`;
+    }
+
+    return {
+      file_id: file.id,
+      file_name: file.name,
+      drive_id: drive.id,
+      drive_name: drive.name,
+      channel_id: drive.channel_id,
+      telegram_message_id: msgId,
+      size_bytes: file.size_bytes || 0,
+      mime_type: undefined,
+      is_encrypted: !!file.encrypted,
+      telegram_message_link: `https://t.me/c/${strippedCid}/${msgId}`,
+      telegram_web_link: `https://web.telegram.org/a/#-${cleanCid}_${msgId}`,
+      protofs_app_link: protofsUrl,
+      channel_invite_url: undefined,
+      zero_knowledge_note: file.encrypted
+        ? (includeKey ? 'Zero-Knowledge Protection: Decryption key is embedded in the client-side URL fragment hash (#key=...). In adherence to RFC 3986, fragment hashes are never sent across the network or to Telegram servers.' : 'Zero-Knowledge Protection: File is encrypted with AES-256-GCM. Decryption passphrase must be shared separately.')
+        : 'Public Telegram Link: Plaintext file accessible directly via Telegram channel.',
+    };
+  }
+
+  async parseShareLink(linkUrl: string): Promise<ParsedShareLink | null> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<ParsedShareLink>>('parse_share_link_command', { linkUrl });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        console.warn('Tauri parse_share_link_command error:', err);
+      }
+    }
+
+    const trimmed = linkUrl.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('protofs://share')) {
+      const [mainPart, hashPart] = trimmed.split('#');
+      const key = hashPart && hashPart.startsWith('key=') ? decodeURIComponent(hashPart.substring(4)) : undefined;
+      const query = mainPart.split('?')[1] || '';
+      const params = new URLSearchParams(query);
+
+      return {
+        is_valid: true,
+        drive_id: params.get('drive') ? decodeURIComponent(params.get('drive')!) : undefined,
+        file_id: params.get('file') ? decodeURIComponent(params.get('file')!) : undefined,
+        channel_id: params.get('channel') ? parseInt(params.get('channel')!, 10) : undefined,
+        telegram_message_id: params.get('msg') ? parseInt(params.get('msg')!, 10) : undefined,
+        name: params.get('name') ? decodeURIComponent(params.get('name')!) : 'Shared_File',
+        size_bytes: params.get('size') ? parseInt(params.get('size')!, 10) : 0,
+        is_encrypted: params.get('enc') === 'true' || params.get('enc') === '1',
+        encryption_key: key,
+        original_url: trimmed,
+      };
+    }
+
+    if (trimmed.includes('t.me/c/')) {
+      const parts = trimmed.split('t.me/c/')[1]?.split('/') || [];
+      if (parts.length >= 2) {
+        const cid = parseInt(parts[0], 10);
+        const mid = parseInt(parts[1].split('?')[0], 10);
+        if (!isNaN(cid) && !isNaN(mid)) {
+          return {
+            is_valid: true,
+            channel_id: -1000000000000 - cid,
+            telegram_message_id: mid,
+            name: `Telegram_Message_${mid}.bin`,
+            size_bytes: 0,
+            is_encrypted: false,
+            original_url: trimmed,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  async importSharedLink(
+    targetDriveId: string,
+    targetParentId: string,
+    linkUrl: string,
+    customName?: string,
+    customKey?: string
+  ): Promise<FileNode | null> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<any>>('import_shared_link_command', {
+          targetDriveId,
+          targetParentId,
+          linkUrl,
+          customName,
+          customKey,
+        });
+        if (res.success && res.data) {
+          const item = res.data;
+          return {
+            ...item,
+            size: formatBytes(item.size_bytes || 0),
+            type: detectFileType(item.name),
+            encrypted: item.is_encrypted,
+            pinned: item.is_pinned_offline,
+            trashed: item.is_trashed,
+            date: 'Just now',
+          };
+        }
+        if (res.error) throw new Error(res.error);
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    const parsed = await this.parseShareLink(linkUrl);
+    if (!parsed || !parsed.is_valid) throw new Error('Invalid share link format');
+
+    const files = this.getStoredFiles();
+    const finalName = customName && customName.trim() ? customName.trim() : parsed.name;
+    const isEnc = parsed.is_encrypted;
+    const newFile: FileNode = {
+      id: `file_${Date.now()}`,
+      drive_id: targetDriveId,
+      parent_id: targetParentId,
+      name: finalName,
+      size: formatBytes(parsed.size_bytes),
+      size_bytes: parsed.size_bytes,
+      type: detectFileType(finalName),
+      telegram_message_id: parsed.telegram_message_id || 10500,
+      encrypted: isEnc,
+      encryption_iv: isEnc ? 'e1f2a3b4c5d6e7f8' : undefined,
+      pinned: false,
+      trashed: false,
+      date: 'Just now',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    files.push(newFile);
+    localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
+    return newFile;
   }
 
   // -------------------------------------------------------------------------

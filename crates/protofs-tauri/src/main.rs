@@ -79,6 +79,9 @@ fn main() {
             commands::set_shell_integration_command,
             commands::get_pending_uploads_command,
             commands::open_path_in_explorer_command,
+            commands::generate_share_link_command,
+            commands::parse_share_link_command,
+            commands::import_shared_link_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs desktop application");
