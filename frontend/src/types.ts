@@ -185,3 +185,16 @@ export interface ParsedShareLink {
   original_url: string;
 }
 
+export interface VirtualDriveStatus {
+  is_mounted: boolean;
+  drive_id: string;
+  drive_letter: string;
+  mount_path: string;
+  driver_mode: string;
+  winfsp_available: boolean;
+  available_letters: string[];
+  cached_files_count: number;
+  cached_bytes: number;
+  last_mounted_at?: string;
+}
+

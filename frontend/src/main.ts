@@ -2,7 +2,7 @@ import './style.css';
 import QRCode from 'qrcode';
 import { ProtoFsApi } from './api';
 import { ThemeManager } from './theme';
-import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo, ParsedShareLink } from './types';
+import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo, ParsedShareLink, VirtualDriveStatus } from './types';
 
 class ProtoFsApp {
   private api = new ProtoFsApi();
@@ -15,6 +15,7 @@ class ProtoFsApp {
   private viewMode: 'grid' | 'list' = 'grid';
   private selectedIds = new Set<string>();
   private activeTransfers: TransferItem[] = [];
+  private virtualDriveStatus: VirtualDriveStatus | null = null;
 
   private drives: DriveMetadata[] = [];
   private folders: FolderNode[] = [];
@@ -610,6 +611,13 @@ class ProtoFsApp {
             <span class="update-notification-dot hidden" id="updateNotificationDot"></span>
           </button>
 
+          <!-- Native Virtual Drive Mount Pill -->
+          <button class="mount-pill-btn" id="btnQuickMountDrive" title="Mount Native Virtual Drive (PRD 6.8)">
+            <span class="mount-dot-pulse hidden" id="mountPulseDot"></span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>
+            <span id="mountPillText">Mount Drive</span>
+          </button>
+
           <!-- User Profile & Dropdown -->
           <div class="account-menu-wrapper">
             <div class="user-avatar" id="btnAvatar" title="Account Details" style="cursor: pointer;">
@@ -694,6 +702,9 @@ class ProtoFsApp {
             <div class="sidebar-section-title">
               <span>DRIVES</span>
               <div style="display: flex; gap: 4px;">
+                <button class="icon-btn" id="btnMountVirtualDrive" title="Mount Native Virtual Drive (P:\)" style="width:22px;height:22px;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>
+                </button>
                 <button class="icon-btn" id="btnExportDrive" title="Export Current Drive to Local Folder" style="width:22px;height:22px;">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 </button>
@@ -858,6 +869,13 @@ class ProtoFsApp {
     }
     this.syncPairs = await this.api.getSyncPairs(this.activeDriveId);
 
+    try {
+      this.virtualDriveStatus = await this.api.getVirtualDriveStatus(this.activeDriveId);
+      this.updateVirtualDrivePill();
+    } catch {
+      this.virtualDriveStatus = null;
+    }
+
     this.selectedIds.clear();
     this.updateSelectionBar();
     this.renderDrivesNav();
@@ -871,14 +889,16 @@ class ProtoFsApp {
     if (!listEl) return;
 
     listEl.innerHTML = this.drives
-      .map(
-        d => `
+      .map(d => {
+        const isMounted = this.virtualDriveStatus?.is_mounted && this.virtualDriveStatus.drive_id === d.id && this.virtualDriveStatus.drive_letter;
+        return `
         <button class="nav-item ${d.id === this.activeDriveId && this.activeFilter === null ? 'active' : ''}" data-drive-id="${d.id}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
           <span>${escapeHtml(d.name)}</span>
+          ${isMounted ? `<span class="mount-nav-badge">${this.virtualDriveStatus!.drive_letter}:\\</span>` : ''}
         </button>
-      `
-      )
+      `;
+      })
       .join('');
 
     listEl.querySelectorAll('.nav-item').forEach(btn => {
@@ -2016,6 +2036,14 @@ class ProtoFsApp {
 
     document.getElementById('btnStorageDashboard')?.addEventListener('click', openDashboard);
     document.getElementById('btnStorageCard')?.addEventListener('click', openDashboard);
+
+    // Native Virtual Drive Mount (PRD 6.8)
+    document.getElementById('btnQuickMountDrive')?.addEventListener('click', () => {
+      this.openVirtualDriveModal();
+    });
+    document.getElementById('btnMountVirtualDrive')?.addEventListener('click', () => {
+      this.openVirtualDriveModal();
+    });
 
     // Export Drive Modal button in sidebar
     document.getElementById('btnExportDrive')?.addEventListener('click', () => {
@@ -3905,6 +3933,281 @@ class ProtoFsApp {
         if (statusArea) statusArea.classList.add('hidden');
       }
     });
+  }
+
+  private updateVirtualDrivePill() {
+    const pillBtn = document.getElementById('btnQuickMountDrive');
+    const pulseDot = document.getElementById('mountPulseDot');
+    const pillText = document.getElementById('mountPillText');
+    if (!pillBtn || !pulseDot || !pillText) return;
+
+    if (this.virtualDriveStatus?.is_mounted && this.virtualDriveStatus.drive_letter) {
+      pillBtn.classList.add('mounted');
+      pulseDot.classList.remove('hidden');
+      pillText.textContent = `${this.virtualDriveStatus.drive_letter}:\\ Mounted`;
+      pillBtn.title = `Virtual Drive Mounted on ${this.virtualDriveStatus.drive_letter}:\\ (Click to manage)`;
+    } else {
+      pillBtn.classList.remove('mounted');
+      pulseDot.classList.add('hidden');
+      pillText.textContent = 'Mount Drive';
+      pillBtn.title = 'Mount Native Virtual Drive (P:\\)';
+    }
+  }
+
+  private async openVirtualDriveModal() {
+    const drive = this.drives.find(d => d.id === this.activeDriveId);
+    const driveName = drive ? drive.name : 'ProtoFS Drive';
+
+    this.showModal(
+      'Native Virtual Drive Mount (PRD 6.8)',
+      `
+      <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
+        <div class="modal-loading-spinner" style="display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle;"></div>
+        Querying virtual drive status...
+      </div>
+    `,
+      `<button class="btn-action secondary" id="btnCloseMountModal">Close</button>`
+    );
+    document.getElementById('btnCloseMountModal')?.addEventListener('click', () => this.closeModal());
+
+    const refreshModalView = async () => {
+      try {
+        this.virtualDriveStatus = await this.api.getVirtualDriveStatus(this.activeDriveId);
+      } catch (err: any) {
+        console.error('Failed to get virtual drive status:', err);
+      }
+      this.updateVirtualDrivePill();
+      this.renderDrivesNav();
+
+      const modalBody = document.getElementById('dynamicModalBody');
+      const modalFooter = document.getElementById('dynamicModalFooter');
+      if (!modalBody || !modalFooter) return;
+
+      const status = this.virtualDriveStatus;
+      const isMounted = status?.is_mounted ?? false;
+      const currentLetter = status?.drive_letter || 'P';
+      const availableLetters = status?.available_letters || ['P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Z'];
+      const isWinFsp = status?.winfsp_available ?? false;
+      const mountPath = status?.mount_path || '';
+      const totalFiles = this.files.length;
+      const totalSizeBytes = this.files.reduce((sum, f) => sum + f.size_bytes, 0);
+      const cacheUsedBytes = status?.cached_bytes ?? 0;
+
+      modalBody.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 14px; font-size: 13px;">
+          <!-- Hero Status Card -->
+          <div class="mount-status-hero ${isMounted ? 'mounted' : ''}">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 42px; height: 42px; border-radius: var(--radius-sm); background: ${isMounted ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-surface)'}; display: flex; align-items: center; justify-content: center; color: ${isMounted ? '#10b981' : 'var(--text-muted)'};">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style="font-weight: 600; font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                    <span>${escapeHtml(driveName)}</span>
+                    ${isMounted ? `<span class="mount-letter-badge">${escapeHtml(currentLetter)}:\\</span>` : ''}
+                  </div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                    ${isMounted ? 'Mounted and accessible as local native drive' : 'Virtual drive unmounted'}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <span class="badge ${isMounted ? 'badge-success' : 'badge-neutral'}" style="font-size: 11px; padding: 4px 10px;">
+                  ${isMounted ? 'Active / Mounted' : 'Offline / Unmounted'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Configuration & Options -->
+          ${
+            !isMounted
+              ? `
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Select Windows Drive Letter</label>
+              <select class="form-input" id="selectMountLetter" style="cursor: pointer;">
+                ${availableLetters
+                  .map(
+                    letter => `
+                  <option value="${letter}" ${letter === currentLetter ? 'selected' : ''}>
+                    ${letter}:\\ ${letter === 'P' ? '(ProtoFS Default)' : ''}
+                  </option>
+                `
+                  )
+                  .join('')}
+              </select>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                Only unassigned drive letters detected on your system are listed.
+              </div>
+            </div>
+          `
+              : `
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">Local File System Mirror Path</label>
+              <input type="text" class="form-input" value="${escapeHtml(mountPath)}" readonly style="background: var(--bg-surface-elevated); cursor: text;">
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                Projected virtual filesystem mirror mapped to drive letter <code>${escapeHtml(currentLetter)}:\\</code>.
+              </div>
+            </div>
+          `
+          }
+
+          <!-- Statistics Grid -->
+          <div class="mount-grid-stats">
+            <div class="mount-stat-box">
+              <div class="mount-stat-label">Projected Files</div>
+              <div class="mount-stat-val">${totalFiles} items</div>
+            </div>
+            <div class="mount-stat-box">
+              <div class="mount-stat-label">Total Cloud Size</div>
+              <div class="mount-stat-val">${formatBytes(totalSizeBytes)}</div>
+            </div>
+            <div class="mount-stat-box">
+              <div class="mount-stat-label">Local Cache Footprint</div>
+              <div class="mount-stat-val">${formatBytes(cacheUsedBytes)}</div>
+            </div>
+            <div class="mount-stat-box">
+              <div class="mount-stat-label">Mount Driver Subsystem</div>
+              <div class="mount-stat-val">${isWinFsp ? 'WinFsp (Kernel)' : 'Native OS (subst)'}</div>
+            </div>
+          </div>
+
+          <!-- Technical Notice -->
+          <div style="padding: 10px 14px; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 11px; color: var(--text-secondary); line-height: 1.5;">
+            <strong>How it works:</strong> ProtoFS projects your virtual file system directly to a native Windows drive letter. External applications such as Windows Explorer, VLC Media Player, and office suites can open files directly with zero manual exports.
+          </div>
+
+          <div id="mountActionStatusArea" class="hidden" style="padding: 10px; background: var(--bg-surface-input); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted); text-align: center;">
+            <div class="modal-loading-spinner" style="display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: middle;"></div>
+            <span id="mountActionStatusText">Applying changes...</span>
+          </div>
+        </div>
+      `;
+
+      if (isMounted) {
+        modalFooter.innerHTML = `
+          <button class="btn-action secondary" id="btnClearDriveCache" title="Clear local unpinned decrypted files cache">Clear Cache</button>
+          <button class="btn-action danger" id="btnUnmountDriveBtn">Unmount Drive</button>
+          <button class="btn-action primary" id="btnOpenInExplorer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px; vertical-align: middle;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Open in Explorer
+          </button>
+        `;
+      } else {
+        modalFooter.innerHTML = `
+          <button class="btn-action secondary" id="btnCloseMountModalDone">Close</button>
+          <button class="btn-action secondary" id="btnOpenMirrorFolder">Open Folder</button>
+          <button class="btn-action primary" id="btnMountDriveBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px; vertical-align: middle;"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>
+            Mount as Native Drive
+          </button>
+        `;
+      }
+
+      // Action Handlers
+      document.getElementById('btnCloseMountModalDone')?.addEventListener('click', () => this.closeModal());
+
+      document.getElementById('btnOpenInExplorer')?.addEventListener('click', async () => {
+        try {
+          await this.api.openVirtualDriveInExplorer(this.activeDriveId);
+        } catch (err: any) {
+          await this.showAlert({
+            title: 'Explorer Open Failed',
+            message: `Could not launch Windows Explorer: ${err.message || err}`,
+            type: 'error',
+          });
+        }
+      });
+
+      document.getElementById('btnOpenMirrorFolder')?.addEventListener('click', async () => {
+        try {
+          await this.api.openVirtualDriveInExplorer(this.activeDriveId);
+        } catch (err: any) {
+          await this.showAlert({
+            title: 'Open Mirror Folder Failed',
+            message: `Could not open folder: ${err.message || err}`,
+            type: 'error',
+          });
+        }
+      });
+
+      document.getElementById('btnMountDriveBtn')?.addEventListener('click', async () => {
+        const selectEl = document.getElementById('selectMountLetter') as HTMLSelectElement;
+        const letter = selectEl ? selectEl.value : currentLetter;
+        const statusArea = document.getElementById('mountActionStatusArea');
+        const statusText = document.getElementById('mountActionStatusText');
+        const btnMount = document.getElementById('btnMountDriveBtn') as HTMLButtonElement;
+
+        if (statusArea) statusArea.classList.remove('hidden');
+        if (statusText) statusText.textContent = `Mounting drive ${letter}:\\ and preparing virtual filesystem mirror...`;
+        if (btnMount) btnMount.disabled = true;
+
+        try {
+          const res = await this.api.mountVirtualDrive(this.activeDriveId, letter, true);
+          this.virtualDriveStatus = res;
+          await refreshModalView();
+        } catch (err: any) {
+          if (statusArea) statusArea.classList.add('hidden');
+          if (btnMount) btnMount.disabled = false;
+          await this.showAlert({
+            title: 'Mount Virtual Drive Failed',
+            message: `Failed to mount drive ${letter}:\\ - ${err.message || err}`,
+            type: 'error',
+          });
+        }
+      });
+
+      document.getElementById('btnUnmountDriveBtn')?.addEventListener('click', async () => {
+        const statusArea = document.getElementById('mountActionStatusArea');
+        const statusText = document.getElementById('mountActionStatusText');
+        const btnUnmount = document.getElementById('btnUnmountDriveBtn') as HTMLButtonElement;
+
+        if (statusArea) statusArea.classList.remove('hidden');
+        if (statusText) statusText.textContent = 'Unmounting virtual drive...';
+        if (btnUnmount) btnUnmount.disabled = true;
+
+        try {
+          const res = await this.api.unmountVirtualDrive(this.activeDriveId);
+          this.virtualDriveStatus = res;
+          await refreshModalView();
+        } catch (err: any) {
+          if (statusArea) statusArea.classList.add('hidden');
+          if (btnUnmount) btnUnmount.disabled = false;
+          await this.showAlert({
+            title: 'Unmount Failed',
+            message: `Failed to unmount drive: ${err.message || err}`,
+            type: 'error',
+          });
+        }
+      });
+
+      document.getElementById('btnClearDriveCache')?.addEventListener('click', async () => {
+        const confirmed = await this.showConfirm({
+          title: 'Clear Virtual Drive Cache',
+          message: 'Clear all cached mirror files for this drive? Pinned files and cloud data in Telegram remain intact.',
+          confirmText: 'Clear Cache',
+          isDanger: false,
+        });
+
+        if (confirmed) {
+          try {
+            await this.api.clearVirtualDriveCache(this.activeDriveId);
+            await refreshModalView();
+          } catch (err: any) {
+            await this.showAlert({
+              title: 'Clear Cache Failed',
+              message: `Could not clear cache: ${err.message || err}`,
+              type: 'error',
+            });
+          }
+        }
+      });
+    };
+
+    await refreshModalView();
   }
 
   private async handleEmptyTrash() {

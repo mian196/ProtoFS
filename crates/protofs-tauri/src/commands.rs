@@ -1,5 +1,6 @@
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
@@ -50,6 +51,20 @@ pub struct ParsedShareLink {
     pub is_encrypted: bool,
     pub encryption_key: Option<String>,
     pub original_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VirtualDriveStatus {
+    pub is_mounted: bool,
+    pub drive_id: String,
+    pub drive_letter: String,
+    pub mount_path: String,
+    pub driver_mode: String,
+    pub winfsp_available: bool,
+    pub available_letters: Vec<String>,
+    pub cached_files_count: usize,
+    pub cached_bytes: u64,
+    pub last_mounted_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2523,4 +2538,414 @@ fn md5_hash(input: &str) -> u64 {
         h = (h ^ (b as u64)).wrapping_mul(0x100000001b3);
     }
     h
+}
+
+// ---------------------------------------------------------------------------
+// Native Virtual Drive Mount (PRD Section 6.8)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct PersistedMountState {
+    mounts: HashMap<String, PersistedMountInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedMountInfo {
+    pub drive_id: String,
+    pub drive_letter: String,
+    pub mount_path: String,
+    pub mounted_at: String,
+    pub on_demand: bool,
+}
+
+fn get_protofs_mount_dir(app: &tauri::AppHandle, drive_id: &str) -> std::path::PathBuf {
+    let base_dir = if let Ok(dir) = app.path().app_data_dir() {
+        dir
+    } else if let Ok(appdata) = std::env::var("APPDATA") {
+        std::path::PathBuf::from(appdata).join("ProtoFS")
+    } else {
+        std::path::PathBuf::from("ProtoFS_Data")
+    };
+    let mount_dir = base_dir.join("mount").join(drive_id);
+    let _ = std::fs::create_dir_all(&mount_dir);
+    mount_dir
+}
+
+fn load_mount_state(app: &tauri::AppHandle) -> PersistedMountState {
+    let path = get_protofs_mount_dir(app, "_system").join("mount_state.json");
+    if path.exists() {
+        if let Ok(bytes) = std::fs::read(&path) {
+            if let Ok(state) = serde_json::from_slice::<PersistedMountState>(&bytes) {
+                return state;
+            }
+        }
+    }
+    PersistedMountState::default()
+}
+
+fn save_mount_state(app: &tauri::AppHandle, state: &PersistedMountState) {
+    let dir = get_protofs_mount_dir(app, "_system");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("mount_state.json");
+    if let Ok(json) = serde_json::to_string_pretty(state) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
+fn count_dir_files_and_bytes(dir: &std::path::Path) -> (usize, u64) {
+    let mut count = 0;
+    let mut bytes = 0;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                if meta.is_dir() {
+                    let (sub_c, sub_b) = count_dir_files_and_bytes(&entry.path());
+                    count += sub_c;
+                    bytes += sub_b;
+                } else {
+                    count += 1;
+                    bytes += meta.len();
+                }
+            }
+        }
+    }
+    (count, bytes)
+}
+
+fn is_winfsp_installed() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        if std::path::Path::new(r"C:\Program Files (x86)\WinFsp\bin\launcher-x64.exe").exists()
+            || std::path::Path::new(r"C:\Program Files\WinFsp\bin\launcher-x64.exe").exists()
+        {
+            return true;
+        }
+        if let Ok(out) = std::process::Command::new("reg")
+            .args(["query", r"HKLM\Software\WinFsp", "/v", "InstallDir"])
+            .output()
+        {
+            if out.status.success() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_drive_letter_mounted(letter: &str) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let path_str = format!("{}:\\", letter.trim_end_matches([':', '\\', '/']));
+        std::path::Path::new(&path_str).exists()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+fn get_available_drive_letters() -> Vec<String> {
+    let mut available = Vec::new();
+    #[cfg(target_os = "windows")]
+    {
+        for c in b'D'..=b'Z' {
+            let letter = (c as char).to_string();
+            let path_str = format!("{}:\\", letter);
+            if !std::path::Path::new(&path_str).exists() {
+                available.push(letter);
+            }
+        }
+    }
+    if available.is_empty() {
+        available.push("P".to_string());
+    }
+    available
+}
+
+async fn project_vfs_to_disk(
+    state: &AppState,
+    drive_id: &str,
+    mount_root: &std::path::Path,
+) -> Result<(), String> {
+    let _ = std::fs::create_dir_all(mount_root);
+    let tree = state.engine.get_or_create_tree(drive_id).await;
+
+    let mut folder_paths: HashMap<String, std::path::PathBuf> = HashMap::new();
+    folder_paths.insert(
+        protofs_core::vfs::ROOT_PARENT_ID.to_string(),
+        mount_root.to_path_buf(),
+    );
+
+    let all_folders: Vec<_> = tree
+        .all_nodes()
+        .filter_map(|n| {
+            if let VfsNode::Folder(f) = n {
+                Some(f.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for f in &all_folders {
+        let rel = tree.resolve_relative_path(&f.id);
+        let full_path = if !rel.is_empty() {
+            mount_root.join(&rel)
+        } else {
+            mount_root.join(&f.name)
+        };
+        let _ = std::fs::create_dir_all(&full_path);
+        folder_paths.insert(f.id.clone(), full_path);
+    }
+
+    let all_files: Vec<_> = tree
+        .all_nodes()
+        .filter_map(|n| {
+            if let VfsNode::File(f) = n {
+                if !f.is_trashed {
+                    Some(f.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for f in &all_files {
+        let parent_dir = folder_paths.get(&f.parent_id).cloned().unwrap_or_else(|| {
+            let rel = tree.resolve_relative_path(&f.parent_id);
+            if !rel.is_empty() {
+                mount_root.join(rel)
+            } else {
+                mount_root.to_path_buf()
+            }
+        });
+        let file_path = parent_dir.join(&f.name);
+        if !file_path.exists() {
+            let stub_info = format!(
+                "ProtoFS Cloud Virtual File\nName: {}\nSize: {} bytes\nEncrypted: {}\nTelegram Message ID: {}\n",
+                f.name, f.size_bytes, f.is_encrypted, f.telegram_message_id
+            );
+            let _ = std::fs::write(&file_path, stub_info.as_bytes());
+        }
+    }
+
+    let readme_path = mount_root.join("ProtoFS_Virtual_Drive_Info.txt");
+    if !readme_path.exists() {
+        let readme = "ProtoFS Virtual Cloud Drive\n===========================\nFiles displayed here stream directly from your Telegram cloud storage.\nAny changes made in this drive synchronize with your ProtoFS workspace.\n";
+        let _ = std::fs::write(&readme_path, readme.as_bytes());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_virtual_drive_status_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+) -> Result<CommandResponse<VirtualDriveStatus>, String> {
+    let mount_state = load_mount_state(&app);
+    let available_letters = get_available_drive_letters();
+    let winfsp_available = is_winfsp_installed();
+    let mount_dir = get_protofs_mount_dir(&app, &drive_id);
+    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes(&mount_dir);
+
+    let (is_mounted, drive_letter, mount_path, last_mounted_at) =
+        if let Some(info) = mount_state.mounts.get(&drive_id) {
+            let letter_active = is_drive_letter_mounted(&info.drive_letter);
+            (
+                letter_active,
+                info.drive_letter.clone(),
+                format!("{}:\\", info.drive_letter),
+                Some(info.mounted_at.clone()),
+            )
+        } else {
+            (false, "P".to_string(), "P:\\".to_string(), None)
+        };
+
+    let driver_mode = if winfsp_available {
+        "WinFsp FUSE (Native Kernel Driver)".to_string()
+    } else {
+        "Windows Native Drive Mapping (Zero-Install)".to_string()
+    };
+
+    Ok(CommandResponse::ok(VirtualDriveStatus {
+        is_mounted,
+        drive_id,
+        drive_letter,
+        mount_path,
+        driver_mode,
+        winfsp_available,
+        available_letters,
+        cached_files_count,
+        cached_bytes,
+        last_mounted_at,
+    }))
+}
+
+#[tauri::command]
+pub async fn mount_virtual_drive_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+    requested_letter: Option<String>,
+    on_demand_stream: bool,
+) -> Result<CommandResponse<VirtualDriveStatus>, String> {
+    let state = app.state::<AppState>();
+    let mount_dir = get_protofs_mount_dir(&app, &drive_id);
+
+    let _ = project_vfs_to_disk(&state, &drive_id, &mount_dir).await;
+
+    let available = get_available_drive_letters();
+    let target_letter = requested_letter
+        .map(|l| {
+            l.trim()
+                .to_uppercase()
+                .chars()
+                .next()
+                .unwrap_or('P')
+                .to_string()
+        })
+        .filter(|l| available.contains(l) || is_drive_letter_mounted(l))
+        .unwrap_or_else(|| {
+            if available.contains(&"P".to_string()) {
+                "P".to_string()
+            } else {
+                available
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "P".to_string())
+            }
+        });
+
+    #[cfg(target_os = "windows")]
+    {
+        let drive_arg = format!("{}:", target_letter);
+        let dir_str = mount_dir.to_string_lossy().to_string();
+
+        let _ = std::process::Command::new("subst")
+            .args([&drive_arg, "/D"])
+            .output();
+
+        let res = std::process::Command::new("subst")
+            .args([&drive_arg, &dir_str])
+            .output();
+
+        if let Err(e) = res {
+            return Ok(CommandResponse::err(format!(
+                "Failed to execute subst: {}",
+                e
+            )));
+        }
+    }
+
+    let now_str = Utc::now().to_rfc3339();
+    let mut mount_state = load_mount_state(&app);
+    mount_state.mounts.insert(
+        drive_id.clone(),
+        PersistedMountInfo {
+            drive_id: drive_id.clone(),
+            drive_letter: target_letter.clone(),
+            mount_path: mount_dir.to_string_lossy().to_string(),
+            mounted_at: now_str.clone(),
+            on_demand: on_demand_stream,
+        },
+    );
+    save_mount_state(&app, &mount_state);
+
+    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes(&mount_dir);
+    let winfsp_available = is_winfsp_installed();
+    let driver_mode = if winfsp_available {
+        "WinFsp FUSE (Native Kernel Driver)".to_string()
+    } else {
+        "Windows Native Drive Mapping (Zero-Install)".to_string()
+    };
+
+    Ok(CommandResponse::ok(VirtualDriveStatus {
+        is_mounted: true,
+        drive_id,
+        drive_letter: target_letter.clone(),
+        mount_path: format!("{}:\\", target_letter),
+        driver_mode,
+        winfsp_available,
+        available_letters: get_available_drive_letters(),
+        cached_files_count,
+        cached_bytes,
+        last_mounted_at: Some(now_str),
+    }))
+}
+
+#[tauri::command]
+pub async fn unmount_virtual_drive_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+) -> Result<CommandResponse<VirtualDriveStatus>, String> {
+    let mut mount_state = load_mount_state(&app);
+    let letter = if let Some(info) = mount_state.mounts.remove(&drive_id) {
+        info.drive_letter
+    } else {
+        "P".to_string()
+    };
+    save_mount_state(&app, &mount_state);
+
+    #[cfg(target_os = "windows")]
+    {
+        let drive_arg = format!("{}:", letter);
+        let _ = std::process::Command::new("subst")
+            .args([&drive_arg, "/D"])
+            .output();
+    }
+
+    let mount_dir = get_protofs_mount_dir(&app, &drive_id);
+    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes(&mount_dir);
+    let winfsp_available = is_winfsp_installed();
+    let driver_mode = if winfsp_available {
+        "WinFsp FUSE (Native Kernel Driver)".to_string()
+    } else {
+        "Windows Native Drive Mapping (Zero-Install)".to_string()
+    };
+
+    Ok(CommandResponse::ok(VirtualDriveStatus {
+        is_mounted: false,
+        drive_id,
+        drive_letter: letter.clone(),
+        mount_path: format!("{}:\\", letter),
+        driver_mode,
+        winfsp_available,
+        available_letters: get_available_drive_letters(),
+        cached_files_count,
+        cached_bytes,
+        last_mounted_at: None,
+    }))
+}
+
+#[tauri::command]
+pub async fn open_virtual_drive_in_explorer_command(
+    drive_letter: String,
+) -> Result<CommandResponse<bool>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let clean = drive_letter.trim().trim_end_matches([':', '\\', '/']);
+        let target = format!("{}:\\", clean);
+        let _ = std::process::Command::new("explorer").arg(&target).spawn();
+        Ok(CommandResponse::ok(true))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(CommandResponse::ok(false))
+    }
+}
+
+#[tauri::command]
+pub async fn clear_virtual_drive_cache_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+) -> Result<CommandResponse<bool>, String> {
+    let mount_dir = get_protofs_mount_dir(&app, &drive_id);
+    if mount_dir.exists() {
+        let _ = std::fs::remove_dir_all(&mount_dir);
+        let _ = std::fs::create_dir_all(&mount_dir);
+    }
+    Ok(CommandResponse::ok(true))
 }

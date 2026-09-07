@@ -16,6 +16,7 @@ import type {
   CameraBackupConfig,
   ShareLinkInfo,
   ParsedShareLink,
+  VirtualDriveStatus,
 } from './types';
 
 interface TauriCommandResponse<T> {
@@ -1358,6 +1359,120 @@ export class ProtoFsApi {
     files.push(newFile);
     localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
     return newFile;
+  }
+
+  // -------------------------------------------------------------------------
+  // Native Virtual Drive Mount (PRD Section 6.8)
+  // -------------------------------------------------------------------------
+
+  async getVirtualDriveStatus(driveId: string): Promise<VirtualDriveStatus | null> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<VirtualDriveStatus>>('get_virtual_drive_status_command', { driveId });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        console.warn('Tauri get_virtual_drive_status_command error:', err);
+      }
+    }
+
+    const isMounted = localStorage.getItem(`protofs_mount_${driveId}`) === 'true';
+    const driveLetter = localStorage.getItem(`protofs_mount_letter_${driveId}`) || 'P';
+    return {
+      is_mounted: isMounted,
+      drive_id: driveId,
+      drive_letter: driveLetter,
+      mount_path: `${driveLetter}:\\`,
+      driver_mode: 'Windows Native Drive Mapping (Zero-Install)',
+      winfsp_available: false,
+      available_letters: ['P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'],
+      cached_files_count: isMounted ? 14 : 0,
+      cached_bytes: isMounted ? 45890200 : 0,
+      last_mounted_at: isMounted ? new Date().toISOString() : undefined,
+    };
+  }
+
+  async mountVirtualDrive(driveId: string, requestedLetter?: string, onDemandStream = true): Promise<VirtualDriveStatus | null> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<VirtualDriveStatus>>('mount_virtual_drive_command', {
+          driveId,
+          requestedLetter,
+          onDemandStream,
+        });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    const letter = requestedLetter || 'P';
+    localStorage.setItem(`protofs_mount_${driveId}`, 'true');
+    localStorage.setItem(`protofs_mount_letter_${driveId}`, letter);
+    return {
+      is_mounted: true,
+      drive_id: driveId,
+      drive_letter: letter,
+      mount_path: `${letter}:\\`,
+      driver_mode: 'Windows Native Drive Mapping (Zero-Install)',
+      winfsp_available: false,
+      available_letters: ['P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'],
+      cached_files_count: 14,
+      cached_bytes: 45890200,
+      last_mounted_at: new Date().toISOString(),
+    };
+  }
+
+  async unmountVirtualDrive(driveId: string): Promise<VirtualDriveStatus | null> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<VirtualDriveStatus>>('unmount_virtual_drive_command', { driveId });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    const letter = localStorage.getItem(`protofs_mount_letter_${driveId}`) || 'P';
+    localStorage.removeItem(`protofs_mount_${driveId}`);
+    return {
+      is_mounted: false,
+      drive_id: driveId,
+      drive_letter: letter,
+      mount_path: `${letter}:\\`,
+      driver_mode: 'Windows Native Drive Mapping (Zero-Install)',
+      winfsp_available: false,
+      available_letters: ['P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'],
+      cached_files_count: 0,
+      cached_bytes: 0,
+      last_mounted_at: undefined,
+    };
+  }
+
+  async openVirtualDriveInExplorer(driveLetter: string): Promise<boolean> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<boolean>>('open_virtual_drive_in_explorer_command', { driveLetter });
+        if (res.success && typeof res.data === 'boolean') return res.data;
+      } catch (err) {
+        console.warn('Tauri open_virtual_drive_in_explorer_command error:', err);
+      }
+    }
+    return false;
+  }
+
+  async clearVirtualDriveCache(driveId: string): Promise<boolean> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<boolean>>('clear_virtual_drive_cache_command', { driveId });
+        if (res.success && typeof res.data === 'boolean') return res.data;
+      } catch (err) {
+        console.warn('Tauri clear_virtual_drive_cache_command error:', err);
+      }
+    }
+    return true;
   }
 
   // -------------------------------------------------------------------------

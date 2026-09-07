@@ -82,6 +82,11 @@ fn main() {
             commands::generate_share_link_command,
             commands::parse_share_link_command,
             commands::import_shared_link_command,
+            commands::get_virtual_drive_status_command,
+            commands::mount_virtual_drive_command,
+            commands::unmount_virtual_drive_command,
+            commands::open_virtual_drive_in_explorer_command,
+            commands::clear_virtual_drive_cache_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs desktop application");
