@@ -24,6 +24,22 @@ pub struct FolderNode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FileVersion {
+    pub version: u32,
+    pub telegram_message_id: i32,
+    pub size_bytes: u64,
+    pub mime_type: Option<String>,
+    pub sha256_hash: Option<String>,
+    pub is_encrypted: bool,
+    pub encryption_iv: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+fn default_version() -> u32 {
+    1
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FileNode {
     pub id: String,
     pub drive_id: String,
@@ -37,6 +53,10 @@ pub struct FileNode {
     pub sha256_hash: Option<String>,
     pub is_pinned_offline: bool,
     pub is_trashed: bool,
+    #[serde(default = "default_version")]
+    pub version: u32,
+    #[serde(default)]
+    pub history: Vec<FileVersion>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

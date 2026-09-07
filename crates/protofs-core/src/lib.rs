@@ -44,6 +44,8 @@ mod tests {
             sha256_hash: None,
             is_pinned_offline: false,
             is_trashed: false,
+            version: 1,
+            history: Vec::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -63,6 +65,30 @@ mod tests {
         let crumbs = tree.resolve_breadcrumbs("f_1");
         assert_eq!(crumbs.len(), 1);
         assert_eq!(crumbs[0].1, "Work Documents");
+
+        // Relative path test
+        let path = tree.resolve_relative_path("file_1");
+        assert_eq!(path, "Work Documents/report.pdf");
+
+        // File versioning test: update file version
+        let v2 = tree
+            .record_file_version("file_1", 101, 2048, None, None, false, None)
+            .unwrap();
+        assert_eq!(v2, 2);
+        let f2 = tree.get_file("file_1").unwrap();
+        assert_eq!(f2.version, 2);
+        assert_eq!(f2.size_bytes, 2048);
+        assert_eq!(f2.history.len(), 1);
+        assert_eq!(f2.history[0].version, 1);
+        assert_eq!(f2.history[0].size_bytes, 1024);
+
+        // Restore file version 1
+        let v_restored = tree.restore_file_version("file_1", 1).unwrap();
+        assert_eq!(v_restored, 1);
+        let f_restored = tree.get_file("file_1").unwrap();
+        assert_eq!(f_restored.version, 1);
+        assert_eq!(f_restored.history.len(), 1);
+        assert_eq!(f_restored.history[0].version, 2);
     }
 
     #[test]
@@ -136,6 +162,8 @@ mod tests {
             sha256_hash: None,
             is_pinned_offline: true,
             is_trashed: false,
+            version: 1,
+            history: Vec::new(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }));

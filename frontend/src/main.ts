@@ -662,7 +662,12 @@ class ProtoFsApp {
           <div>
             <div class="sidebar-section-title">
               <span>DRIVES</span>
-              <button class="icon-btn" id="btnNewDrive" title="New Telegram Drive" style="width:22px;height:22px;">+</button>
+              <div style="display: flex; gap: 4px;">
+                <button class="icon-btn" id="btnExportDrive" title="Export Current Drive to Local Folder" style="width:22px;height:22px;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </button>
+                <button class="icon-btn" id="btnNewDrive" title="New Telegram Drive" style="width:22px;height:22px;">+</button>
+              </div>
             </div>
             <nav class="nav-list" id="drivesNavList"></nav>
 
@@ -747,6 +752,10 @@ class ProtoFsApp {
           <button class="btn-selection-tool" id="btnSelPreview" title="Preview single file">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
             <span>Preview</span>
+          </button>
+          <button class="btn-selection-tool" id="btnSelHistory" title="Version History">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>History</span>
           </button>
           <button class="btn-selection-tool" id="btnSelRename" title="Rename item">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -1090,6 +1099,7 @@ class ProtoFsApp {
             <div class="file-card-badges">
               ${f.encrypted ? `<span class="file-badge encrypted" title="AES-256-GCM Encrypted">🔒</span>` : ''}
               ${f.pinned ? `<span class="file-badge pinned" title="Pinned Offline">📌</span>` : ''}
+              ${f.version && f.version > 1 ? `<span class="file-badge version-badge" title="Version ${f.version}">v${f.version}</span>` : ''}
             </div>
           </div>
           <div class="file-card-icon-area file-type-${f.type}">
@@ -1110,8 +1120,11 @@ class ProtoFsApp {
         <input type="checkbox" class="file-checkbox" data-file-id="${f.id}" ${isSelected ? 'checked' : ''}>
         <div class="file-icon-box file-type-${f.type}">${iconSvg}</div>
         <div class="file-details">
-          <span class="file-name">${escapeHtml(f.name)}</span>
-          <span class="file-meta">${f.size} • ${f.date} ${f.encrypted ? '• 🔒 Encrypted' : ''} ${f.pinned ? '• 📌 Pinned' : ''}</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="file-name">${escapeHtml(f.name)}</span>
+            ${f.version && f.version > 1 ? `<span class="file-badge version-badge" style="padding: 1px 6px; font-size: 10px;" title="Version ${f.version}">v${f.version}</span>` : ''}
+          </div>
+          <span class="file-meta">${f.size} • ${f.date} ${f.encrypted ? '• 🔒 Encrypted' : ''} ${f.pinned ? '• 📌 Pinned' : ''} ${f.version && f.version > 1 ? `• v${f.version}` : ''}</span>
         </div>
         <div class="file-actions-group">
           ${
@@ -1125,6 +1138,9 @@ class ProtoFsApp {
             </button>
           `
               : `
+            <button class="btn-icon-subtle btn-history-file" data-id="${f.id}" title="Version History">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </button>
             <button class="btn-icon-subtle btn-preview-file" data-id="${f.id}" title="Preview">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
@@ -1200,6 +1216,13 @@ class ProtoFsApp {
         });
       });
     } else {
+      document.querySelectorAll('.btn-history-file').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const id = (btn as HTMLElement).dataset.id;
+          if (id) this.openVersionHistoryModal(id);
+        });
+      });
       document.querySelectorAll('.btn-preview-file').forEach(btn => {
         btn.addEventListener('click', e => {
           e.stopPropagation();
@@ -1240,6 +1263,7 @@ class ProtoFsApp {
     const bar = document.getElementById('selectionFloatingBar');
     const countPill = document.getElementById('selectionCountPill');
     const btnSelPreview = document.getElementById('btnSelPreview');
+    const btnSelHistory = document.getElementById('btnSelHistory');
     const btnSelRename = document.getElementById('btnSelRename');
 
     if (!bar || !countPill) return;
@@ -1253,8 +1277,11 @@ class ProtoFsApp {
     bar.classList.remove('hidden');
     countPill.textContent = `${count} item${count > 1 ? 's' : ''} selected`;
 
-    // Preview and Rename are only active for single item selection
-    if (btnSelPreview) btnSelPreview.style.display = count === 1 ? 'flex' : 'none';
+    const isSingleFile = count === 1 && this.files.some(f => f.id === Array.from(this.selectedIds)[0]);
+
+    // Preview, History and Rename are only active for single item selection
+    if (btnSelPreview) btnSelPreview.style.display = isSingleFile ? 'flex' : 'none';
+    if (btnSelHistory) btnSelHistory.style.display = isSingleFile ? 'flex' : 'none';
     if (btnSelRename) btnSelRename.style.display = count === 1 ? 'flex' : 'none';
   }
 
@@ -1505,6 +1532,14 @@ class ProtoFsApp {
       }
     });
 
+    document.getElementById('btnSelHistory')?.addEventListener('click', () => {
+      const selected = Array.from(this.selectedIds);
+      if (selected.length === 1) {
+        const file = this.files.find(f => f.id === selected[0]);
+        if (file) this.openVersionHistoryModal(file.id);
+      }
+    });
+
     document.getElementById('btnSelRename')?.addEventListener('click', () => {
       const selected = Array.from(this.selectedIds);
       if (selected.length === 1) {
@@ -1748,6 +1783,11 @@ class ProtoFsApp {
 
     document.getElementById('btnStorageDashboard')?.addEventListener('click', openDashboard);
     document.getElementById('btnStorageCard')?.addEventListener('click', openDashboard);
+
+    // Export Drive Modal button in sidebar
+    document.getElementById('btnExportDrive')?.addEventListener('click', () => {
+      this.openExportDriveModal();
+    });
 
     // New Drive Modal button in sidebar
     document.getElementById('btnNewDrive')?.addEventListener('click', () => {
@@ -2175,6 +2215,219 @@ class ProtoFsApp {
     document.getElementById('btnPreviewDownload')?.addEventListener('click', () => {
       this.closeModal();
       this.triggerTransfer(file.name, file.size, 'downloading');
+    });
+  }
+
+  private async openVersionHistoryModal(fileId: string) {
+    const file = this.files.find(f => f.id === fileId);
+    if (!file) return;
+
+    this.showModal(
+      `Version History: ${escapeHtml(file.name)}`,
+      `
+      <div class="version-history-container">
+        <div style="display: flex; align-items: center; justify-content: center; padding: 24px; color: var(--text-muted); font-size: 13px;">
+          <div class="modal-loading-spinner" style="display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px;"></div>
+          Loading file version history...
+        </div>
+      </div>
+    `,
+      `<button class="btn-action secondary" id="btnCloseVersionHistory">Close</button>`
+    );
+    document.getElementById('btnCloseVersionHistory')?.addEventListener('click', () => this.closeModal());
+
+    try {
+      const versions = await this.api.getFileVersions(this.activeDriveId, fileId);
+      const activeVerNum = file.version || 1;
+
+      const renderBody = () => `
+        <div class="version-history-container">
+          <div class="version-active-banner" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+              <span style="font-weight: 600; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                <span class="version-num-tag current">v${activeVerNum}</span>
+                Current Active Version
+              </span>
+              <span style="font-size: 11px; color: var(--accent-primary); font-weight: 500;">Active</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 12px; margin-top: 4px;">
+              <span>${file.size}</span>
+              <span>•</span>
+              <span>${file.date}</span>
+              <span>•</span>
+              <span>${file.encrypted ? '🔒 AES-256-GCM' : 'Plaintext'}</span>
+            </div>
+            ${file.sha256_hash ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: monospace;">SHA256: ${file.sha256_hash.substring(0, 16)}...</div>` : ''}
+          </div>
+
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
+            Previous Versions (${versions.length})
+          </div>
+
+          ${
+            versions.length === 0
+              ? `
+            <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px; background: var(--bg-surface-input); border-radius: var(--radius-sm);">
+              No previous versions recorded yet. When you upload or overwrite a file with the same name, ProtoFS preserves past versions here automatically.
+            </div>
+          `
+              : `
+            <div class="version-history-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+              ${versions
+                .map(
+                  v => `
+                <div class="version-card">
+                  <div class="version-card-info">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span class="version-num-tag">v${v.version}</span>
+                      <span style="font-size: 12px; font-weight: 500; color: var(--text-primary);">${formatBytes(v.size_bytes)}</span>
+                    </div>
+                    <div class="version-card-meta">
+                      <span>${new Date(v.created_at).toLocaleString()}</span>
+                      <span>•</span>
+                      <span>${v.is_encrypted ? '🔒 Encrypted' : 'Plaintext'}</span>
+                      ${v.sha256_hash ? `<span>• Hash: ${v.sha256_hash.substring(0, 8)}</span>` : ''}
+                    </div>
+                  </div>
+                  <button class="btn-action secondary btn-restore-target-version" data-target-ver="${v.version}" style="padding: 4px 10px; font-size: 11px;">
+                    Restore v${v.version}
+                  </button>
+                </div>
+              `
+                )
+                .join('')}
+            </div>
+          `
+          }
+        </div>
+      `;
+
+      const modalBody = document.getElementById('dynamicModalBody');
+      if (modalBody) {
+        modalBody.innerHTML = renderBody();
+
+        modalBody.querySelectorAll('.btn-restore-target-version').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const targetVer = Number((btn as HTMLElement).dataset.targetVer);
+            if (!targetVer) return;
+
+            (btn as HTMLButtonElement).disabled = true;
+            (btn as HTMLButtonElement).textContent = 'Restoring...';
+
+            try {
+              await this.api.restoreFileVersion(this.activeDriveId, fileId, targetVer);
+              await this.loadWorkspaceData();
+              this.closeModal();
+              this.showModal(
+                'Version Restored',
+                `
+                <div style="padding: 12px; font-size: 13px; color: var(--text-primary); line-height: 1.5;">
+                  <p>Successfully restored <strong>${escapeHtml(file.name)}</strong> to <strong>version v${targetVer}</strong>.</p>
+                  <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">The previous active version has been safely moved to history.</p>
+                </div>
+              `,
+                `<button class="btn-action primary" id="btnRestoredDone">Done</button>`
+              );
+              document.getElementById('btnRestoredDone')?.addEventListener('click', () => this.closeModal());
+            } catch (err: any) {
+              alert(`Failed to restore version: ${err.message || err}`);
+              (btn as HTMLButtonElement).disabled = false;
+              (btn as HTMLButtonElement).textContent = `Restore v${targetVer}`;
+            }
+          });
+        });
+      }
+    } catch (err: any) {
+      const modalBody = document.getElementById('dynamicModalBody');
+      if (modalBody) {
+        modalBody.innerHTML = `<div style="padding: 16px; color: var(--color-danger); font-size: 12px;">Failed to load version history: ${escapeHtml(err.message || String(err))}</div>`;
+      }
+    }
+  }
+
+  private openExportDriveModal() {
+    const drive = this.drives.find(d => d.id === this.activeDriveId);
+    const driveName = drive ? drive.name : 'ProtoFS-Drive';
+    const sanitizedName = driveName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const defaultExportPath = `ProtoFS-Backups/${sanitizedName}`;
+
+    this.showModal(
+      'Export Entire Drive to Local Folder',
+      `
+      <div style="display: flex; flex-direction: column; gap: 14px; font-size: 13px;">
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px; line-height: 1.5; color: var(--text-secondary);">
+          <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Full Drive Export (PRD 6.16)</div>
+          Export all directories and files from <strong>${escapeHtml(driveName)}</strong> to your local filesystem.
+          Files are reconstructed into nested folders, decrypted from AES-256-GCM STREAM chunks, and a standalone <code>manifest.json</code> is saved at the root.
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Target Local Destination Directory</label>
+          <input type="text" class="form-input" id="inputExportPath" value="${escapeHtml(defaultExportPath)}" placeholder="e.g. D:/ProtoFS-Backups/${escapeHtml(sanitizedName)}" required>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+            Relative paths are created relative to the application working directory. Absolute paths (e.g. <code>C:/Backups/...</code>) are supported.
+          </div>
+        </div>
+
+        <div id="exportStatusArea" class="hidden" style="padding: 12px; background: var(--bg-surface-input); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted); text-align: center;">
+          <div class="modal-loading-spinner" style="display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: middle;"></div>
+          Exporting files and writing manifest...
+        </div>
+      </div>
+    `,
+      `
+      <button class="btn-action secondary" id="btnCancelExport">Cancel</button>
+      <button class="btn-action primary" id="btnStartExport">Start Export</button>
+    `
+    );
+
+    document.getElementById('btnCancelExport')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('btnStartExport')?.addEventListener('click', async () => {
+      const pathInput = document.getElementById('inputExportPath') as HTMLInputElement;
+      const targetPath = pathInput?.value.trim();
+      if (!targetPath) return;
+
+      const btnStart = document.getElementById('btnStartExport') as HTMLButtonElement;
+      const btnCancel = document.getElementById('btnCancelExport') as HTMLButtonElement;
+      const statusArea = document.getElementById('exportStatusArea');
+
+      if (btnStart) {
+        btnStart.disabled = true;
+        btnStart.textContent = 'Exporting...';
+      }
+      if (btnCancel) btnCancel.disabled = true;
+      if (statusArea) statusArea.classList.remove('hidden');
+
+      try {
+        const result = await this.api.exportDrive(this.activeDriveId, targetPath);
+        this.showModal(
+          'Drive Export Completed',
+          `
+          <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px; color: var(--text-primary);">
+            <div style="color: var(--accent-primary); font-weight: 600; font-size: 14px;">
+              ✓ Drive Export Finished Successfully
+            </div>
+            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 12px 14px; line-height: 1.6; font-size: 12px;">
+              <div><strong>Destination:</strong> <code>${escapeHtml(result.export_path)}</code></div>
+              <div><strong>Folders Reconstructed:</strong> ${result.total_folders}</div>
+              <div><strong>Files Exported:</strong> ${result.total_files}</div>
+              <div><strong>Total Data Size:</strong> ${formatBytes(result.total_bytes)}</div>
+              <div style="margin-top: 6px; color: var(--text-muted);">Root <code>manifest.json</code> successfully written.</div>
+            </div>
+          </div>
+        `,
+          `<button class="btn-action primary" id="btnExportDone">Done</button>`
+        );
+        document.getElementById('btnExportDone')?.addEventListener('click', () => this.closeModal());
+      } catch (err: any) {
+        alert(`Export failed: ${err.message || err}`);
+        if (btnStart) {
+          btnStart.disabled = false;
+          btnStart.textContent = 'Start Export';
+        }
+        if (btnCancel) btnCancel.disabled = false;
+        if (statusArea) statusArea.classList.add('hidden');
+      }
     });
   }
 

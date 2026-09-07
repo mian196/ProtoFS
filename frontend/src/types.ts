@@ -17,6 +17,24 @@ export interface FolderNode {
   updated_at: string;
 }
 
+export interface FileVersion {
+  version: number;
+  telegram_message_id: number;
+  size_bytes: number;
+  mime_type?: string;
+  sha256_hash?: string;
+  is_encrypted: boolean;
+  encryption_iv?: string;
+  created_at: string;
+}
+
+export interface ExportDriveResult {
+  export_path: string;
+  total_folders: number;
+  total_files: number;
+  total_bytes: number;
+}
+
 export interface FileNode {
   id: string;
   drive_id: string;
@@ -32,6 +50,8 @@ export interface FileNode {
   sha256_hash?: string;
   pinned: boolean;
   trashed: boolean;
+  version?: number;
+  history?: FileVersion[];
   date: string;
   created_at: string;
   updated_at: string;

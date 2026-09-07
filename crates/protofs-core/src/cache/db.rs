@@ -329,6 +329,8 @@ impl CacheDatabase {
                     sha256_hash: row.get(9)?,
                     is_pinned_offline: pinned == 1,
                     is_trashed: trashed == 1,
+                    version: 1,
+                    history: Vec::new(),
                     created_at: DateTime::parse_from_rfc3339(&created_str)
                         .map(|dt| dt.with_timezone(&Utc))
                         .unwrap_or_else(|_| Utc::now()),

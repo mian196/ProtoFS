@@ -26,6 +26,9 @@ pub enum ProtoFsError {
     #[error("Invalid path: {0}")]
     InvalidPath(String),
 
+    #[error("VFS error: {0}")]
+    Vfs(String),
+
     #[error("Manifest conflict: remote version {remote} > local version {local}")]
     ManifestConflict { local: u64, remote: u64 },
 

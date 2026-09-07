@@ -3,7 +3,9 @@ import type {
   AuthResponse,
   AuthSession,
   DriveMetadata,
+  ExportDriveResult,
   FileNode,
+  FileVersion,
   FolderNode,
   OwnedChannel,
   QrStatusResponse,
@@ -572,6 +574,77 @@ export class ProtoFsApi {
     files.push(file);
     localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
     return file;
+  }
+
+  async getFileVersions(driveId: string, fileId: string): Promise<FileVersion[]> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<FileVersion[]>>('get_file_versions_command', {
+          driveId,
+          fileId,
+        });
+        if (res.success && res.data) return res.data;
+      } catch (err) {
+        console.warn('Tauri get_file_versions_command error:', err);
+      }
+    }
+    const files = this.getStoredFiles();
+    const file = files.find(f => f.id === fileId);
+    return file?.history || [];
+  }
+
+  async restoreFileVersion(driveId: string, fileId: string, targetVersion: number): Promise<FileNode> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<any>>('restore_file_version_command', {
+          driveId,
+          fileId,
+          targetVersion,
+        });
+        if (res.success && res.data) {
+          const item = res.data;
+          return {
+            ...item,
+            size: formatBytes(item.size_bytes || 0),
+            type: detectFileType(item.name),
+            encrypted: item.is_encrypted,
+            pinned: item.is_pinned_offline,
+            trashed: item.is_trashed,
+            date: 'Restored',
+          };
+        }
+        throw new Error(res.error || 'Failed to restore file version');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    const files = this.getStoredFiles();
+    const file = files.find(f => f.id === fileId);
+    if (!file) throw new Error('File not found');
+    return file;
+  }
+
+  async exportDrive(driveId: string, targetPath: string): Promise<ExportDriveResult> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<ExportDriveResult>>('export_drive_command', {
+          driveId,
+          targetPath,
+        });
+        if (res.success && res.data) return res.data;
+        throw new Error(res.error || 'Failed to export drive');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    return {
+      export_path: `${targetPath}/Exported_Drive`,
+      total_folders: 4,
+      total_files: 8,
+      total_bytes: 18491020,
+    };
   }
 
   async deleteNode(driveId: string, nodeId: string, permanent: boolean): Promise<void> {

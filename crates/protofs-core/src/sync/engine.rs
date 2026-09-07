@@ -111,6 +111,8 @@ impl<T: TelegramTransport> SyncEngine<T> {
                             sha256_hash: parsed.sha256_hash,
                             is_pinned_offline: false,
                             is_trashed: false,
+                            version: 1,
+                            history: Vec::new(),
                             created_at: msg.date,
                             updated_at: msg.date,
                         };

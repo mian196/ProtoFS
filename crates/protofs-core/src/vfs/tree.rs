@@ -1,5 +1,5 @@
 use crate::error::{ProtoFsError, Result};
-use crate::vfs::model::{FileNode, FolderNode, VfsNode, ROOT_PARENT_ID};
+use crate::vfs::model::{FileNode, FileVersion, FolderNode, VfsNode, ROOT_PARENT_ID};
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 
@@ -145,6 +145,111 @@ impl VfsTree {
         } else {
             None
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_file_version(
+        &mut self,
+        file_id: &str,
+        new_message_id: i32,
+        new_size: u64,
+        new_mime: Option<String>,
+        new_sha256: Option<String>,
+        is_encrypted: bool,
+        encryption_iv: Option<String>,
+    ) -> Result<u32> {
+        let node = self
+            .nodes
+            .get_mut(file_id)
+            .ok_or_else(|| ProtoFsError::NodeNotFound(file_id.to_string()))?;
+
+        if let VfsNode::File(f) = node {
+            let past_version = FileVersion {
+                version: f.version,
+                telegram_message_id: f.telegram_message_id,
+                size_bytes: f.size_bytes,
+                mime_type: f.mime_type.clone(),
+                sha256_hash: f.sha256_hash.clone(),
+                is_encrypted: f.is_encrypted,
+                encryption_iv: f.encryption_iv.clone(),
+                created_at: f.updated_at,
+            };
+            f.history.insert(0, past_version);
+            if f.history.len() > 10 {
+                f.history.truncate(10);
+            }
+
+            f.version += 1;
+            f.telegram_message_id = new_message_id;
+            f.size_bytes = new_size;
+            f.mime_type = new_mime;
+            f.sha256_hash = new_sha256;
+            f.is_encrypted = is_encrypted;
+            f.encryption_iv = encryption_iv;
+            f.updated_at = Utc::now();
+            Ok(f.version)
+        } else {
+            Err(ProtoFsError::Vfs("Node is a folder, not a file".to_string()))
+        }
+    }
+
+    pub fn restore_file_version(&mut self, file_id: &str, target_version: u32) -> Result<u32> {
+        let node = self
+            .nodes
+            .get_mut(file_id)
+            .ok_or_else(|| ProtoFsError::NodeNotFound(file_id.to_string()))?;
+
+        if let VfsNode::File(f) = node {
+            let pos = f
+                .history
+                .iter()
+                .position(|v| v.version == target_version)
+                .ok_or_else(|| {
+                    ProtoFsError::Vfs(format!("Version {} not found in history", target_version))
+                })?;
+
+            let target = f.history.remove(pos);
+
+            let current_demoted = FileVersion {
+                version: f.version,
+                telegram_message_id: f.telegram_message_id,
+                size_bytes: f.size_bytes,
+                mime_type: f.mime_type.clone(),
+                sha256_hash: f.sha256_hash.clone(),
+                is_encrypted: f.is_encrypted,
+                encryption_iv: f.encryption_iv.clone(),
+                created_at: f.updated_at,
+            };
+            f.history.insert(0, current_demoted);
+
+            f.version = target.version;
+            f.telegram_message_id = target.telegram_message_id;
+            f.size_bytes = target.size_bytes;
+            f.mime_type = target.mime_type;
+            f.sha256_hash = target.sha256_hash;
+            f.is_encrypted = target.is_encrypted;
+            f.encryption_iv = target.encryption_iv;
+            f.updated_at = Utc::now();
+
+            Ok(f.version)
+        } else {
+            Err(ProtoFsError::Vfs("Node is a folder, not a file".to_string()))
+        }
+    }
+
+    pub fn resolve_relative_path(&self, node_id: &str) -> String {
+        let mut parts = Vec::new();
+        let mut curr_id = node_id.to_string();
+        while curr_id != ROOT_PARENT_ID {
+            if let Some(node) = self.nodes.get(&curr_id) {
+                parts.push(node.name().to_string());
+                curr_id = node.parent_id().to_string();
+            } else {
+                break;
+            }
+        }
+        parts.reverse();
+        parts.join("/")
     }
 
     pub fn all_nodes(&self) -> impl Iterator<Item = &VfsNode> {
