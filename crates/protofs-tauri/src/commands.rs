@@ -1052,7 +1052,11 @@ pub async fn create_drive_command(
     let resolved_channel_id = if channel_id == 0 {
         let channel_title = format!("[ProtoFS] {}", name);
         let channel_about = format!("ProtoFS Encrypted Cloud Storage [protofs-id: {}]", id);
-        match state.transport.create_channel(&channel_title, &channel_about).await {
+        match state
+            .transport
+            .create_channel(&channel_title, &channel_about)
+            .await
+        {
             Ok(info) => info.id,
             Err(_) => -1001000000000 - (Utc::now().timestamp_millis() % 100000),
         }
@@ -1748,7 +1752,8 @@ pub struct ShellIntegrationStatus {
 }
 
 #[tauri::command]
-pub async fn get_shell_integration_status_command() -> Result<CommandResponse<ShellIntegrationStatus>, String> {
+pub async fn get_shell_integration_status_command(
+) -> Result<CommandResponse<ShellIntegrationStatus>, String> {
     let target_exe = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| "protofs-tauri.exe".to_string());
@@ -1781,7 +1786,8 @@ pub async fn get_shell_integration_status_command() -> Result<CommandResponse<Sh
     #[cfg(target_os = "linux")]
     {
         let home = std::env::var("HOME").unwrap_or_default();
-        let desktop_file = std::path::PathBuf::from(&home).join(".local/share/applications/protofs-upload.desktop");
+        let desktop_file = std::path::PathBuf::from(&home)
+            .join(".local/share/applications/protofs-upload.desktop");
         let enabled = desktop_file.exists();
 
         Ok(CommandResponse::ok(ShellIntegrationStatus {
@@ -1842,31 +1848,79 @@ pub async fn set_shell_integration_command(
         let esc_exe = target_exe.replace('/', "\\");
         if enable_context_menu {
             let _ = std::process::Command::new("reg")
-                .args(["add", r"HKCU\Software\Classes\*\shell\ProtoFS", "/ve", "/d", "Upload to ProtoFS", "/f"])
+                .args([
+                    "add",
+                    r"HKCU\Software\Classes\*\shell\ProtoFS",
+                    "/ve",
+                    "/d",
+                    "Upload to ProtoFS",
+                    "/f",
+                ])
                 .output();
             let _ = std::process::Command::new("reg")
-                .args(["add", r"HKCU\Software\Classes\*\shell\ProtoFS", "/v", "Icon", "/d", &esc_exe, "/f"])
+                .args([
+                    "add",
+                    r"HKCU\Software\Classes\*\shell\ProtoFS",
+                    "/v",
+                    "Icon",
+                    "/d",
+                    &esc_exe,
+                    "/f",
+                ])
                 .output();
             let cmd_val = format!("\"{}\" --upload \"%1\"", esc_exe);
             let _ = std::process::Command::new("reg")
-                .args(["add", r"HKCU\Software\Classes\*\shell\ProtoFS\command", "/ve", "/d", &cmd_val, "/f"])
+                .args([
+                    "add",
+                    r"HKCU\Software\Classes\*\shell\ProtoFS\command",
+                    "/ve",
+                    "/d",
+                    &cmd_val,
+                    "/f",
+                ])
                 .output();
 
             let _ = std::process::Command::new("reg")
-                .args(["add", r"HKCU\Software\Classes\Directory\shell\ProtoFS", "/ve", "/d", "Upload to ProtoFS", "/f"])
+                .args([
+                    "add",
+                    r"HKCU\Software\Classes\Directory\shell\ProtoFS",
+                    "/ve",
+                    "/d",
+                    "Upload to ProtoFS",
+                    "/f",
+                ])
                 .output();
             let _ = std::process::Command::new("reg")
-                .args(["add", r"HKCU\Software\Classes\Directory\shell\ProtoFS", "/v", "Icon", "/d", &esc_exe, "/f"])
+                .args([
+                    "add",
+                    r"HKCU\Software\Classes\Directory\shell\ProtoFS",
+                    "/v",
+                    "Icon",
+                    "/d",
+                    &esc_exe,
+                    "/f",
+                ])
                 .output();
             let _ = std::process::Command::new("reg")
-                .args(["add", r"HKCU\Software\Classes\Directory\shell\ProtoFS\command", "/ve", "/d", &cmd_val, "/f"])
+                .args([
+                    "add",
+                    r"HKCU\Software\Classes\Directory\shell\ProtoFS\command",
+                    "/ve",
+                    "/d",
+                    &cmd_val,
+                    "/f",
+                ])
                 .output();
         } else {
             let _ = std::process::Command::new("reg")
                 .args(["delete", r"HKCU\Software\Classes\*\shell\ProtoFS", "/f"])
                 .output();
             let _ = std::process::Command::new("reg")
-                .args(["delete", r"HKCU\Software\Classes\Directory\shell\ProtoFS", "/f"])
+                .args([
+                    "delete",
+                    r"HKCU\Software\Classes\Directory\shell\ProtoFS",
+                    "/f",
+                ])
                 .output();
         }
 
@@ -1951,16 +2005,12 @@ pub async fn get_pending_uploads_command() -> Result<CommandResponse<Vec<String>
 pub async fn open_path_in_explorer_command(path: String) -> Result<CommandResponse<bool>, String> {
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("explorer")
-            .arg(&path)
-            .spawn();
+        let _ = std::process::Command::new("explorer").arg(&path).spawn();
         Ok(CommandResponse::ok(true))
     }
     #[cfg(target_os = "linux")]
     {
-        let _ = std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn();
+        let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
         Ok(CommandResponse::ok(true))
     }
     #[cfg(not(any(target_os = "windows", target_os = "linux")))]

@@ -189,7 +189,9 @@ impl VfsTree {
             f.updated_at = Utc::now();
             Ok(f.version)
         } else {
-            Err(ProtoFsError::Vfs("Node is a folder, not a file".to_string()))
+            Err(ProtoFsError::Vfs(
+                "Node is a folder, not a file".to_string(),
+            ))
         }
     }
 
@@ -233,7 +235,9 @@ impl VfsTree {
 
             Ok(f.version)
         } else {
-            Err(ProtoFsError::Vfs("Node is a folder, not a file".to_string()))
+            Err(ProtoFsError::Vfs(
+                "Node is a folder, not a file".to_string(),
+            ))
         }
     }
 

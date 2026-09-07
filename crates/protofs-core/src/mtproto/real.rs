@@ -317,7 +317,9 @@ impl TelegramAuthClient {
                 ..
             } => {
                 let pt = pwd_token.take().ok_or_else(|| {
-                    ProtoFsError::Mtproto("No 2FA password token available for QR login.".to_string())
+                    ProtoFsError::Mtproto(
+                        "No 2FA password token available for QR login.".to_string(),
+                    )
                 })?;
 
                 let user = match client.check_password(pt, password).await {
@@ -432,9 +434,9 @@ impl TelegramAuthClient {
 
     pub async fn check_qr_code(&self) -> Result<QrCheckOutcome> {
         let mut lock = self.pending.lock().await;
-        let pending = lock.as_mut().ok_or_else(|| {
-            ProtoFsError::Mtproto("No QR login session in progress.".to_string())
-        })?;
+        let pending = lock
+            .as_mut()
+            .ok_or_else(|| ProtoFsError::Mtproto("No QR login session in progress.".to_string()))?;
 
         match pending {
             PendingAuth::Qr {
@@ -459,7 +461,10 @@ impl TelegramAuthClient {
                         *token_bytes = tok.token;
                         *expires_at = tok.expires as i64;
                         let token_url = if token_changed {
-                            Some(format!("tg://login?token={}", base64url_encode(token_bytes)))
+                            Some(format!(
+                                "tg://login?token={}",
+                                base64url_encode(token_bytes)
+                            ))
                         } else {
                             None
                         };
@@ -472,7 +477,10 @@ impl TelegramAuthClient {
                         let _ = session.set_home_dc_id(mig.dc_id).await;
                         *token_bytes = mig.token;
                         *expires_at = chrono::Utc::now().timestamp() + 30;
-                        let token_url = Some(format!("tg://login?token={}", base64url_encode(token_bytes)));
+                        let token_url = Some(format!(
+                            "tg://login?token={}",
+                            base64url_encode(token_bytes)
+                        ));
                         Ok(QrCheckOutcome::Waiting {
                             token_url,
                             expires_at: *expires_at,
@@ -480,20 +488,24 @@ impl TelegramAuthClient {
                     }
                     Ok(tl::enums::auth::LoginToken::Success(auth_res)) => {
                         let tg_user = match auth_res.authorization {
-                            tl::enums::auth::Authorization::Authorization(auth) => match auth.user {
-                                tl::enums::User::User(u) => TelegramUser {
-                                    id: u.id,
-                                    first_name: u.first_name.unwrap_or_else(|| "Telegram User".to_string()),
-                                    username: u.username,
-                                    phone: u.phone,
-                                },
-                                tl::enums::User::Empty(e) => TelegramUser {
-                                    id: e.id,
-                                    first_name: "Telegram User".to_string(),
-                                    username: None,
-                                    phone: None,
-                                },
-                            },
+                            tl::enums::auth::Authorization::Authorization(auth) => {
+                                match auth.user {
+                                    tl::enums::User::User(u) => TelegramUser {
+                                        id: u.id,
+                                        first_name: u
+                                            .first_name
+                                            .unwrap_or_else(|| "Telegram User".to_string()),
+                                        username: u.username,
+                                        phone: u.phone,
+                                    },
+                                    tl::enums::User::Empty(e) => TelegramUser {
+                                        id: e.id,
+                                        first_name: "Telegram User".to_string(),
+                                        username: None,
+                                        phone: None,
+                                    },
+                                }
+                            }
                             tl::enums::auth::Authorization::SignUpRequired(_) => {
                                 return Err(ProtoFsError::Mtproto(
                                     "Sign-up with official Telegram client required.".to_string(),
@@ -520,7 +532,10 @@ impl TelegramAuthClient {
                     Err(err) if err.is("SESSION_PASSWORD_NEEDED") => {
                         let req_pwd = tl::functions::account::GetPassword {};
                         let pwd_res = client.invoke(&req_pwd).await.map_err(|e| {
-                            ProtoFsError::Mtproto(format!("Failed to query 2FA password info: {}", e))
+                            ProtoFsError::Mtproto(format!(
+                                "Failed to query 2FA password info: {}",
+                                e
+                            ))
                         })?;
                         let password_type: tl::types::account::Password = pwd_res.into();
                         let pt = grammers_client::client::PasswordToken::new(password_type);
