@@ -123,3 +123,15 @@ export interface OwnedChannel {
   is_protofs_drive: boolean;
   about?: string;
 }
+
+export interface UpdateInfo {
+  current_version: string;
+  latest_version: string;
+  update_available: boolean;
+  release_notes: string;
+  release_date: string;
+  download_url: string;
+  signature_verified: boolean;
+  channel: string;
+}
+

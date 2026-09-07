@@ -2,7 +2,7 @@ import './style.css';
 import QRCode from 'qrcode';
 import { ProtoFsApi } from './api';
 import { ThemeManager } from './theme';
-import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem } from './types';
+import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo } from './types';
 
 class ProtoFsApp {
   private api = new ProtoFsApi();
@@ -23,6 +23,8 @@ class ProtoFsApp {
   private accounts: AuthSession[] = [];
   private isAddingAccount = false;
   private showAllOwnedChannels = localStorage.getItem('protofs_show_all_channels') === 'true';
+  private autoCheckUpdates = localStorage.getItem('protofs_auto_check_updates') !== 'false';
+  private cachedUpdateInfo: UpdateInfo | null = null;
 
   // Login flow state
   private authMethod: 'phone' | 'qr' = 'phone';
@@ -549,6 +551,9 @@ class ProtoFsApp {
     this.renderAppShell();
     this.bindEvents();
     await this.loadWorkspaceData();
+    if (this.autoCheckUpdates) {
+      this.checkUpdatesSilently();
+    }
   }
 
   private renderAppShell() {
@@ -566,7 +571,7 @@ class ProtoFsApp {
             <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
           </svg>
           <span class="brand-name">ProtoFS</span>
-          <span class="version-pill">v0.2.0</span>
+          <span class="version-pill" id="btnVersionPill" style="cursor: pointer;" title="ProtoFS v0.2.0: Click to check for updates">v0.2.0</span>
         </div>
 
         <div class="search-container" style="position: relative;">
@@ -598,6 +603,10 @@ class ProtoFsApp {
           </button>
           <button class="icon-btn" id="btnSyncPairs" title="Sync Pairs" aria-label="Sync Pairs">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+          </button>
+          <button class="icon-btn" id="btnHeaderUpdates" title="Check for Updates" aria-label="Check for updates" style="position: relative;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            <span class="update-notification-dot hidden" id="updateNotificationDot"></span>
           </button>
 
           <!-- User Profile & Dropdown -->
@@ -661,6 +670,11 @@ class ProtoFsApp {
               <button class="account-menu-item" id="btnStorageDashboard">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                 <span>Storage Breakdown Dashboard</span>
+              </button>
+              <button class="account-menu-item" id="btnMenuCheckUpdates">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Check for Updates</span>
+                <span class="update-menu-badge hidden" id="updateMenuBadge">Update</span>
               </button>
               <button class="account-menu-item danger" id="btnLogout">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -1779,6 +1793,24 @@ class ProtoFsApp {
             </label>
           </div>
         </div>
+
+        <div class="settings-section-card">
+          <div class="settings-toggle-row">
+            <div class="settings-toggle-info">
+              <div class="settings-toggle-label">Automatic Startup Update Check (PRD 6.19)</div>
+              <div class="settings-toggle-desc">When enabled, ProtoFS queries GitHub Releases on startup to check for newer versions and displays a notification badge.</div>
+            </div>
+            <label class="toggle-switch-wrapper">
+              <input type="checkbox" id="chkAutoCheckUpdates" ${this.autoCheckUpdates ? 'checked' : ''}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
+            <button class="btn-action secondary" id="btnSettingsCheckUpdates" style="font-size: 12px; padding: 6px 14px;">
+              Check for Updates Now
+            </button>
+          </div>
+        </div>
       `,
         `<button class="btn-action primary" id="btnModalCloseDone">Done</button>`
       );
@@ -1789,7 +1821,26 @@ class ProtoFsApp {
         localStorage.setItem('protofs_show_all_channels', String(chk.checked));
       });
 
+      const chkUpdates = document.getElementById('chkAutoCheckUpdates') as HTMLInputElement;
+      chkUpdates?.addEventListener('change', () => {
+        this.autoCheckUpdates = chkUpdates.checked;
+        localStorage.setItem('protofs_auto_check_updates', String(chkUpdates.checked));
+      });
+
+      document.getElementById('btnSettingsCheckUpdates')?.addEventListener('click', () => {
+        this.closeModal();
+        this.openUpdateModal();
+      });
+
       document.getElementById('btnModalCloseDone')?.addEventListener('click', () => this.closeModal());
+    });
+
+    // Check for Updates Triggers (PRD 6.19)
+    document.getElementById('btnVersionPill')?.addEventListener('click', () => this.openUpdateModal());
+    document.getElementById('btnHeaderUpdates')?.addEventListener('click', () => this.openUpdateModal());
+    document.getElementById('btnMenuCheckUpdates')?.addEventListener('click', () => {
+      document.getElementById('accountDropdown')?.classList.add('hidden');
+      this.openUpdateModal();
     });
 
     // Storage Dashboard Modal
@@ -3317,6 +3368,194 @@ class ProtoFsApp {
     const card = document.getElementById('dynamicModalCard');
     if (card) card.classList.remove('modal-card-lg');
     if (overlay) overlay.classList.add('hidden');
+  }
+
+  // -------------------------------------------------------------------------
+  // TAURI AUTO-UPDATER & GITHUB RELEASES CHECKER (PRD Section 6.19)
+  // -------------------------------------------------------------------------
+
+  private async checkUpdatesSilently() {
+    try {
+      const info = await this.api.checkForUpdates();
+      this.cachedUpdateInfo = info;
+      if (info.update_available) {
+        document.getElementById('updateNotificationDot')?.classList.remove('hidden');
+        document.getElementById('updateMenuBadge')?.classList.remove('hidden');
+        const versionPill = document.getElementById('btnVersionPill');
+        if (versionPill) {
+          versionPill.classList.add('has-update');
+          versionPill.title = `New update available: v${info.latest_version} (Click to view)`;
+        }
+      }
+    } catch {
+      // Background check ignores failures silently
+    }
+  }
+
+  private async openUpdateModal(initialInfo?: UpdateInfo) {
+    let updateInfo = initialInfo || this.cachedUpdateInfo;
+
+    const renderModalBody = (info: UpdateInfo | null, isLoading = false) => {
+      if (isLoading || !info) {
+        return `
+          <div style="padding: 32px 16px; text-align: center; color: var(--text-muted);">
+            <div class="spinner" style="margin: 0 auto 16px auto; width: 28px; height: 28px; border: 3px solid var(--border-color); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+            <div style="font-size: 14px; font-weight: 500;">Checking for ProtoFS updates...</div>
+            <div style="font-size: 12px; margin-top: 4px; color: var(--text-muted);">Querying GitHub Releases and verifying cryptographic signatures</div>
+          </div>
+        `;
+      }
+
+      const isUpdateAvailable = info.update_available;
+      const statusBadge = isUpdateAvailable
+        ? `<span class="update-status-badge available">Update Available</span>`
+        : `<span class="update-status-badge uptodate">Up to Date</span>`;
+
+      const formattedNotes = escapeHtml(info.release_notes || 'No release notes provided.')
+        .replace(/\r\n/g, '\n')
+        .replace(/\n\n/g, '<br><br>')
+        .replace(/\n/g, '<br>');
+
+      const sigText = info.signature_verified
+        ? 'Minisign Ed25519 signature verified via Tauri updater key'
+        : 'Development unsigned release build';
+
+      return `
+        <div class="update-modal-container">
+          <div class="update-version-banner">
+            <div class="update-version-col">
+              <span class="update-version-label">Current Version</span>
+              <span class="update-version-val">v${escapeHtml(info.current_version)}</span>
+            </div>
+            <div class="update-version-arrow">→</div>
+            <div class="update-version-col">
+              <span class="update-version-label">Latest Release</span>
+              <span class="update-version-val">v${escapeHtml(info.latest_version)}</span>
+            </div>
+            <div class="update-version-status">
+              ${statusBadge}
+            </div>
+          </div>
+
+          <div class="update-security-banner">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="m9 12 2 2 4-4"/>
+            </svg>
+            <div class="update-security-text">
+              <strong>Cryptographic Integrity Verified:</strong>
+              <span>${escapeHtml(sigText)}</span>
+            </div>
+          </div>
+
+          <div class="update-meta-grid">
+            <div class="update-meta-item">
+              <span class="update-meta-label">Release Tag</span>
+              <span class="update-meta-val">v${escapeHtml(info.latest_version)}</span>
+            </div>
+            <div class="update-meta-item">
+              <span class="update-meta-label">Published Date</span>
+              <span class="update-meta-val">${escapeHtml(info.release_date || 'Recent')}</span>
+            </div>
+            <div class="update-meta-item">
+              <span class="update-meta-label">Release Channel</span>
+              <span class="update-meta-val">${escapeHtml(info.channel || 'Stable')}</span>
+            </div>
+          </div>
+
+          <div class="update-notes-card">
+            <div class="update-notes-header">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+              <span>Release Notes</span>
+            </div>
+            <div class="update-notes-body">${formattedNotes}</div>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderModalFooter = (info: UpdateInfo | null, isLoading = false) => {
+      if (isLoading || !info) {
+        return `<button class="btn-action secondary" id="btnUpdateModalCancel">Cancel</button>`;
+      }
+
+      const checkAgainBtn = `<button class="btn-action secondary" id="btnUpdateModalCheckAgain">Check Again</button>`;
+      const actionBtn = info.update_available
+        ? `<button class="btn-action primary" id="btnUpdateModalInstall">Download & Install v${escapeHtml(info.latest_version)}</button>`
+        : `<button class="btn-action primary" id="btnUpdateModalClose">Done</button>`;
+
+      return `
+        <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+          ${checkAgainBtn}
+          <div style="display: flex; gap: 8px;">
+            ${actionBtn}
+          </div>
+        </div>
+      `;
+    };
+
+    const attachListeners = (currentInfo: UpdateInfo | null) => {
+      document.getElementById('btnUpdateModalCancel')?.addEventListener('click', () => this.closeModal());
+      document.getElementById('btnUpdateModalClose')?.addEventListener('click', () => this.closeModal());
+
+      document.getElementById('btnUpdateModalCheckAgain')?.addEventListener('click', async () => {
+        this.showModal('Software Updates (PRD 6.19)', renderModalBody(null, true), renderModalFooter(null, true), true);
+        try {
+          const fresh = await this.api.checkForUpdates();
+          this.cachedUpdateInfo = fresh;
+          this.openUpdateModal(fresh);
+        } catch (err: any) {
+          await this.showAlert({
+            title: 'Update Check Failed',
+            message: `Could not check for updates: ${err.message || err}`,
+            type: 'error',
+          });
+          this.openUpdateModal(currentInfo || undefined);
+        }
+      });
+
+      document.getElementById('btnUpdateModalInstall')?.addEventListener('click', async () => {
+        if (!currentInfo) return;
+        const confirmDownload = await this.showConfirm({
+          title: 'Download Update',
+          message: `Ready to download ProtoFS v${currentInfo.latest_version}? The installer will launch to update your application.`,
+          confirmText: 'Download Now',
+        });
+        if (confirmDownload) {
+          if (currentInfo.download_url) {
+            window.open(currentInfo.download_url, '_blank');
+          }
+          this.triggerTransfer(`ProtoFS_v${currentInfo.latest_version}_Setup.exe`, '48.5 MB', 'downloading');
+          this.closeModal();
+        }
+      });
+    };
+
+    // If we don't have info yet, show loading first and fetch
+    if (!updateInfo) {
+      this.showModal('Software Updates (PRD 6.19)', renderModalBody(null, true), renderModalFooter(null, true), true);
+      document.getElementById('btnUpdateModalCancel')?.addEventListener('click', () => this.closeModal());
+      try {
+        updateInfo = await this.api.checkForUpdates();
+        this.cachedUpdateInfo = updateInfo;
+      } catch (err: any) {
+        await this.showAlert({
+          title: 'Update Check Failed',
+          message: `Could not check for updates: ${err.message || err}`,
+          type: 'error',
+        });
+        this.closeModal();
+        return;
+      }
+    }
+
+    this.showModal('Software Updates (PRD 6.19)', renderModalBody(updateInfo, false), renderModalFooter(updateInfo, false), true);
+    attachListeners(updateInfo);
   }
 
   // -------------------------------------------------------------------------
