@@ -125,8 +125,7 @@ jobs:
           tar -czf "protofs-portable-${{ matrix.platform }}.tar.gz" -C dist-gui "${{ matrix.gui_bin }}"
 
       - name: Build Tauri Installers
-        working-directory: frontend
-        run: npm run tauri -- build --config ../crates/protofs-tauri/tauri.conf.json
+        run: npx --prefix frontend tauri build
 
       - name: Collect Installer Artifacts (Windows)
         if: runner.os == 'Windows'
