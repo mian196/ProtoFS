@@ -1,6 +1,8 @@
 use super::mock::MockTelegramTransport;
 use super::real::RealTelegramTransport;
-use super::transport::{ChannelInfo, TelegramMessage, TelegramTransport, TelegramUser};
+use super::transport::{
+    ChannelInfo, OwnedChannel, TelegramMessage, TelegramTransport, TelegramUser,
+};
 use crate::error::Result;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -57,6 +59,14 @@ impl TelegramTransport for DynamicTelegramTransport {
         match &*lock {
             TransportBackend::Mock(m) => m.create_channel(title, about).await,
             TransportBackend::Real(r) => r.create_channel(title, about).await,
+        }
+    }
+
+    async fn list_owned_channels(&self) -> Result<Vec<OwnedChannel>> {
+        let lock = self.backend.read().await;
+        match &*lock {
+            TransportBackend::Mock(m) => m.list_owned_channels().await,
+            TransportBackend::Real(r) => r.list_owned_channels().await,
         }
     }
 

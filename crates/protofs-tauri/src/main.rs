@@ -48,6 +48,8 @@ fn main() {
             commands::logout_command,
             commands::get_drives_command,
             commands::create_drive_command,
+            commands::get_owned_channels_command,
+            commands::adopt_channel_as_drive_command,
             commands::load_drive_command,
             commands::flush_manifest_command,
             commands::create_folder_command,

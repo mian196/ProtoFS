@@ -2,7 +2,7 @@ import './style.css';
 import QRCode from 'qrcode';
 import { ProtoFsApi } from './api';
 import { ThemeManager } from './theme';
-import type { AuthSession, DriveMetadata, FileNode, FolderNode, SyncPair, TransferItem } from './types';
+import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem } from './types';
 
 class ProtoFsApp {
   private api = new ProtoFsApi();
@@ -22,6 +22,7 @@ class ProtoFsApp {
   private syncPairs: SyncPair[] = [];
   private accounts: AuthSession[] = [];
   private isAddingAccount = false;
+  private showAllOwnedChannels = localStorage.getItem('protofs_show_all_channels') === 'true';
 
   // Login flow state
   private authMethod: 'phone' | 'qr' = 'phone';
@@ -1669,16 +1670,36 @@ class ProtoFsApp {
     // Account Security & Settings
     document.getElementById('btnAccountSettings')?.addEventListener('click', () => {
       this.showModal(
-        'Zero-Knowledge Security',
+        'Account & Storage Settings',
         `
         <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
           <p><strong>Argon2id Key Derivation:</strong> Master password derived on-device. No plain passphrase leaves this device.</p>
           <p style="margin-top: 8px;"><strong>MTProto Session:</strong> Active with Telegram User ID <code>${this.session?.user_id || '1049281720'}</code>.</p>
           <p style="margin-top: 8px;"><strong>Local SQLite Cache:</strong> <code>cache.db</code> in Write-Ahead Logging (WAL) mode with FTS5 search index.</p>
         </div>
+
+        <div class="settings-section-card">
+          <div class="settings-toggle-row">
+            <div class="settings-toggle-info">
+              <div class="settings-toggle-label">Show All Owned Channels & Groups</div>
+              <div class="settings-toggle-desc">When enabled, lists all channels and supergroups owned by your Telegram account so you can adopt them as ProtoFS drives. When disabled, only shows channels created or initialized by ProtoFS.</div>
+            </div>
+            <label class="toggle-switch-wrapper">
+              <input type="checkbox" id="chkShowAllChannels" ${this.showAllOwnedChannels ? 'checked' : ''}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
       `,
         `<button class="btn-action primary" id="btnModalCloseDone">Done</button>`
       );
+
+      const chk = document.getElementById('chkShowAllChannels') as HTMLInputElement;
+      chk?.addEventListener('change', () => {
+        this.showAllOwnedChannels = chk.checked;
+        localStorage.setItem('protofs_show_all_channels', String(chk.checked));
+      });
+
       document.getElementById('btnModalCloseDone')?.addEventListener('click', () => this.closeModal());
     });
 
@@ -1730,33 +1751,175 @@ class ProtoFsApp {
 
     // New Drive Modal button in sidebar
     document.getElementById('btnNewDrive')?.addEventListener('click', () => {
+      let activeTab: 'create' | 'adopt' = 'create';
+      let cachedChannels: OwnedChannel[] = [];
+
+      const renderModalBody = (channels: OwnedChannel[] = [], loadingChannels = false) => {
+        return `
+          <div class="modal-tabs">
+            <button class="modal-tab-btn ${activeTab === 'create' ? 'active' : ''}" id="tabCreateChannel">Create New Channel</button>
+            <button class="modal-tab-btn ${activeTab === 'adopt' ? 'active' : ''}" id="tabAdoptChannel">Adopt Existing Channel / Group</button>
+          </div>
+
+          <div id="driveModalTabContent">
+            ${
+              activeTab === 'create'
+                ? `
+              <div class="form-group">
+                <label class="form-label">Drive Name</label>
+                <input type="text" class="form-input" id="inputNewDriveName" placeholder="e.g. Work Documents" required autofocus>
+              </div>
+              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.5; padding: 10px 14px; background: var(--bg-surface-input); border-radius: var(--radius-sm); margin-top: 8px;">
+                ProtoFS will automatically create a private Telegram storage channel with the prefix <code>[ProtoFS]</code>, tag it in its description, and pin the initial encrypted root manifest.
+              </div>
+            `
+                : `
+              <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                Select an existing channel or group owned by your account to adopt as an encrypted ProtoFS storage drive.
+              </div>
+              ${
+                loadingChannels
+                  ? `
+                <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">
+                  Loading owned channels and groups from Telegram...
+                </div>
+              `
+                  : channels.length === 0
+                  ? `
+                <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">
+                  No owned channels or groups found. Ensure your account has administrator rights.
+                </div>
+              `
+                  : `
+                <div class="owned-channels-list">
+                  ${channels
+                    .map(
+                      c => `
+                    <div class="channel-card-item">
+                      <div class="channel-card-info">
+                        <div class="channel-card-title">${escapeHtml(c.title)}</div>
+                        <div class="channel-card-meta">
+                          <span class="channel-badge badge-type">${c.is_channel ? 'Channel' : 'Group'}</span>
+                          <span class="channel-badge ${c.is_protofs_drive ? 'badge-protofs' : 'badge-uninit'}">
+                            ${c.is_protofs_drive ? 'ProtoFS Drive' : 'Uninitialized'}
+                          </span>
+                          <span>ID: ${c.channel_id}</span>
+                        </div>
+                      </div>
+                      <div>
+                        ${
+                          c.is_protofs_drive
+                            ? `
+                          <button class="btn-action secondary btn-switch-channel-drive" data-channel-id="${c.channel_id}" data-channel-title="${escapeHtml(c.title)}">
+                            Select
+                          </button>
+                        `
+                            : `
+                          <button class="btn-action primary btn-adopt-channel-drive" data-channel-id="${c.channel_id}" data-channel-title="${escapeHtml(c.title)}">
+                            Adopt as Drive
+                          </button>
+                        `
+                        }
+                      </div>
+                    </div>
+                  `
+                    )
+                    .join('')}
+                </div>
+              `
+              }
+            `
+            }
+          </div>
+        `;
+      };
+
+      const updateModalUI = (channels: OwnedChannel[] = [], loadingChannels = false) => {
+        const bodyEl = document.getElementById('dynamicModalBody');
+        if (bodyEl) {
+          bodyEl.innerHTML = renderModalBody(channels, loadingChannels);
+          bindTabEvents();
+        }
+      };
+
+      const bindTabEvents = () => {
+        document.getElementById('tabCreateChannel')?.addEventListener('click', () => {
+          activeTab = 'create';
+          updateModalUI(cachedChannels);
+        });
+
+        document.getElementById('tabAdoptChannel')?.addEventListener('click', async () => {
+          activeTab = 'adopt';
+          if (cachedChannels.length === 0) {
+            updateModalUI([], true);
+            cachedChannels = await this.api.getOwnedChannels(this.showAllOwnedChannels);
+          }
+          updateModalUI(cachedChannels);
+        });
+
+        document.querySelectorAll('.btn-adopt-channel-drive').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const chId = Number((btn as HTMLElement).dataset.channelId);
+            const title = (btn as HTMLElement).dataset.channelTitle || 'Adopted Drive';
+            if (chId) {
+              (btn as HTMLButtonElement).disabled = true;
+              (btn as HTMLButtonElement).innerText = 'Initializing...';
+              try {
+                const drive = await this.api.adoptChannelAsDrive(chId, title);
+                this.activeDriveId = drive.id;
+                this.closeModal();
+                await this.loadWorkspaceData();
+              } catch (err: any) {
+                alert(`Failed to adopt channel: ${err.message || err}`);
+                (btn as HTMLButtonElement).disabled = false;
+                (btn as HTMLButtonElement).innerText = 'Adopt as Drive';
+              }
+            }
+          });
+        });
+
+        document.querySelectorAll('.btn-switch-channel-drive').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const chId = Number((btn as HTMLElement).dataset.channelId);
+            const existing = this.drives.find(d => d.channel_id === chId);
+            if (existing) {
+              this.activeDriveId = existing.id;
+              this.closeModal();
+              await this.loadWorkspaceData();
+            } else {
+              const title = (btn as HTMLElement).dataset.channelTitle || 'ProtoFS Drive';
+              const drive = await this.api.adoptChannelAsDrive(chId, title);
+              this.activeDriveId = drive.id;
+              this.closeModal();
+              await this.loadWorkspaceData();
+            }
+          });
+        });
+      };
+
       this.showModal(
-        'Create Telegram Drive',
-        `
-        <div class="form-group">
-          <label class="form-label">Drive Name</label>
-          <input type="text" class="form-input" id="inputNewDriveName" placeholder="e.g. Media Vault" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Telegram Channel ID</label>
-          <input type="number" class="form-input" id="inputNewDriveChannel" placeholder="e.g. -1001928472910" required>
-        </div>
-      `,
+        'Telegram Drives & Storage Channels',
+        renderModalBody(),
         `
         <button class="btn-action secondary" id="btnCancelDrive">Cancel</button>
         <button class="btn-action primary" id="btnConfirmDrive">Create Drive</button>
       `
       );
 
+      bindTabEvents();
+
       document.getElementById('btnCancelDrive')?.addEventListener('click', () => this.closeModal());
       document.getElementById('btnConfirmDrive')?.addEventListener('click', async () => {
-        const nameEl = document.getElementById('inputNewDriveName') as HTMLInputElement;
-        const chanEl = document.getElementById('inputNewDriveChannel') as HTMLInputElement;
-        if (nameEl && chanEl && nameEl.value.trim()) {
-          const drive = await this.api.createDrive(nameEl.value.trim(), Number(chanEl.value) || -1001000000000);
-          this.activeDriveId = drive.id;
+        if (activeTab === 'create') {
+          const nameEl = document.getElementById('inputNewDriveName') as HTMLInputElement;
+          if (nameEl && nameEl.value.trim()) {
+            const drive = await this.api.createDrive(nameEl.value.trim(), 0);
+            this.activeDriveId = drive.id;
+            this.closeModal();
+            await this.loadWorkspaceData();
+          }
+        } else {
           this.closeModal();
-          await this.loadWorkspaceData();
         }
       });
     });

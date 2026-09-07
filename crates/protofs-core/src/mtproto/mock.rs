@@ -5,7 +5,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::error::{ProtoFsError, Result};
-use crate::mtproto::transport::{ChannelInfo, TelegramMessage, TelegramTransport, TelegramUser};
+use crate::mtproto::transport::{
+    ChannelInfo, OwnedChannel, TelegramMessage, TelegramTransport, TelegramUser,
+};
 
 pub type MessagePayloadStore = Arc<RwLock<HashMap<(i64, i32), Vec<u8>>>>;
 
@@ -51,6 +53,57 @@ impl TelegramTransport for MockTelegramTransport {
         };
         channels.insert(id, info.clone());
         Ok(info)
+    }
+
+    async fn list_owned_channels(&self) -> Result<Vec<OwnedChannel>> {
+        let channels = self.channels.read().await;
+        let mut list = Vec::new();
+
+        for (id, ch) in channels.iter() {
+            list.push(OwnedChannel {
+                channel_id: *id,
+                title: ch.title.clone(),
+                is_channel: true,
+                is_group: false,
+                is_creator: true,
+                is_admin: true,
+                is_protofs_drive: true,
+                about: Some("ProtoFS Encrypted Storage".to_string()),
+            });
+        }
+
+        list.push(OwnedChannel {
+            channel_id: -1001928471001,
+            title: "ProtoFS Backup Vault".to_string(),
+            is_channel: true,
+            is_group: false,
+            is_creator: true,
+            is_admin: true,
+            is_protofs_drive: true,
+            about: Some("ProtoFS Encrypted Storage [protofs-id: drive_vault]".to_string()),
+        });
+        list.push(OwnedChannel {
+            channel_id: -1001928471002,
+            title: "Personal Media Channel".to_string(),
+            is_channel: true,
+            is_group: false,
+            is_creator: true,
+            is_admin: true,
+            is_protofs_drive: false,
+            about: Some("My personal media stream".to_string()),
+        });
+        list.push(OwnedChannel {
+            channel_id: -1001928471003,
+            title: "Family Archive Group".to_string(),
+            is_channel: false,
+            is_group: true,
+            is_creator: true,
+            is_admin: true,
+            is_protofs_drive: false,
+            about: None,
+        });
+
+        Ok(list)
     }
 
     async fn get_pinned_manifest(&self, channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {

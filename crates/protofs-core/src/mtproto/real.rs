@@ -13,7 +13,9 @@ use grammers_session::types::{DcOption, PeerInfo, UpdatesState};
 use grammers_session::{Session, SessionData};
 use grammers_tl_types as tl;
 
-use super::transport::{ChannelInfo, TelegramMessage, TelegramTransport, TelegramUser};
+use super::transport::{
+    ChannelInfo, OwnedChannel, TelegramMessage, TelegramTransport, TelegramUser,
+};
 use crate::error::{ProtoFsError, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -619,6 +621,71 @@ impl TelegramTransport for RealTelegramTransport {
         Err(ProtoFsError::Mtproto(
             "Failed to parse created channel response from Telegram".to_string(),
         ))
+    }
+
+    async fn list_owned_channels(&self) -> Result<Vec<OwnedChannel>> {
+        let req = tl::functions::messages::GetDialogs {
+            exclude_pinned: false,
+            folder_id: None,
+            offset_date: 0,
+            offset_id: 0,
+            offset_peer: tl::enums::InputPeer::Empty,
+            limit: 100,
+            hash: 0,
+        };
+
+        let dialogs = self.client.invoke(&req).await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to retrieve Telegram dialogs: {}", e))
+        })?;
+
+        let chats = match dialogs {
+            tl::enums::messages::Dialogs::Dialogs(d) => d.chats,
+            tl::enums::messages::Dialogs::Slice(s) => s.chats,
+            tl::enums::messages::Dialogs::NotModified(_) => Vec::new(),
+        };
+
+        let mut owned = Vec::new();
+        for chat in chats {
+            match chat {
+                tl::enums::Chat::Channel(c) => {
+                    let is_creator = c.creator;
+                    let is_admin = c.admin_rights.is_some();
+                    if is_creator || is_admin {
+                        let is_protofs = c.title.to_lowercase().contains("protofs");
+                        owned.push(OwnedChannel {
+                            channel_id: c.id,
+                            title: c.title,
+                            is_channel: c.broadcast,
+                            is_group: c.megagroup,
+                            is_creator,
+                            is_admin,
+                            is_protofs_drive: is_protofs,
+                            about: None,
+                        });
+                    }
+                }
+                tl::enums::Chat::Chat(c) => {
+                    let is_creator = c.creator;
+                    let is_admin = c.admin_rights.is_some();
+                    if is_creator || is_admin {
+                        let is_protofs = c.title.to_lowercase().contains("protofs");
+                        owned.push(OwnedChannel {
+                            channel_id: c.id,
+                            title: c.title,
+                            is_channel: false,
+                            is_group: true,
+                            is_creator,
+                            is_admin,
+                            is_protofs_drive: is_protofs,
+                            about: None,
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(owned)
     }
 
     async fn get_pinned_manifest(&self, _channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {

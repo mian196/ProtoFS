@@ -92,3 +92,14 @@ export interface TransferItem {
   speed: string;
   status: 'uploading' | 'downloading' | 'completed' | 'paused';
 }
+
+export interface OwnedChannel {
+  channel_id: number;
+  title: string;
+  is_channel: boolean;
+  is_group: boolean;
+  is_creator: boolean;
+  is_admin: boolean;
+  is_protofs_drive: boolean;
+  about?: string;
+}

@@ -5,6 +5,7 @@ import type {
   DriveMetadata,
   FileNode,
   FolderNode,
+  OwnedChannel,
   QrStatusResponse,
   SearchResult,
   SyncPair,
@@ -370,6 +371,73 @@ export class ProtoFsApi {
     drives.push(newDrive);
     localStorage.setItem(STORAGE_KEY_DRIVES, JSON.stringify(drives));
     return newDrive;
+  }
+
+  async getOwnedChannels(showAll: boolean): Promise<OwnedChannel[]> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<OwnedChannel[]>>('get_owned_channels_command', {
+          showAll,
+        });
+        if (res.success && res.data) return res.data;
+      } catch (err) {
+        console.warn('Tauri get_owned_channels_command error:', err);
+      }
+    }
+
+    const defaultChannels: OwnedChannel[] = [
+      {
+        channel_id: -1001928471001,
+        title: 'ProtoFS Backup Vault',
+        is_channel: true,
+        is_group: false,
+        is_creator: true,
+        is_admin: true,
+        is_protofs_drive: true,
+        about: 'ProtoFS Encrypted Storage [protofs-id: drive_vault]',
+      },
+      {
+        channel_id: -1001928471002,
+        title: 'Personal Media Channel',
+        is_channel: true,
+        is_group: false,
+        is_creator: true,
+        is_admin: true,
+        is_protofs_drive: false,
+        about: 'Personal media archives',
+      },
+      {
+        channel_id: -1001928471003,
+        title: 'Family Archive Group',
+        is_channel: false,
+        is_group: true,
+        is_creator: true,
+        is_admin: true,
+        is_protofs_drive: false,
+      },
+    ];
+
+    if (!showAll) {
+      return defaultChannels.filter(c => c.is_protofs_drive);
+    }
+    return defaultChannels;
+  }
+
+  async adoptChannelAsDrive(channelId: number, name: string): Promise<DriveMetadata> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<DriveMetadata>>('adopt_channel_as_drive_command', {
+          channelId,
+          name,
+        });
+        if (res.success && res.data) return res.data;
+        throw new Error(res.error || 'Failed to adopt channel');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    return this.createDrive(name, channelId);
   }
 
   // -------------------------------------------------------------------------

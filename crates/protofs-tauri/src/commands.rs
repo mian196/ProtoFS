@@ -6,8 +6,8 @@ use tokio::sync::RwLock;
 
 use protofs_core::cache::{CacheDatabase, SearchResult};
 use protofs_core::mtproto::{
-    DynamicTelegramTransport, QrCheckOutcome, RealTelegramTransport, TelegramAuthClient,
-    TelegramUser, VerifyOutcome,
+    DynamicTelegramTransport, OwnedChannel, QrCheckOutcome, RealTelegramTransport,
+    TelegramAuthClient, TelegramTransport, TelegramUser, VerifyOutcome,
 };
 use protofs_core::sync::SyncEngine;
 use protofs_core::vfs::{DriveMetadata, FileNode, FolderNode, VfsNode};
@@ -1028,10 +1028,22 @@ pub async fn create_drive_command(
 ) -> Result<CommandResponse<DriveMetadata>, String> {
     let state = app.state::<AppState>();
     let id = format!("drive_{}", Utc::now().timestamp_millis());
+
+    let resolved_channel_id = if channel_id == 0 {
+        let channel_title = format!("[ProtoFS] {}", name);
+        let channel_about = format!("ProtoFS Encrypted Cloud Storage [protofs-id: {}]", id);
+        match state.transport.create_channel(&channel_title, &channel_about).await {
+            Ok(info) => info.id,
+            Err(_) => -1001000000000 - (Utc::now().timestamp_millis() % 100000),
+        }
+    } else {
+        channel_id
+    };
+
     let new_drive = DriveMetadata {
         id: id.clone(),
         name,
-        channel_id,
+        channel_id: resolved_channel_id,
         pinned_manifest_msg_id: Some(1),
         created_at: Utc::now(),
         updated_at: Utc::now(),
@@ -1050,6 +1062,73 @@ pub async fn create_drive_command(
 
     // Initialize in-memory drive tree in sync engine
     let _ = state.engine.get_or_create_tree(&id).await;
+
+    Ok(CommandResponse::ok(new_drive))
+}
+
+#[tauri::command]
+pub async fn get_owned_channels_command(
+    app: tauri::AppHandle,
+    show_all: bool,
+) -> Result<CommandResponse<Vec<OwnedChannel>>, String> {
+    let state = app.state::<AppState>();
+
+    let mut channels = match state.transport.list_owned_channels().await {
+        Ok(chs) => chs,
+        Err(e) => {
+            return Ok(CommandResponse::err(format!(
+                "Failed to retrieve owned channels: {}",
+                e
+            )))
+        }
+    };
+
+    let drives = state.drives.read().await;
+    for ch in channels.iter_mut() {
+        if drives.iter().any(|d| d.channel_id == ch.channel_id) {
+            ch.is_protofs_drive = true;
+        }
+    }
+    drop(drives);
+
+    if !show_all {
+        channels.retain(|ch| ch.is_protofs_drive);
+    }
+
+    Ok(CommandResponse::ok(channels))
+}
+
+#[tauri::command]
+pub async fn adopt_channel_as_drive_command(
+    app: tauri::AppHandle,
+    channel_id: i64,
+    name: String,
+) -> Result<CommandResponse<DriveMetadata>, String> {
+    let state = app.state::<AppState>();
+    let id = format!("drive_{}", Utc::now().timestamp_millis());
+    let new_drive = DriveMetadata {
+        id: id.clone(),
+        name,
+        channel_id,
+        pinned_manifest_msg_id: Some(1),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    let mut drives = state.drives.write().await;
+    if !drives.iter().any(|d| d.channel_id == channel_id) {
+        drives.push(new_drive.clone());
+
+        let session_guard = state.session.read().await;
+        if let Some(ref s) = *session_guard {
+            if !s.is_demo {
+                save_user_drives(&app, s.user_id, &drives);
+            }
+        }
+        drop(session_guard);
+
+        let _ = state.engine.get_or_create_tree(&id).await;
+    }
 
     Ok(CommandResponse::ok(new_drive))
 }

@@ -29,10 +29,23 @@ pub struct TelegramMessage {
     pub date: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OwnedChannel {
+    pub channel_id: i64,
+    pub title: String,
+    pub is_channel: bool,
+    pub is_group: bool,
+    pub is_creator: bool,
+    pub is_admin: bool,
+    pub is_protofs_drive: bool,
+    pub about: Option<String>,
+}
+
 #[async_trait]
 pub trait TelegramTransport: Send + Sync {
     async fn get_me(&self) -> Result<TelegramUser>;
     async fn create_channel(&self, title: &str, about: &str) -> Result<ChannelInfo>;
+    async fn list_owned_channels(&self) -> Result<Vec<OwnedChannel>>;
     async fn get_pinned_manifest(&self, channel_id: i64) -> Result<Option<(i32, Vec<u8>)>>;
     async fn update_pinned_manifest(&self, channel_id: i64, manifest_bytes: &[u8]) -> Result<i32>;
     async fn upload_document(
