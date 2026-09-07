@@ -2555,8 +2555,8 @@ class ProtoFsApp {
       overlay.innerHTML = `
         <div class="dialog-card" id="customDialogCard">
           <div class="dialog-header">
-            <div class="dialog-icon" id="customDialogIcon"></div>
-            <div class="dialog-title" id="customDialogTitle">Dialog</div>
+            <span class="dialog-title" id="customDialogTitle">Dialog</span>
+            <button class="dialog-close-btn" id="btnCustomDialogClose" title="Close">✕</button>
           </div>
           <div class="dialog-body" id="customDialogBody"></div>
           <div class="dialog-footer" id="customDialogFooter"></div>
@@ -2577,12 +2577,12 @@ class ProtoFsApp {
     return new Promise(resolve => {
       const overlay = this.ensureDialogInDom();
       const card = document.getElementById('customDialogCard');
-      const iconEl = document.getElementById('customDialogIcon');
       const titleEl = document.getElementById('customDialogTitle');
       const bodyEl = document.getElementById('customDialogBody');
       const footerEl = document.getElementById('customDialogFooter');
+      const btnClose = document.getElementById('btnCustomDialogClose');
 
-      if (!card || !iconEl || !titleEl || !bodyEl || !footerEl) {
+      if (!card || !titleEl || !bodyEl || !footerEl) {
         resolve(false);
         return;
       }
@@ -2592,13 +2592,12 @@ class ProtoFsApp {
       const confirmText = options.confirmText ?? (isDanger ? 'Delete' : 'Confirm');
       const cancelText = options.cancelText ?? 'Cancel';
 
-      card.className = `dialog-card ${isDanger ? 'danger' : 'info'}`;
-      iconEl.className = `dialog-icon ${isDanger ? 'danger' : 'info'}`;
-      iconEl.innerHTML = isDanger
-        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
-        : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+      card.className = 'dialog-card';
+      const iconSvg = isDanger
+        ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-danger); flex-shrink: 0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+        : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent-primary); flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
 
-      titleEl.textContent = title;
+      titleEl.innerHTML = `${iconSvg}<span>${escapeHtml(title)}</span>`;
       bodyEl.textContent = options.message;
 
       footerEl.innerHTML = `
@@ -2624,6 +2623,7 @@ class ProtoFsApp {
 
       document.addEventListener('keydown', handleKey);
 
+      btnClose?.addEventListener('click', () => closeDialog(false), { once: true });
       document.getElementById('btnDialogCancel')?.addEventListener('click', () => closeDialog(false));
       document.getElementById('btnDialogConfirm')?.addEventListener('click', () => closeDialog(true));
       overlay.onclick = e => {
@@ -2645,12 +2645,12 @@ class ProtoFsApp {
     return new Promise(resolve => {
       const overlay = this.ensureDialogInDom();
       const card = document.getElementById('customDialogCard');
-      const iconEl = document.getElementById('customDialogIcon');
       const titleEl = document.getElementById('customDialogTitle');
       const bodyEl = document.getElementById('customDialogBody');
       const footerEl = document.getElementById('customDialogFooter');
+      const btnClose = document.getElementById('btnCustomDialogClose');
 
-      if (!card || !iconEl || !titleEl || !bodyEl || !footerEl) {
+      if (!card || !titleEl || !bodyEl || !footerEl) {
         resolve();
         return;
       }
@@ -2659,18 +2659,17 @@ class ProtoFsApp {
       const title = opts.title ?? (type === 'error' ? 'Error' : type === 'warning' ? 'Notice' : 'Information');
       const okText = opts.okText ?? 'OK';
 
-      card.className = `dialog-card ${type}`;
-      iconEl.className = `dialog-icon ${type}`;
-
+      card.className = 'dialog-card';
+      let iconSvg = '';
       if (type === 'error') {
-        iconEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+        iconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-danger); flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
       } else if (type === 'warning') {
-        iconEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+        iconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-warning); flex-shrink: 0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
       } else {
-        iconEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="9 11 12 14 22 4"/></svg>`;
+        iconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-success); flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><polyline points="9 11 12 14 22 4"/></svg>`;
       }
 
-      titleEl.textContent = title;
+      titleEl.innerHTML = `${iconSvg}<span>${escapeHtml(title)}</span>`;
       bodyEl.textContent = opts.message;
 
       footerEl.innerHTML = `
@@ -2692,6 +2691,7 @@ class ProtoFsApp {
 
       document.addEventListener('keydown', handleKey);
 
+      btnClose?.addEventListener('click', () => closeDialog(), { once: true });
       document.getElementById('btnDialogOk')?.addEventListener('click', () => closeDialog());
       overlay.onclick = e => {
         if (e.target === overlay) closeDialog();

@@ -2201,8 +2201,8 @@ body {
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2220,80 +2220,67 @@ body {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-modal);
   width: 90%;
-  max-width: 440px;
+  max-width: 460px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.dialog-card.danger {
-  border-top: 3px solid var(--color-danger);
-}
-
-.dialog-card.warning {
-  border-top: 3px solid var(--color-warning);
-}
-
-.dialog-card.info {
-  border-top: 3px solid var(--accent-primary);
-}
-
 .dialog-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 18px 20px 12px 20px;
-}
-
-.dialog-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.dialog-icon.danger {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
-}
-
-.dialog-icon.warning {
-  background: var(--color-warning-soft);
-  color: var(--color-warning);
-}
-
-.dialog-icon.info,
-.dialog-icon.error {
-  background: var(--accent-soft);
-  color: var(--accent-primary);
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .dialog-title {
   font-size: 15px;
   font-weight: 700;
   color: var(--text-primary);
-  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.dialog-close-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-elevated);
 }
 
 .dialog-body {
-  padding: 0 20px 18px 20px;
-  font-size: 13.5px;
-  line-height: 1.55;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.6;
   color: var(--text-secondary);
 }
 
 .dialog-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 14px 20px;
-  background: var(--bg-surface-elevated);
+  padding: 12px 18px;
   border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  background: var(--bg-sidebar);
 }
 
 
