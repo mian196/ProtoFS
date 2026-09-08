@@ -2402,47 +2402,169 @@ class ProtoFsApp {
   }
 
   private openUploadModal() {
+    let queuedUploads: { name: string; size: number; fileObj?: File }[] = [];
+
     this.showModal(
-      'Upload File to Telegram',
+      'Upload Files to Telegram Drive',
       `
-      <div class="form-group">
-        <label class="form-label">File Name</label>
-        <input type="text" class="form-input" id="inputUploadName" placeholder="e.g. document.pdf" required>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Estimated Size (Bytes)</label>
-        <input type="number" class="form-input" id="inputUploadSize" value="1048576">
-      </div>
-      <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-        <input type="checkbox" id="checkUploadEncrypted" style="accent-color: var(--accent-primary); width: 16px; height: 16px;">
-        <label for="checkUploadEncrypted" style="font-size: 13px; color: var(--text-primary); cursor: pointer;">
-          Encrypt with AES-256-GCM (64KB STREAM chunks)
-        </label>
+      <div class="upload-modal-content">
+        <input type="file" id="filePickerInput" multiple style="display: none;">
+        <input type="file" id="folderPickerInput" webkitdirectory directory style="display: none;">
+        
+        <div class="upload-dropzone" id="uploadDropZone">
+          <div class="dropzone-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <div class="dropzone-text">
+            <span class="dropzone-title">Drag & drop files or folders here</span>
+            <span class="dropzone-sub">or select items directly from your local filesystem</span>
+          </div>
+          <div class="dropzone-buttons">
+            <button type="button" class="btn-action primary" id="btnBrowseFiles">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span>Browse Files</span>
+            </button>
+            <button type="button" class="btn-action secondary" id="btnBrowseFolder">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <span>Upload Folder</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="upload-options-bar">
+          <label class="checkbox-label">
+            <input type="checkbox" id="checkUploadEncrypted" style="accent-color: var(--accent-primary); width: 16px; height: 16px;">
+            <span>Zero-Knowledge Encryption (AES-256-GCM 64KB STREAM)</span>
+          </label>
+        </div>
+
+        <div class="upload-queue-header">
+          <span>Selected Queue (<span id="uploadQueueCount">0</span>)</span>
+          <span class="queue-total-size" id="uploadQueueTotalSize">0 B</span>
+        </div>
+        <div class="upload-queue-list" id="uploadQueueList">
+          <div class="queue-empty-placeholder">No files selected yet. Drop items above or click Browse.</div>
+        </div>
       </div>
     `,
       `
       <button class="btn-action secondary" id="btnCancelUpload">Cancel</button>
-      <button class="btn-action primary" id="btnConfirmUpload">Upload Now</button>
+      <button class="btn-action primary" id="btnConfirmUpload" disabled>Start Upload (0)</button>
     `
     );
 
-    document.getElementById('btnCancelUpload')?.addEventListener('click', () => this.closeModal());
-    document.getElementById('btnConfirmUpload')?.addEventListener('click', async () => {
-      const nameEl = document.getElementById('inputUploadName') as HTMLInputElement;
-      const sizeEl = document.getElementById('inputUploadSize') as HTMLInputElement;
-      const encEl = document.getElementById('checkUploadEncrypted') as HTMLInputElement;
+    const fileInput = document.getElementById('filePickerInput') as HTMLInputElement;
+    const folderInput = document.getElementById('folderPickerInput') as HTMLInputElement;
+    const dropZone = document.getElementById('uploadDropZone');
+    const queueList = document.getElementById('uploadQueueList');
+    const queueCount = document.getElementById('uploadQueueCount');
+    const queueTotalSize = document.getElementById('uploadQueueTotalSize');
+    const btnConfirm = document.getElementById('btnConfirmUpload') as HTMLButtonElement;
 
-      if (nameEl && nameEl.value.trim()) {
-        const name = nameEl.value.trim();
-        const size = Number(sizeEl?.value) || 1048576;
-        const encrypted = encEl ? encEl.checked : false;
+    const renderQueue = () => {
+      if (!queueList || !queueCount || !queueTotalSize || !btnConfirm) return;
 
-        this.closeModal();
-        this.triggerTransfer(`Upload: ${name}`, formatBytes(size), 'uploading');
+      queueCount.textContent = String(queuedUploads.length);
+      const totalBytes = queuedUploads.reduce((acc, curr) => acc + curr.size, 0);
+      queueTotalSize.textContent = formatBytes(totalBytes);
+      btnConfirm.disabled = queuedUploads.length === 0;
+      btnConfirm.textContent = queuedUploads.length > 0 ? `Start Upload (${queuedUploads.length})` : 'Start Upload (0)';
 
-        await this.api.uploadFile(this.activeDriveId, this.currentFolderId, name, size, encrypted);
-        await this.loadWorkspaceData();
+      if (queuedUploads.length === 0) {
+        queueList.innerHTML = `<div class="queue-empty-placeholder">No files selected yet. Drop items above or click Browse.</div>`;
+        return;
       }
+
+      queueList.innerHTML = queuedUploads
+        .map(
+          (item, idx) => `
+          <div class="queue-item">
+            <span class="queue-item-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="queue-item-size">${formatBytes(item.size)}</span>
+              <button type="button" class="queue-item-remove" data-queue-idx="${idx}" title="Remove file">✕</button>
+            </div>
+          </div>
+        `
+        )
+        .join('');
+
+      queueList.querySelectorAll('.queue-item-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = Number((btn as HTMLElement).dataset.queueIdx);
+          if (!isNaN(idx)) {
+            queuedUploads.splice(idx, 1);
+            renderQueue();
+          }
+        });
+      });
+    };
+
+    const addFilesToQueue = (files: FileList | File[]) => {
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        queuedUploads.push({
+          name: f.name,
+          size: f.size || 1048576,
+          fileObj: f,
+        });
+      }
+      renderQueue();
+    };
+
+    document.getElementById('btnBrowseFiles')?.addEventListener('click', () => fileInput?.click());
+    document.getElementById('btnBrowseFolder')?.addEventListener('click', () => folderInput?.click());
+
+    fileInput?.addEventListener('change', () => {
+      if (fileInput.files) {
+        addFilesToQueue(fileInput.files);
+      }
+    });
+
+    folderInput?.addEventListener('change', () => {
+      if (folderInput.files) {
+        addFilesToQueue(folderInput.files);
+      }
+    });
+
+    if (dropZone) {
+      dropZone.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+      dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer?.files) {
+          addFilesToQueue(e.dataTransfer.files);
+        }
+      });
+    }
+
+    document.getElementById('btnCancelUpload')?.addEventListener('click', () => this.closeModal());
+    btnConfirm?.addEventListener('click', async () => {
+      if (queuedUploads.length === 0) return;
+
+      const encEl = document.getElementById('checkUploadEncrypted') as HTMLInputElement;
+      const isEncrypted = encEl ? encEl.checked : false;
+
+      const itemsToUpload = [...queuedUploads];
+      this.closeModal();
+
+      for (const item of itemsToUpload) {
+        this.triggerTransfer(`Upload: ${item.name}`, formatBytes(item.size), 'uploading');
+        await this.api.uploadFile(
+          this.activeDriveId,
+          this.currentFolderId,
+          item.name,
+          item.size,
+          isEncrypted
+        );
+      }
+      await this.loadWorkspaceData();
     });
   }
 
