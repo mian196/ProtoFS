@@ -39,14 +39,12 @@ enum ManifestCommands {
     },
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Info => {
-            println!("ProtoFS CLI v0.2.0");
+            println!("ProtoFS CLI v{}", env!("CARGO_PKG_VERSION"));
             println!(
                 "Storage Architecture: Parent ID Pattern + Zstd Compressed Manifest + SQLite FTS5 Cache"
             );
@@ -68,7 +66,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let results = cache.search(&drive, &query)?;
             println!("Found {} results for '{}':", results.len(), query);
             for r in results {
-                println!("  [{}] {} (ID: {})", r.kind, r.name, r.id);
+                let size = r.size_bytes
+                    .map(|s| format!("{} B", s))
+                    .unwrap_or_else(|| "-".to_string());
+                println!("  [{}] {} (ID: {}, Parent: {}, Size: {})", r.kind, r.name, r.id, r.parent_id, size);
             }
         }
     }

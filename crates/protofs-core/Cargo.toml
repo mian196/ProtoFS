@@ -38,4 +38,3 @@ grammers-tl-types = { workspace = true }
 grammers-mtsender = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3.12"

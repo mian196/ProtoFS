@@ -35,6 +35,12 @@ pub struct CacheDatabase {
 }
 
 impl CacheDatabase {
+    fn lock_conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
+        self.conn
+            .lock()
+            .map_err(|_| crate::error::ProtoFsError::Vfs("Cache database lock poisoned".to_string()))
+    }
+
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let conn = Connection::open(path)?;
         let db = Self {
@@ -54,7 +60,7 @@ impl CacheDatabase {
     }
 
     fn init_schema(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
 
         // Enable WAL mode and performance pragmas safely
         let _ = conn.pragma_update(None, "journal_mode", "WAL");
@@ -131,7 +137,7 @@ impl CacheDatabase {
     }
 
     pub fn batch_insert_manifest(&self, manifest: &ManifestSnapshot) -> Result<()> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.lock_conn()?;
         let tx = conn.transaction()?;
 
         // Ensure drive exists
@@ -237,7 +243,7 @@ impl CacheDatabase {
     }
 
     pub fn search(&self, drive_id: &str, query: &str) -> Result<Vec<SearchResult>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let formatted_query = format!("\"{}\"*", query.replace('"', "\"\""));
 
         let mut stmt = conn.prepare(
@@ -268,7 +274,7 @@ impl CacheDatabase {
     }
 
     pub fn load_tree(&self, drive_id: &str) -> Result<VfsTree> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut tree = VfsTree::new();
 
         // Load folders
@@ -349,7 +355,7 @@ impl CacheDatabase {
     }
 
     pub fn insert_sync_pair(&self, pair: &SyncPairEntry) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         conn.execute(
             r#"
             INSERT INTO sync_pairs (id, local_path, remote_folder_id, drive_id, sync_mode, last_synced_at)
@@ -373,7 +379,7 @@ impl CacheDatabase {
     }
 
     pub fn list_sync_pairs(&self, drive_id: &str) -> Result<Vec<SyncPairEntry>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, local_path, remote_folder_id, drive_id, sync_mode, last_synced_at FROM sync_pairs WHERE drive_id = ?1",
         )?;
@@ -398,13 +404,13 @@ impl CacheDatabase {
     }
 
     pub fn delete_sync_pair(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         conn.execute("DELETE FROM sync_pairs WHERE id = ?1", params![id])?;
         Ok(())
     }
 
     pub fn update_sync_pair_last_synced(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         conn.execute(
             "UPDATE sync_pairs SET last_synced_at = ?1 WHERE id = ?2",
             params![Utc::now().to_rfc3339(), id],
@@ -418,7 +424,7 @@ impl CacheDatabase {
         node_id: &str,
         new_name: &str,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "UPDATE folders SET name = ?1, updated_at = ?2 WHERE id = ?3 AND drive_id = ?4",
@@ -441,7 +447,7 @@ impl CacheDatabase {
         node_id: &str,
         new_parent_id: &str,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "UPDATE folders SET parent_id = ?1, updated_at = ?2 WHERE id = ?3 AND drive_id = ?4",
@@ -460,7 +466,7 @@ impl CacheDatabase {
 
     pub fn set_secure_secret(&self, key: &str, plaintext: &[u8]) -> Result<()> {
         let encrypted = crate::crypto::protect_secret(plaintext)?;
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "INSERT OR REPLACE INTO secure_secrets (key, encrypted_value, updated_at) VALUES (?1, ?2, ?3)",
@@ -470,7 +476,7 @@ impl CacheDatabase {
     }
 
     pub fn get_secure_secret(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         let mut stmt = conn.prepare("SELECT encrypted_value FROM secure_secrets WHERE key = ?1")?;
         let mut rows = stmt.query(params![key])?;
         if let Some(row) = rows.next()? {
@@ -483,7 +489,7 @@ impl CacheDatabase {
     }
 
     pub fn delete_secure_secret(&self, key: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.lock_conn()?;
         conn.execute("DELETE FROM secure_secrets WHERE key = ?1", params![key])?;
         Ok(())
     }

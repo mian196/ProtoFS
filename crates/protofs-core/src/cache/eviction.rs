@@ -120,7 +120,9 @@ impl<'a> CacheManager<'a> {
         for (file_id, rel_path, _) in &files_to_remove {
             let full_path = self.cache_root.join(rel_path);
             if full_path.exists() {
-                let _ = std::fs::remove_file(&full_path);
+                if let Err(e) = std::fs::remove_file(&full_path) {
+                    tracing::warn!("Failed to delete cached file '{}': {:?}", file_id, e);
+                }
             }
             self.conn.execute(
                 "DELETE FROM local_cache_entries WHERE file_id = ?1",

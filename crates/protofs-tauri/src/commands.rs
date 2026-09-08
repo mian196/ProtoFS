@@ -964,7 +964,12 @@ pub async fn create_drive_command(
             .await
         {
             Ok(info) => info.id,
-            Err(_) => -1001000000000 - (Utc::now().timestamp_millis() % 100000),
+            Err(e) => {
+                return Ok(CommandResponse::err(format!(
+                    "Failed to create Telegram channel: {}",
+                    e
+                )));
+            }
         }
     } else {
         channel_id
@@ -1110,7 +1115,12 @@ pub async fn create_folder_command(
     name: String,
 ) -> Result<CommandResponse<FolderNode>, String> {
     let state = app.state::<AppState>();
-    let id = format!("f_{}", Utc::now().timestamp_subsec_millis());
+    static FOLDER_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let id = format!(
+        "f_{}_{}",
+        Utc::now().timestamp_millis(),
+        FOLDER_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
     let folder = FolderNode {
         id: id.clone(),
         drive_id: drive_id.clone(),
@@ -1181,7 +1191,9 @@ pub async fn upload_file_command(
             is_encrypted,
             iv,
         );
-        tree.get_file(&existing_id).cloned().unwrap()
+        tree.get_file(&existing_id)
+            .cloned()
+            .ok_or_else(|| "File disappeared after version record".to_string())?
     } else {
         let id = format!("file_{}", Utc::now().timestamp_millis());
         let new_file = FileNode {
