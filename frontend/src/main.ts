@@ -3927,7 +3927,7 @@ class ProtoFsApp {
           </div>
         </div>
 
-        <div id="exportStatusArea" class="hidden" style="padding: 12px; background: var(--bg-surface-input); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted); text-align: center;">
+        <div id="exportStatusArea" class="hidden" style="display: none; padding: 12px; background: var(--bg-surface-input); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted); text-align: center;">
           <div class="modal-loading-spinner" style="display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: middle;"></div>
           Exporting files and writing manifest...
         </div>
@@ -3954,7 +3954,10 @@ class ProtoFsApp {
         btnStart.textContent = 'Exporting...';
       }
       if (btnCancel) btnCancel.disabled = true;
-      if (statusArea) statusArea.classList.remove('hidden');
+      if (statusArea) {
+        statusArea.classList.remove('hidden');
+        statusArea.style.display = 'block';
+      }
 
       try {
         const result = await this.api.exportDrive(this.activeDriveId, targetPath);
@@ -3988,7 +3991,10 @@ class ProtoFsApp {
           btnStart.textContent = 'Start Export';
         }
         if (btnCancel) btnCancel.disabled = false;
-        if (statusArea) statusArea.classList.add('hidden');
+        if (statusArea) {
+          statusArea.classList.add('hidden');
+          statusArea.style.display = 'none';
+        }
       }
     });
   }
@@ -4150,7 +4156,7 @@ class ProtoFsApp {
             <button class="btn-action secondary" id="btnOpenSafModalFromMount" style="padding: 4px 10px; font-size: 11px; flex-shrink: 0;">Configure SAF</button>
           </div>
 
-          <div id="mountActionStatusArea" class="hidden" style="padding: 10px; background: var(--bg-surface-input); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted); text-align: center;">
+          <div id="mountActionStatusArea" class="hidden" style="display: none; padding: 10px; background: var(--bg-surface-input); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted); text-align: center;">
             <div class="modal-loading-spinner" style="display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border-subtle); border-top-color: var(--accent-primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px; vertical-align: middle;"></div>
             <span id="mountActionStatusText">Applying changes...</span>
           </div>
@@ -4214,7 +4220,10 @@ class ProtoFsApp {
         const statusText = document.getElementById('mountActionStatusText');
         const btnMount = document.getElementById('btnMountDriveBtn') as HTMLButtonElement;
 
-        if (statusArea) statusArea.classList.remove('hidden');
+        if (statusArea) {
+          statusArea.classList.remove('hidden');
+          statusArea.style.display = 'block';
+        }
         if (statusText) statusText.textContent = `Mounting drive ${letter}:\\ and preparing virtual filesystem mirror...`;
         if (btnMount) btnMount.disabled = true;
 
@@ -4223,7 +4232,10 @@ class ProtoFsApp {
           this.virtualDriveStatus = res;
           await refreshModalView();
         } catch (err: any) {
-          if (statusArea) statusArea.classList.add('hidden');
+          if (statusArea) {
+            statusArea.classList.add('hidden');
+            statusArea.style.display = 'none';
+          }
           if (btnMount) btnMount.disabled = false;
           await this.showAlert({
             title: 'Mount Virtual Drive Failed',
@@ -4238,7 +4250,10 @@ class ProtoFsApp {
         const statusText = document.getElementById('mountActionStatusText');
         const btnUnmount = document.getElementById('btnUnmountDriveBtn') as HTMLButtonElement;
 
-        if (statusArea) statusArea.classList.remove('hidden');
+        if (statusArea) {
+          statusArea.classList.remove('hidden');
+          statusArea.style.display = 'block';
+        }
         if (statusText) statusText.textContent = 'Unmounting virtual drive...';
         if (btnUnmount) btnUnmount.disabled = true;
 
@@ -4247,7 +4262,10 @@ class ProtoFsApp {
           this.virtualDriveStatus = res;
           await refreshModalView();
         } catch (err: any) {
-          if (statusArea) statusArea.classList.add('hidden');
+          if (statusArea) {
+            statusArea.classList.add('hidden');
+            statusArea.style.display = 'none';
+          }
           if (btnUnmount) btnUnmount.disabled = false;
           await this.showAlert({
             title: 'Unmount Failed',

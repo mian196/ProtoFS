@@ -664,6 +664,7 @@ body {
   z-index: 100;
 }
 
+.hidden { display: none !important; }
 .modal-overlay.hidden { display: none !important; }
 
 .modal-card {
@@ -1322,6 +1323,7 @@ body {
 }
 
 .selection-floating-bar.hidden {
+  display: flex !important;
   transform: translateX(-50%) translateY(120px);
   opacity: 0;
   pointer-events: none;
@@ -1534,6 +1536,7 @@ body {
 }
 
 .reactive-transfer-dock.hidden {
+  display: flex !important;
   transform: translateY(115%);
   opacity: 0;
   pointer-events: none;
