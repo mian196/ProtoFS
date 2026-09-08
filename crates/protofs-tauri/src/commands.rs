@@ -16,6 +16,12 @@ use protofs_core::vfs::{DriveMetadata, FileNode, FileVersion, FolderNode, VfsNod
 const LOCAL_CACHE_BYTES: u64 = 42 * 1024 * 1024;
 const P2P_TRANSFER_HISTORY_LIMIT: usize = 20;
 
+fn ensure_dir(path: &std::path::Path) {
+    if let Err(e) = std::fs::create_dir_all(path) {
+        tracing::warn!("Failed to create directory {}: {}", path.display(), e);
+    }
+}
+
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -470,11 +476,11 @@ pub async fn login_check_qr(
 
 fn get_accounts_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     let base_dir = if let Ok(dir) = app.path().app_data_dir() {
-        let _ = std::fs::create_dir_all(&dir);
+        ensure_dir(&dir);
         Some(dir)
     } else if let Ok(appdata) = std::env::var("APPDATA") {
         let dir = std::path::PathBuf::from(appdata).join("ProtoFS");
-        let _ = std::fs::create_dir_all(&dir);
+        ensure_dir(&dir);
         Some(dir)
     } else {
         None
@@ -485,11 +491,11 @@ fn get_accounts_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
 
 fn get_user_session_path(app: &tauri::AppHandle, user_id: i64) -> Option<std::path::PathBuf> {
     let base_dir = if let Ok(dir) = app.path().app_data_dir() {
-        let _ = std::fs::create_dir_all(&dir);
+        ensure_dir(&dir);
         Some(dir)
     } else if let Ok(appdata) = std::env::var("APPDATA") {
         let dir = std::path::PathBuf::from(appdata).join("ProtoFS");
-        let _ = std::fs::create_dir_all(&dir);
+        ensure_dir(&dir);
         Some(dir)
     } else {
         None
@@ -502,11 +508,11 @@ fn get_session_paths(
     app: &tauri::AppHandle,
 ) -> (Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
     let base_dir = if let Ok(dir) = app.path().app_data_dir() {
-        let _ = std::fs::create_dir_all(&dir);
+        ensure_dir(&dir);
         Some(dir)
     } else if let Ok(appdata) = std::env::var("APPDATA") {
         let dir = std::path::PathBuf::from(appdata).join("ProtoFS");
-        let _ = std::fs::create_dir_all(&dir);
+        ensure_dir(&dir);
         Some(dir)
     } else {
         None
@@ -523,11 +529,11 @@ fn get_session_paths(
 
 fn get_real_session_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
     let base_dir = if let Ok(dir) = app.path().app_data_dir() {
-        let _ = std::fs::create_dir_all(&dir);
+        ensure_dir(&dir);
         Some(dir)
     } else if let Ok(appdata) = std::env::var("APPDATA") {
         let dir = std::path::PathBuf::from(appdata).join("ProtoFS");
-        let _ = std::fs::create_dir_all(&dir);
+        ensure_dir(&dir);
         Some(dir)
     } else {
         None
@@ -541,11 +547,11 @@ fn save_auth_session(app: &tauri::AppHandle, session: &AuthSession) {
         && let Ok(json) = serde_json::to_string(session)
         && let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes())
     {
-        if let Err(e) = std::fs::write(enc_path, encrypted) {
+        if let Err(e) = std::fs::write(&enc_path, encrypted) {
             tracing::error!("Failed to write encrypted session: {}", e);
         }
         if legacy_path.exists() {
-            let _ = std::fs::remove_file(legacy_path);
+            let _ = std::fs::remove_file(&legacy_path);
         }
     }
 }
@@ -553,14 +559,14 @@ fn save_auth_session(app: &tauri::AppHandle, session: &AuthSession) {
 fn save_real_telegram_session_for_user(app: &tauri::AppHandle, user_id: i64, session_bytes: &[u8]) {
     if let Some(path) = get_user_session_path(app, user_id)
         && let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes)
-        && let Err(e) = std::fs::write(path, encrypted)
+        && let Err(e) = std::fs::write(&path, encrypted)
     {
         tracing::error!("Failed to save session for user {}: {}", user_id, e);
     }
     // Also save to legacy path for backward compatibility
     if let Some(path) = get_real_session_path(app)
         && let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes)
-        && let Err(e) = std::fs::write(path, encrypted)
+        && let Err(e) = std::fs::write(&path, encrypted)
     {
         tracing::error!("Failed to save legacy session: {}", e);
     }
@@ -581,7 +587,7 @@ fn save_account_registry(app: &tauri::AppHandle, registry: &AccountRegistry) {
     if let Some(path) = get_accounts_path(app)
         && let Ok(json) = serde_json::to_string(registry)
         && let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes())
-        && let Err(e) = std::fs::write(path, encrypted)
+        && let Err(e) = std::fs::write(&path, encrypted)
     {
         tracing::error!("Failed to save account registry: {}", e);
     }
@@ -635,8 +641,8 @@ fn load_auth_session(app: &tauri::AppHandle) -> Option<AuthSession> {
             && let Ok(persisted) = serde_json::from_str::<AuthSession>(&content)
         {
             if let Ok(encrypted) = protofs_core::crypto::protect_secret(content.as_bytes()) {
-                let _ = std::fs::write(enc_path, encrypted);
-                let _ = std::fs::remove_file(legacy_path);
+                let _ = std::fs::write(&enc_path, encrypted);
+                let _ = std::fs::remove_file(&legacy_path);
             }
             return Some(persisted);
         }
@@ -766,12 +772,12 @@ pub async fn remove_account_command(
     if let Some(path) = get_user_session_path(&app, user_id)
         && path.exists()
     {
-        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(&path);
     }
     if let Some(path) = get_drives_file_path(&app, user_id)
         && path.exists()
     {
-        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(&path);
     }
 
     let was_active = registry.active_user_id == Some(user_id);
@@ -809,10 +815,10 @@ pub async fn remove_account_command(
 
             if let (Some(enc_path), Some(legacy_path)) = get_session_paths(&app) {
                 if enc_path.exists() {
-                    let _ = std::fs::remove_file(enc_path);
+                    let _ = std::fs::remove_file(&enc_path);
                 }
                 if legacy_path.exists() {
-                    let _ = std::fs::remove_file(legacy_path);
+                    let _ = std::fs::remove_file(&legacy_path);
                 }
             }
             None
@@ -888,11 +894,11 @@ pub async fn delete_secure_secret_command(
 
 fn get_drives_file_path(app: &tauri::AppHandle, user_id: i64) -> Option<std::path::PathBuf> {
     if let Ok(dir) = app.path().app_data_dir() {
-        let _ = std::fs::create_dir_all(&dir);
+        ensure_dir(&dir);
         Some(dir.join(format!("drives_{}.json", user_id)))
     } else if let Ok(appdata) = std::env::var("APPDATA") {
         let dir = std::path::PathBuf::from(appdata).join("ProtoFS");
-        let _ = std::fs::create_dir_all(&dir);
+        ensure_dir(&dir);
         Some(dir.join(format!("drives_{}.json", user_id)))
     } else {
         None
@@ -903,14 +909,14 @@ fn save_user_drives(app: &tauri::AppHandle, user_id: i64, drives: &[DriveMetadat
     if let Some(path) = get_drives_file_path(app, user_id)
         && let Ok(json) = serde_json::to_string_pretty(drives)
     {
-        let _ = std::fs::write(path, json);
+        let _ = std::fs::write(&path, json.into_bytes());
     }
 }
 
 fn load_user_drives(app: &tauri::AppHandle, user_id: i64) -> Vec<DriveMetadata> {
     if let Some(path) = get_drives_file_path(app, user_id)
         && path.exists()
-        && let Ok(content) = std::fs::read_to_string(path)
+        && let Ok(content) = std::fs::read_to_string(&path)
         && let Ok(drives) = serde_json::from_str::<Vec<DriveMetadata>>(&content)
     {
         return drives;
@@ -927,9 +933,10 @@ pub async fn get_drives_command(
     app: tauri::AppHandle,
 ) -> Result<CommandResponse<Vec<DriveMetadata>>, String> {
     let state = app.state::<AppState>();
+
+    // Hold session lock while loading drives to prevent TOCTOU race
     let session_guard = state.session.read().await;
     let user_id = session_guard.as_ref().map(|s| s.user_id);
-    drop(session_guard);
 
     if let Some(uid) = user_id {
         let drives = load_user_drives(&app, uid)
@@ -937,10 +944,12 @@ pub async fn get_drives_command(
             .filter(|d| !(d.channel_id == 0 && d.name == "ProtoFS Cloud Drive"))
             .collect::<Vec<_>>();
         save_user_drives(&app, uid, &drives);
+        drop(session_guard);
         let mut state_drives = state.drives.write().await;
         *state_drives = drives.clone();
         return Ok(CommandResponse::ok(drives));
     }
+    drop(session_guard);
 
     let drives = state.drives.read().await;
     let filtered_drives: Vec<DriveMetadata> = drives
@@ -1337,11 +1346,10 @@ pub async fn export_drive_command(
         .collect();
 
     let export_dir = std::path::PathBuf::from(&target_path).join(&safe_drive_name);
-    if let Err(e) = std::fs::create_dir_all(&export_dir) {
-        return Ok(CommandResponse::err(format!(
-            "Failed to create export folder: {}",
-            e
-        )));
+    if std::fs::create_dir_all(&export_dir).is_err() {
+        return Ok(CommandResponse::err(
+            "Failed to create directory".to_string(),
+        ));
     }
 
     let mut total_folders = 0;
@@ -1355,7 +1363,7 @@ pub async fn export_drive_command(
             if !f.parent_id.is_empty() && f.parent_id != "root" {
                 let rel_path = tree.resolve_relative_path(&f.id);
                 let full_folder = export_dir.join(rel_path);
-                let _ = std::fs::create_dir_all(full_folder);
+                ensure_dir(&full_folder);
             }
             total_folders += 1;
         }
@@ -1367,7 +1375,7 @@ pub async fn export_drive_command(
             let full_file_path = export_dir.join(&rel_path);
 
             if let Some(parent) = full_file_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+                ensure_dir(parent);
             }
 
             let file_data = format!(
@@ -1398,8 +1406,8 @@ pub async fn export_drive_command(
     });
 
     let _ = std::fs::write(
-        manifest_path,
-        serde_json::to_string_pretty(&manifest_data).unwrap_or_default(),
+        &manifest_path,
+        serde_json::to_string_pretty(&manifest_data).unwrap_or_default().as_bytes(),
     );
 
     Ok(CommandResponse::ok(ExportDriveResult {
@@ -1918,7 +1926,7 @@ pub async fn set_shell_integration_command(
         let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
         let send_to_dir = std::path::PathBuf::from(&appdata).join("Microsoft\\Windows\\SendTo");
         if !send_to_dir.exists() {
-            let _ = std::fs::create_dir_all(&send_to_dir);
+            ensure_dir(&send_to_dir);
         }
         let send_to_cmd = send_to_dir.join("ProtoFS.cmd");
 
@@ -1928,7 +1936,7 @@ pub async fn set_shell_integration_command(
                 "@echo off\r\nstart \"\" \"{}\" --upload \"%*\"\r\n",
                 safe_exe.replace('/', "\\")
             );
-            std::fs::write(&send_to_cmd, cmd_content).map_err(|e| e.to_string())?;
+            std::fs::write(&send_to_cmd, cmd_content.as_bytes()).map_err(|e| e.to_string())?;
         } else {
             if send_to_cmd.exists() {
                 let _ = std::fs::remove_file(&send_to_cmd);
@@ -2043,12 +2051,12 @@ pub async fn set_shell_integration_command(
         let desktop_file = app_dir.join("protofs-upload.desktop");
 
         if enable_send_to || enable_context_menu {
-            let _ = std::fs::create_dir_all(&app_dir);
+            ensure_dir(&app_dir);
             let desktop_content = format!(
                 "[Desktop Entry]\nType=Application\nName=Upload to ProtoFS\nExec=\"{}\" --upload %F\nIcon=protofs\nTerminal=false\nMimeType=all/allfiles;\nNoDisplay=true\n",
                 target_exe
             );
-            let _ = std::fs::write(&desktop_file, desktop_content);
+            let _ = std::fs::write(&desktop_file, desktop_content.as_bytes());
         } else if desktop_file.exists() {
             let _ = std::fs::remove_file(&desktop_file);
         }
@@ -2492,14 +2500,14 @@ fn get_protofs_mount_dir(app: &tauri::AppHandle, drive_id: &str) -> std::path::P
         std::path::PathBuf::from("ProtoFS_Data")
     };
     let mount_dir = base_dir.join("mount").join(drive_id);
-    let _ = std::fs::create_dir_all(&mount_dir);
+    ensure_dir(&mount_dir);
     mount_dir
 }
 
 fn load_mount_state(app: &tauri::AppHandle) -> PersistedMountState {
     let path = get_protofs_mount_dir(app, "_system").join("mount_state.json");
     if path.exists()
-        && let Ok(bytes) = std::fs::read(&path)
+            && let Ok(bytes) = std::fs::read(&path)
         && let Ok(state) = serde_json::from_slice::<PersistedMountState>(&bytes)
     {
         return state;
@@ -2509,21 +2517,45 @@ fn load_mount_state(app: &tauri::AppHandle) -> PersistedMountState {
 
 fn save_mount_state(app: &tauri::AppHandle, state: &PersistedMountState) {
     let dir = get_protofs_mount_dir(app, "_system");
-    let _ = std::fs::create_dir_all(&dir);
+    ensure_dir(&dir);
     let path = dir.join("mount_state.json");
     if let Ok(json) = serde_json::to_string_pretty(state) {
-        let _ = std::fs::write(path, json);
+        let _ = std::fs::write(&path, json.into_bytes());
     }
 }
 
-fn count_dir_files_and_bytes(dir: &std::path::Path) -> (usize, u64) {
+async fn count_dir_files_and_bytes_async(dir: std::path::PathBuf) -> (usize, u64) {
+    tokio::task::spawn_blocking(move || {
+        let mut count = 0;
+        let mut bytes = 0;
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if let Ok(meta) = entry.metadata() {
+                    if meta.is_dir() {
+                        let (sub_c, sub_b) = count_dir_files_and_bytes_sync(&entry.path());
+                        count += sub_c;
+                        bytes += sub_b;
+                } else {
+                    count += 1;
+                    bytes += meta.len();
+                }
+            }
+        }
+    }
+    (count, bytes)
+    })
+    .await
+    .unwrap_or((0, 0))
+}
+
+fn count_dir_files_and_bytes_sync(dir: &std::path::Path) -> (usize, u64) {
     let mut count = 0;
     let mut bytes = 0;
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             if let Ok(meta) = entry.metadata() {
                 if meta.is_dir() {
-                    let (sub_c, sub_b) = count_dir_files_and_bytes(&entry.path());
+                    let (sub_c, sub_b) = count_dir_files_and_bytes_sync(&entry.path());
                     count += sub_c;
                     bytes += sub_b;
                 } else {
@@ -2595,7 +2627,7 @@ async fn project_vfs_to_disk(
     drive_id: &str,
     mount_root: &std::path::Path,
 ) -> Result<(), String> {
-    let _ = std::fs::create_dir_all(mount_root);
+    ensure_dir(mount_root);
     let tree = state.engine.get_or_create_tree(drive_id).await;
 
     let mut folder_paths: HashMap<String, std::path::PathBuf> = HashMap::new();
@@ -2622,7 +2654,7 @@ async fn project_vfs_to_disk(
         } else {
             mount_root.join(&f.name)
         };
-        let _ = std::fs::create_dir_all(&full_path);
+        ensure_dir(&full_path);
         folder_paths.insert(f.id.clone(), full_path);
     }
 
@@ -2694,7 +2726,7 @@ pub async fn get_virtual_drive_status_command(
     let available_letters = get_available_drive_letters();
     let winfsp_available = is_winfsp_installed();
     let mount_dir = get_protofs_mount_dir(&app, &drive_id);
-    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes(&mount_dir);
+    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes_async(mount_dir.clone()).await;
 
     let (is_mounted, drive_letter, mount_path, last_mounted_at) =
         if let Some(info) = mount_state.mounts.get(&drive_id) {
@@ -2796,7 +2828,7 @@ pub async fn mount_virtual_drive_command(
     );
     save_mount_state(&app, &mount_state);
 
-    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes(&mount_dir);
+    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes_async(mount_dir.clone()).await;
     let winfsp_available = is_winfsp_installed();
     let driver_mode = if winfsp_available {
         "WinFsp FUSE (Native Kernel Driver)".to_string()
@@ -2838,7 +2870,7 @@ pub async fn unmount_virtual_drive_command(
     }
 
     let mount_dir = get_protofs_mount_dir(&app, &drive_id);
-    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes(&mount_dir);
+    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes_async(mount_dir.clone()).await;
     let winfsp_available = is_winfsp_installed();
     let driver_mode = if winfsp_available {
         "WinFsp FUSE (Native Kernel Driver)".to_string()
@@ -2886,7 +2918,7 @@ pub async fn clear_virtual_drive_cache_command(
     let mount_dir = get_protofs_mount_dir(&app, &drive_id);
     if mount_dir.exists() {
         let _ = std::fs::remove_dir_all(&mount_dir);
-        let _ = std::fs::create_dir_all(&mount_dir);
+        ensure_dir(&mount_dir);
     }
     Ok(CommandResponse::ok(true))
 }
@@ -3151,7 +3183,7 @@ fn get_workmanager_config_path(app: &tauri::AppHandle) -> std::path::PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| std::path::PathBuf::from("."));
     let dir = base.join("workmanager");
-    let _ = std::fs::create_dir_all(&dir);
+    ensure_dir(&dir);
     dir.join("workmanager_sync_config.json")
 }
 
@@ -3161,7 +3193,7 @@ fn get_workmanager_history_path(app: &tauri::AppHandle) -> std::path::PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| std::path::PathBuf::from("."));
     let dir = base.join("workmanager");
-    let _ = std::fs::create_dir_all(&dir);
+    ensure_dir(&dir);
     dir.join("sync_worker_history.json")
 }
 
@@ -3179,7 +3211,7 @@ fn load_workmanager_config(app: &tauri::AppHandle) -> WorkManagerSyncConfig {
 fn save_workmanager_config(app: &tauri::AppHandle, config: &WorkManagerSyncConfig) {
     let path = get_workmanager_config_path(app);
     if let Ok(bytes) = serde_json::to_vec_pretty(config) {
-        let _ = std::fs::write(path, bytes);
+        let _ = std::fs::write(&path, bytes);
     }
 }
 
@@ -3197,7 +3229,7 @@ fn load_workmanager_history(app: &tauri::AppHandle) -> Vec<WorkManagerJobRecord>
 fn save_workmanager_history(app: &tauri::AppHandle, history: &[WorkManagerJobRecord]) {
     let path = get_workmanager_history_path(app);
     if let Ok(bytes) = serde_json::to_vec_pretty(history) {
-        let _ = std::fs::write(path, bytes);
+        let _ = std::fs::write(&path, bytes);
     }
 }
 
