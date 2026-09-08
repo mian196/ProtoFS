@@ -159,16 +159,19 @@ impl<T: TelegramTransport> SyncEngine<T> {
 
     /// Flush in-memory changes to Telegram by updating the pinned manifest.json.zst
     pub async fn flush_manifest(&self, drive_id: &str, channel_id: i64) -> Result<()> {
-        let trees = self.trees_by_drive.read().await;
-        let tree = trees
-            .get(drive_id)
-            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+        let tree_snapshot = {
+            let trees = self.trees_by_drive.read().await;
+            trees
+                .get(drive_id)
+                .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?
+                .clone()
+        };
 
         let mut versions = self.versions_by_drive.write().await;
         let current_version = versions.get(drive_id).copied().unwrap_or(1);
         let next_version = current_version + 1;
 
-        let snapshot = ManifestSnapshot::from_tree(drive_id, next_version, tree);
+        let snapshot = ManifestSnapshot::from_tree(drive_id, next_version, &tree_snapshot);
         self.cache.batch_insert_manifest(&snapshot)?;
 
         let compressed = snapshot.to_compressed_bytes()?;
@@ -244,7 +247,7 @@ impl<T: TelegramTransport> SyncEngine<T> {
         let tree = trees
             .get_mut(drive_id)
             .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
-        tree.remove(node_id);
+        tree.remove_recursive(node_id);
         let mut dirty = self.is_dirty_by_drive.write().await;
         dirty.insert(drive_id.to_string(), true);
         Ok(())

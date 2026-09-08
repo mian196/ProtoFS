@@ -141,10 +141,26 @@ impl VfsTree {
             if let Some(children) = self.children_by_parent.get_mut(&parent_id) {
                 children.remove(id);
             }
+            self.children_by_parent.remove(id);
             Some(node)
         } else {
             None
         }
+    }
+
+    pub fn remove_recursive(&mut self, id: &str) -> Vec<VfsNode> {
+        let mut removed = Vec::new();
+        let mut stack = vec![id.to_string()];
+
+        while let Some(node_id) = stack.pop() {
+            if let Some(children) = self.children_by_parent.remove(&node_id) {
+                stack.extend(children);
+            }
+            if let Some(node) = self.remove(&node_id) {
+                removed.push(node);
+            }
+        }
+        removed
     }
 
     #[allow(clippy::too_many_arguments)]

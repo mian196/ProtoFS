@@ -238,7 +238,7 @@ impl CacheDatabase {
 
     pub fn search(&self, drive_id: &str, query: &str) -> Result<Vec<SearchResult>> {
         let conn = self.conn.lock().unwrap();
-        let formatted_query = format!("{}*", query.replace('"', "\"\""));
+        let formatted_query = format!("\"{}\"*", query.replace('"', "\"\""));
 
         let mut stmt = conn.prepare(
             r#"

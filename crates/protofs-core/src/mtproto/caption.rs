@@ -9,6 +9,20 @@ pub struct ParsedCaption {
     pub sha256_hash: Option<String>,
 }
 
+fn encode_caption_val(val: &str) -> String {
+    val.replace('%', "%25")
+       .replace(';', "%3B")
+       .replace(':', "%3A")
+}
+
+fn decode_caption_val(val: &str) -> String {
+    val.replace("%3A", ":")
+       .replace("%3a", ":")
+       .replace("%3B", ";")
+       .replace("%3b", ";")
+       .replace("%25", "%")
+}
+
 impl ParsedCaption {
     pub const PREFIX: &'static str = "protofs:v1;";
 
@@ -30,15 +44,15 @@ impl ParsedCaption {
 
     pub fn serialize(&self) -> String {
         let mut parts = Vec::new();
-        parts.push(format!("parent:{}", self.parent_id));
-        parts.push(format!("name:{}", self.name));
+        parts.push(format!("parent:{}", encode_caption_val(&self.parent_id)));
+        parts.push(format!("name:{}", encode_caption_val(&self.name)));
         parts.push(format!("enc:{}", if self.is_encrypted { "1" } else { "0" }));
 
         if let Some(ref iv) = self.iv {
-            parts.push(format!("iv:{}", iv));
+            parts.push(format!("iv:{}", encode_caption_val(iv)));
         }
         if let Some(ref hash) = self.sha256_hash {
-            parts.push(format!("hash:{}", hash));
+            parts.push(format!("hash:{}", encode_caption_val(hash)));
         }
 
         format!("{}{}", Self::PREFIX, parts.join(";"))
@@ -49,12 +63,9 @@ impl ParsedCaption {
         let payload = if let Some(stripped) = trimmed.strip_prefix(Self::PREFIX) {
             stripped
         } else {
-            return Err(ProtoFsError::Serialization(serde_json::Error::io(
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "Caption does not have ProtoFS prefix",
-                ),
-            )));
+            return Err(ProtoFsError::CaptionParse(
+                "Caption does not have ProtoFS prefix".to_string(),
+            ));
         };
 
         let mut parent_id = None;
@@ -66,29 +77,24 @@ impl ParsedCaption {
         for field in payload.split(';') {
             let mut kv = field.splitn(2, ':');
             if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
+                let decoded_v = decode_caption_val(v.trim());
                 match k.trim() {
-                    "parent" => parent_id = Some(v.trim().to_string()),
-                    "name" => name = Some(v.trim().to_string()),
+                    "parent" => parent_id = Some(decoded_v),
+                    "name" => name = Some(decoded_v),
                     "enc" => is_encrypted = v.trim() == "1",
-                    "iv" => iv = Some(v.trim().to_string()),
-                    "hash" => sha256_hash = Some(v.trim().to_string()),
+                    "iv" => iv = Some(decoded_v),
+                    "hash" => sha256_hash = Some(decoded_v),
                     _ => {}
                 }
             }
         }
 
         let parent_id = parent_id.ok_or_else(|| {
-            ProtoFsError::Serialization(serde_json::Error::io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Missing parent field in caption",
-            )))
+            ProtoFsError::CaptionParse("Missing parent field in caption".to_string())
         })?;
 
         let name = name.ok_or_else(|| {
-            ProtoFsError::Serialization(serde_json::Error::io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Missing name field in caption",
-            )))
+            ProtoFsError::CaptionParse("Missing name field in caption".to_string())
         })?;
 
         Ok(Self {
@@ -109,7 +115,7 @@ mod tests {
     fn test_caption_roundtrip() {
         let caption = ParsedCaption::new(
             "f_docs",
-            "Tax_Return_2025.pdf",
+            "Tax_Return_2025;v2:final.pdf",
             true,
             Some("a1b2c3d4e5f6"),
             Some("3a7b8c9d..."),

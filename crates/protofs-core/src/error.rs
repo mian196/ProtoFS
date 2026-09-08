@@ -34,6 +34,9 @@ pub enum ProtoFsError {
 
     #[error("MTProto transport error: {0}")]
     Mtproto(String),
+
+    #[error("Caption parse error: {0}")]
+    CaptionParse(String),
 }
 
 pub type Result<T> = std::result::Result<T, ProtoFsError>;
