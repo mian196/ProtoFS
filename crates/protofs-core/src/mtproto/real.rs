@@ -756,10 +756,10 @@ impl TelegramTransport for RealTelegramTransport {
         };
 
         for msg in messages {
-            if let tl::enums::Message::Message(m) = msg {
-                if let Some(tl::enums::MessageMedia::Document(doc_media)) = m.media
-                    && let Some(tl::enums::Document::Document(doc)) = doc_media.document
-                {
+            if let tl::enums::Message::Message(m) = msg
+                && let Some(tl::enums::MessageMedia::Document(doc_media)) = m.media
+                && let Some(tl::enums::Document::Document(doc)) = doc_media.document
+            {
                     let location = tl::enums::InputFileLocation::InputDocumentFileLocation(
                         tl::types::InputDocumentFileLocation {
                             id: doc.id,
