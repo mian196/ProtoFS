@@ -11,16 +11,16 @@ pub struct ParsedCaption {
 
 fn encode_caption_val(val: &str) -> String {
     val.replace('%', "%25")
-       .replace(';', "%3B")
-       .replace(':', "%3A")
+        .replace(';', "%3B")
+        .replace(':', "%3A")
 }
 
 fn decode_caption_val(val: &str) -> String {
     val.replace("%3A", ":")
-       .replace("%3a", ":")
-       .replace("%3B", ";")
-       .replace("%3b", ";")
-       .replace("%25", "%")
+        .replace("%3a", ":")
+        .replace("%3B", ";")
+        .replace("%3b", ";")
+        .replace("%25", "%")
 }
 
 impl ParsedCaption {
