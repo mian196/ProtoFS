@@ -1,0 +1,10 @@
+{
+  "name": "protofs-tauri",
+  "private": true,
+  "description": "Tauri desktop and mobile application shell for ProtoFS",
+  "scripts": {
+    "dev": "npm --prefix ../../frontend run dev",
+    "build": "npm --prefix ../../frontend run build",
+    "tauri": "node ../../frontend/node_modules/@tauri-apps/cli/tauri.js"
+  }
+}
