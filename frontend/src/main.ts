@@ -1,5 +1,6 @@
 import './style.css';
 import QRCode from 'qrcode';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { ProtoFsApi } from './api';
 import { ThemeManager } from './theme';
 import type { AuthSession, DriveMetadata, FileNode, FolderNode, OwnedChannel, SyncPair, TransferItem, UpdateInfo, ParsedShareLink, VirtualDriveStatus, DocumentsProviderStatus, WorkManagerSyncConfig, P2pSessionInfo, P2pStatus, P2pTransferProgress } from './types';
@@ -43,15 +44,34 @@ class ProtoFsApp {
   }
 
   private async bootstrap() {
-    this.session = await this.api.getSessionStatus();
-    if (!this.session || !this.session.is_authenticated) {
+    // Reveal window immediately with instant dark splash loader
+    try {
+      await getCurrentWindow().show();
+    } catch {
+      // Browser fallback
+    }
+
+    try {
+      const [session, accounts] = await Promise.all([
+        this.api.getSessionStatus(),
+        this.api.listAccounts().catch(() => []),
+      ]);
+
+      this.session = session;
+      this.accounts = accounts;
+
+      if (!this.session || !this.session.is_authenticated) {
+        this.renderLoginScreen();
+      } else {
+        localStorage.removeItem('protofs_folders');
+        localStorage.removeItem('protofs_files');
+        localStorage.removeItem('protofs_drives');
+        this.activeDriveId = this.session.active_drive_id || `drive_${this.session.user_id}`;
+        await this.initWorkspace();
+      }
+    } catch (err) {
+      console.error('Failed to bootstrap ProtoFS:', err);
       this.renderLoginScreen();
-    } else {
-      localStorage.removeItem('protofs_folders');
-      localStorage.removeItem('protofs_files');
-      localStorage.removeItem('protofs_drives');
-      this.activeDriveId = this.session.active_drive_id || `drive_${this.session.user_id}`;
-      await this.initWorkspace();
     }
   }
 
@@ -493,14 +513,13 @@ class ProtoFsApp {
   // -------------------------------------------------------------------------
 
   private async initWorkspace() {
-    this.accounts = await this.api.listAccounts();
     this.renderAppShell();
     this.bindEvents();
     await this.loadWorkspaceData();
     if (this.autoCheckUpdates) {
       this.checkUpdatesSilently();
     }
-    await this.checkPendingUploads();
+    this.checkPendingUploads();
   }
 
   private renderAppShell() {
@@ -824,15 +843,17 @@ class ProtoFsApp {
     const activeDrive = this.drives.find(d => d.id === this.activeDriveId) || this.drives[0];
     if (activeDrive) {
       this.activeDriveId = activeDrive.id;
-      const data = await this.api.loadDrive(activeDrive.id, activeDrive.channel_id);
+      
+      const [data, syncPairs, virtualDriveStatus] = await Promise.all([
+        this.api.loadDrive(activeDrive.id, activeDrive.channel_id),
+        this.api.getSyncPairs(this.activeDriveId).catch(() => []),
+        this.api.getVirtualDriveStatus(this.activeDriveId).catch(() => null),
+      ]);
+
       this.folders = data.folders;
       this.files = data.files;
-      this.syncPairs = await this.api.getSyncPairs(this.activeDriveId);
-      try {
-        this.virtualDriveStatus = await this.api.getVirtualDriveStatus(this.activeDriveId);
-      } catch {
-        this.virtualDriveStatus = null;
-      }
+      this.syncPairs = syncPairs;
+      this.virtualDriveStatus = virtualDriveStatus;
     } else {
       this.activeDriveId = '';
       this.folders = [];
