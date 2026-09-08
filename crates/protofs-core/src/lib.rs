@@ -16,6 +16,7 @@ pub use vfs::{FileNode, FolderNode, ROOT_PARENT_ID, VfsNode, VfsTree};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mtproto::{ChannelInfo, OwnedChannel, TelegramMessage, TelegramUser};
     use chrono::Utc;
 
     #[test]
