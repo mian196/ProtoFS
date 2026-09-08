@@ -3,6 +3,7 @@ import type { FileNode, FolderNode } from '../types';
 
 export type ModalType =
   | 'auth'
+  | 'accountManager'
   | 'driveManager'
   | 'createFolder'
   | 'rename'

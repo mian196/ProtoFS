@@ -4,7 +4,6 @@ import {
   FolderSync,
   Share2,
   Settings,
-  LogOut,
   Layers,
   FileVideo,
   FileImage,
@@ -14,6 +13,7 @@ import {
   Trash2,
   Plus,
   Power,
+  ChevronRight,
 } from 'lucide-react';
 import { StorageGauge } from '../telemetry/StorageGauge';
 import { useAuthStore } from '../../stores/useAuthStore';
@@ -23,7 +23,7 @@ import { useNativeStore } from '../../stores/useNativeStore';
 import { useModalStore } from '../../stores/useModalStore';
 
 export const TacticalSidebar: React.FC = () => {
-  const { session, logout } = useAuthStore();
+  const { session, connectionStatus } = useAuthStore();
   const { drives, activeDrive, setActiveDrive } = useDriveStore();
   const { filterType, setFilterType } = useVfsStore();
   const { virtualDrive, mountVirtualDrive, unmountVirtualDrive } = useNativeStore();
@@ -48,6 +48,8 @@ export const TacticalSidebar: React.FC = () => {
     { type: 'trash', label: 'Trash Bin', icon: <Trash2 className="w-4 h-4 text-rose-400" /> },
   ];
 
+  const isOnline = connectionStatus === 'connected';
+
   return (
     <aside className="w-64 shrink-0 flex flex-col justify-between p-3.5 bg-slate-950/70 border-r border-white/[0.06] backdrop-blur-2xl select-none h-full overflow-y-auto no-scrollbar">
       {/* Top section */}
@@ -65,7 +67,7 @@ export const TacticalSidebar: React.FC = () => {
                   v0.3
                 </span>
               </h1>
-              <p className="text-[10px] text-slate-400 font-mono">MTProto Zero-Knowledge</p>
+              <p className="text-[10px] text-slate-400 font-mono">Telegram Cloud Drive</p>
             </div>
           </div>
         </div>
@@ -154,7 +156,7 @@ export const TacticalSidebar: React.FC = () => {
           ))}
         </div>
 
-        {/* Tools & Integrations */}
+        {/* Tools & Integrations - Compact button names */}
         <div className="space-y-1 pt-1 border-t border-white/5">
           <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-slate-400">
             Integrations
@@ -163,27 +165,27 @@ export const TacticalSidebar: React.FC = () => {
             onClick={() => openModal('syncConfig')}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/[0.04] transition-colors"
           >
-            <FolderSync className="w-4 h-4 text-sky-400" />
-            <span>Folder Watcher & Sync</span>
+            <FolderSync className="w-4 h-4 text-sky-400 shrink-0" />
+            <span>Sync Watcher</span>
           </button>
           <button
             onClick={() => openModal('p2pTransfer')}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/[0.04] transition-colors"
           >
-            <Share2 className="w-4 h-4 text-purple-400" />
-            <span>P2P Wi-Fi Direct</span>
+            <Share2 className="w-4 h-4 text-purple-400 shrink-0" />
+            <span>P2P Transfer</span>
           </button>
           <button
             onClick={() => openModal('settings')}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-300 hover:text-white hover:bg-white/[0.04] transition-colors"
           >
-            <Settings className="w-4 h-4 text-slate-400" />
-            <span>Settings & Cache</span>
+            <Settings className="w-4 h-4 text-slate-400 shrink-0" />
+            <span>Settings</span>
           </button>
         </div>
       </div>
 
-      {/* Bottom section: Storage Gauge & Auth session */}
+      {/* Bottom section: Storage Gauge & Interactive Account Profile */}
       <div className="space-y-3 pt-3 border-t border-white/5">
         <StorageGauge
           usedBytes={virtualDrive?.cached_bytes || 0}
@@ -191,25 +193,49 @@ export const TacticalSidebar: React.FC = () => {
         />
 
         {session && (
-          <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.02] border border-white/5">
-            <div className="min-w-0 pr-2">
-              <p className="text-xs font-semibold text-slate-200 truncate">
-                {session.first_name || session.phone}
-              </p>
-              <p className="text-[10px] text-slate-400 font-mono truncate">
-                ID: {session.user_id}
-              </p>
+          <button
+            type="button"
+            onClick={() => openModal('accountManager')}
+            className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-white/[0.02] border border-white/5 hover:border-sky-500/30 hover:bg-white/[0.05] transition-all group"
+            title="Manage Accounts & Connection Status"
+          >
+            <div className="flex items-center gap-2.5 min-w-0 pr-1">
+              {/* Profile Avatar / Status Dot */}
+              <div className="relative shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-sky-500/20 border border-sky-400/30 text-sky-300 flex items-center justify-center font-bold text-xs shadow-inner">
+                  {session.first_name ? session.first_name[0].toUpperCase() : 'T'}
+                </div>
+                {/* Connection Status Dot: Green = Connected, Red = Blocked/Offline (VPN required) */}
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 ${
+                    isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500 animate-pulse'
+                  }`}
+                  title={isOnline ? 'Online (MTProto Connected)' : 'Offline / VPN Required'}
+                />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-200 truncate">
+                  {session.username ? `@${session.username.replace(/^@/, '')}` : (session.first_name || 'Telegram User')}
+                </p>
+                <p className="text-[10px] text-slate-400 font-mono truncate flex items-center gap-1">
+                  <span
+                    className={`inline-block w-1.5 h-1.5 rounded-full ${
+                      isOnline ? 'bg-emerald-400' : 'bg-rose-500'
+                    }`}
+                  />
+                  <span>{isOnline ? 'Online' : 'Offline (VPN)'}</span>
+                </p>
+              </div>
             </div>
-            <button
-              onClick={logout}
-              title="Logout session"
-              className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-colors"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
+
+            <div className="p-1 rounded-lg text-slate-500 group-hover:text-sky-400 transition-colors shrink-0">
+              <ChevronRight className="w-4 h-4" />
+            </div>
+          </button>
         )}
       </div>
     </aside>
   );
 };
+

@@ -11,6 +11,7 @@ import { CustomContextMenu } from './components/explorer/CustomContextMenu';
 import { FloatingTransferHUD } from './components/telemetry/FloatingTransferHUD';
 import { MediaPreviewModal } from './components/preview/MediaPreviewModal';
 import { AuthModal } from './components/modals/AuthModal';
+import { AccountManagerModal } from './components/modals/AccountManagerModal';
 import { DriveManagerModal } from './components/modals/DriveManagerModal';
 import { CreateFolderModal } from './components/modals/CreateFolderModal';
 import { RenameModal } from './components/modals/RenameModal';
@@ -319,6 +320,10 @@ export const App: React.FC = () => {
       {/* Modals */}
       <AuthModal
         isOpen={(!isAuthLoading && !session) || activeModal === 'auth'}
+        onClose={closeModal}
+      />
+      <AccountManagerModal
+        isOpen={activeModal === 'accountManager'}
         onClose={closeModal}
       />
       <DriveManagerModal isOpen={activeModal === 'driveManager'} onClose={closeModal} />
