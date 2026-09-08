@@ -83,6 +83,7 @@ class ProtoFsDocumentsProvider : DocumentsProvider() {
             } catch (e: Exception) {
                 Log.w(TAG, "Database not available immediately on provider creation: ${e.message}")
             }
+            Unit
         }
         return true
     }
@@ -130,8 +131,7 @@ class ProtoFsDocumentsProvider : DocumentsProvider() {
                 row.add(Document.COLUMN_LAST_MODIFIED, System.currentTimeMillis())
                 row.add(
                     Document.COLUMN_FLAGS,
-                    Document.FLAG_DIR_SUPPORTS_CREATE or
-                            Document.FLAG_SUPPORTS_IS_CHILD
+                    Document.FLAG_DIR_SUPPORTS_CREATE
                 )
                 row.add(Document.COLUMN_SIZE, 0L)
             }
@@ -149,8 +149,7 @@ class ProtoFsDocumentsProvider : DocumentsProvider() {
                     Document.COLUMN_FLAGS,
                     Document.FLAG_DIR_SUPPORTS_CREATE or
                             Document.FLAG_SUPPORTS_DELETE or
-                            Document.FLAG_SUPPORTS_RENAME or
-                            Document.FLAG_SUPPORTS_IS_CHILD
+                            Document.FLAG_SUPPORTS_RENAME
                 )
                 row.add(Document.COLUMN_SIZE, 0L)
             }
@@ -169,8 +168,7 @@ class ProtoFsDocumentsProvider : DocumentsProvider() {
                     Document.COLUMN_FLAGS,
                     Document.FLAG_SUPPORTS_WRITE or
                             Document.FLAG_SUPPORTS_DELETE or
-                            Document.FLAG_SUPPORTS_RENAME or
-                            Document.FLAG_SUPPORTS_IS_CHILD
+                            Document.FLAG_SUPPORTS_RENAME
                 )
                 row.add(Document.COLUMN_SIZE, file?.sizeBytes ?: 0L)
             }
@@ -216,8 +214,7 @@ class ProtoFsDocumentsProvider : DocumentsProvider() {
                 Document.COLUMN_FLAGS,
                 Document.FLAG_DIR_SUPPORTS_CREATE or
                         Document.FLAG_SUPPORTS_DELETE or
-                        Document.FLAG_SUPPORTS_RENAME or
-                        Document.FLAG_SUPPORTS_IS_CHILD
+                        Document.FLAG_SUPPORTS_RENAME
             )
             row.add(Document.COLUMN_SIZE, 0L)
         }
@@ -234,8 +231,7 @@ class ProtoFsDocumentsProvider : DocumentsProvider() {
                 Document.COLUMN_FLAGS,
                 Document.FLAG_SUPPORTS_WRITE or
                         Document.FLAG_SUPPORTS_DELETE or
-                        Document.FLAG_SUPPORTS_RENAME or
-                        Document.FLAG_SUPPORTS_IS_CHILD
+                        Document.FLAG_SUPPORTS_RENAME
             )
             row.add(Document.COLUMN_SIZE, file.sizeBytes)
         }
