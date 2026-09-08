@@ -32,7 +32,7 @@ import type { FileNode, FolderNode, VfsNode } from './types';
 import { Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const { session, initSession } = useAuthStore();
+  const { session, isLoading: isAuthLoading, initSession } = useAuthStore();
   const { activeDrive, loadDrives } = useDriveStore();
   const {
     currentParentId,
@@ -317,7 +317,10 @@ export const App: React.FC = () => {
       <FloatingTransferHUD />
 
       {/* Modals */}
-      <AuthModal isOpen={!session || activeModal === 'auth'} onClose={closeModal} />
+      <AuthModal
+        isOpen={(!isAuthLoading && !session) || activeModal === 'auth'}
+        onClose={closeModal}
+      />
       <DriveManagerModal isOpen={activeModal === 'driveManager'} onClose={closeModal} />
       <CreateFolderModal isOpen={activeModal === 'createFolder'} onClose={closeModal} />
       <RenameModal

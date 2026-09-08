@@ -16,15 +16,31 @@ interface AuthState {
   setError: (err: string | null) => void;
 }
 
+const STORAGE_KEY_SESSION = 'protofs_session';
+
+const getInitialSession = (): AuthSession | null => {
+  try {
+    const cached = localStorage.getItem(STORAGE_KEY_SESSION);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+};
+
+const initialSession = getInitialSession();
+
 export const useAuthStore = create<AuthState>((set) => ({
-  session: null,
-  isLoading: true,
+  session: initialSession,
+  isLoading: !initialSession,
   error: null,
   requires2fa: false,
   phoneCodeHash: null,
 
   initSession: async () => {
-    set({ isLoading: true, error: null });
+    // Only set loading true if we don't have a cached session
+    if (!initialSession) {
+      set({ isLoading: true, error: null });
+    }
     try {
       const session = await api.getSessionStatus();
       set({ session, isLoading: false });
