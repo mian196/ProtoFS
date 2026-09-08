@@ -52,7 +52,9 @@ impl TelegramTransport for DynamicTelegramTransport {
     async fn get_me(&self) -> Result<TelegramUser> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto("Not authenticated with Telegram".to_string())),
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
             TransportBackend::Real(r) => r.get_me().await,
         }
     }
@@ -60,7 +62,9 @@ impl TelegramTransport for DynamicTelegramTransport {
     async fn create_channel(&self, title: &str, about: &str) -> Result<ChannelInfo> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto("Not authenticated with Telegram".to_string())),
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
             TransportBackend::Real(r) => r.create_channel(title, about).await,
         }
     }
@@ -68,7 +72,9 @@ impl TelegramTransport for DynamicTelegramTransport {
     async fn list_owned_channels(&self) -> Result<Vec<OwnedChannel>> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto("Not authenticated with Telegram".to_string())),
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
             TransportBackend::Real(r) => r.list_owned_channels().await,
         }
     }
@@ -76,7 +82,9 @@ impl TelegramTransport for DynamicTelegramTransport {
     async fn get_pinned_manifest(&self, channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto("Not authenticated with Telegram".to_string())),
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
             TransportBackend::Real(r) => r.get_pinned_manifest(channel_id).await,
         }
     }
@@ -84,7 +92,9 @@ impl TelegramTransport for DynamicTelegramTransport {
     async fn update_pinned_manifest(&self, channel_id: i64, manifest_bytes: &[u8]) -> Result<i32> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto("Not authenticated with Telegram".to_string())),
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
             TransportBackend::Real(r) => r.update_pinned_manifest(channel_id, manifest_bytes).await,
         }
     }
@@ -98,7 +108,9 @@ impl TelegramTransport for DynamicTelegramTransport {
     ) -> Result<TelegramMessage> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto("Not authenticated with Telegram".to_string())),
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
             TransportBackend::Real(r) => {
                 r.upload_document(channel_id, filename, caption, data).await
             }
@@ -114,7 +126,9 @@ impl TelegramTransport for DynamicTelegramTransport {
     ) -> Result<Vec<u8>> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto("Not authenticated with Telegram".to_string())),
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
             TransportBackend::Real(r) => {
                 r.download_range(channel_id, message_id, offset, limit)
                     .await
@@ -130,7 +144,9 @@ impl TelegramTransport for DynamicTelegramTransport {
     ) -> Result<()> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto("Not authenticated with Telegram".to_string())),
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
             TransportBackend::Real(r) => r.edit_caption(channel_id, message_id, new_caption).await,
         }
     }
@@ -138,7 +154,9 @@ impl TelegramTransport for DynamicTelegramTransport {
     async fn delete_message(&self, channel_id: i64, message_id: i32) -> Result<()> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto("Not authenticated with Telegram".to_string())),
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
             TransportBackend::Real(r) => r.delete_message(channel_id, message_id).await,
         }
     }
@@ -151,7 +169,9 @@ impl TelegramTransport for DynamicTelegramTransport {
     ) -> Result<Vec<TelegramMessage>> {
         let lock = self.backend.read().await;
         match &*lock {
-            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto("Not authenticated with Telegram".to_string())),
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
             TransportBackend::Real(r) => r.scan_messages(channel_id, min_id, limit).await,
         }
     }

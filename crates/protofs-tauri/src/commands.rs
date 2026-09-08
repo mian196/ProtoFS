@@ -208,7 +208,6 @@ pub async fn login_send_code(
         ));
     }
 
-
     let api_id_int: i32 = match api_id.trim().parse() {
         Ok(val) => val,
         Err(_) => {
@@ -284,8 +283,6 @@ async fn finalize_login(
     session
 }
 
-
-
 #[tauri::command]
 pub async fn login_verify_code(
     app: tauri::AppHandle,
@@ -302,8 +299,6 @@ pub async fn login_verify_code(
             "Verification code must be at least 4 digits",
         ));
     }
-
-
 
     // Real Telegram MTProto verification
     match state.auth_client.verify_code(trimmed_code).await {
@@ -379,8 +374,6 @@ pub async fn login_request_qr(
 ) -> Result<CommandResponse<QrStatusResponse>, String> {
     let state = app.state::<AppState>();
 
-
-
     let api_id_int = match api_id.trim().parse::<i32>() {
         Ok(val) => val,
         Err(_) => {
@@ -420,8 +413,6 @@ pub async fn login_check_qr(
     api_hash: String,
 ) -> Result<CommandResponse<QrStatusResponse>, String> {
     let state = app.state::<AppState>();
-
-
 
     match state.auth_client.check_qr_code().await {
         Ok(QrCheckOutcome::Waiting {
@@ -768,8 +759,7 @@ pub async fn remove_account_command(
             registry.active_user_id = Some(next_acc.user_id);
             save_account_registry(&app, &registry);
 
-            if let Some(session_bytes) =
-                load_real_telegram_session_for_user(&app, next_acc.user_id)
+            if let Some(session_bytes) = load_real_telegram_session_for_user(&app, next_acc.user_id)
                 && let Ok(api_id_int) = next_acc.api_id.trim().parse::<i32>()
                 && let Ok(real) = TelegramAuthClient::reconnect_from_session(
                     api_id_int,
@@ -874,8 +864,6 @@ pub async fn delete_secure_secret_command(
         Err(e) => Ok(CommandResponse::err(e.to_string())),
     }
 }
-
-
 
 fn get_drives_file_path(app: &tauri::AppHandle, user_id: i64) -> Option<std::path::PathBuf> {
     if let Ok(dir) = app.path().app_data_dir() {
@@ -2721,9 +2709,7 @@ pub async fn mount_virtual_drive_command(
         let drive_arg = format!("{}:", target_letter);
         let dir_str = mount_dir.to_string_lossy().to_string();
 
-        let _ = silent_command("subst")
-            .args([&drive_arg, "/D"])
-            .output();
+        let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
 
         let res = silent_command("subst")
             .args([&drive_arg, &dir_str])
@@ -2789,9 +2775,7 @@ pub async fn unmount_virtual_drive_command(
     #[cfg(target_os = "windows")]
     {
         let drive_arg = format!("{}:", letter);
-        let _ = silent_command("subst")
-            .args([&drive_arg, "/D"])
-            .output();
+        let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
     }
 
     let mount_dir = get_protofs_mount_dir(&app, &drive_id);

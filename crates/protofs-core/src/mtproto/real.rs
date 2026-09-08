@@ -590,14 +590,16 @@ impl TelegramAuthClient {
 }
 
 impl RealTelegramTransport {
-    async fn upload_bytes_to_telegram(&self, filename: &str, data: &[u8]) -> Result<tl::enums::InputFile> {
+    async fn upload_bytes_to_telegram(
+        &self,
+        filename: &str,
+        data: &[u8],
+    ) -> Result<tl::enums::InputFile> {
         let temp = tempfile::NamedTempFile::new().map_err(ProtoFsError::Io)?;
         std::fs::write(temp.path(), data).map_err(ProtoFsError::Io)?;
-        let uploaded = self
-            .client
-            .upload_file(temp.path())
-            .await
-            .map_err(|e| ProtoFsError::Mtproto(format!("Failed to upload file '{}': {}", filename, e)))?;
+        let uploaded = self.client.upload_file(temp.path()).await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to upload file '{}': {}", filename, e))
+        })?;
         let raw_file: tl::enums::InputFile = uploaded.raw;
         Ok(raw_file)
     }
@@ -788,37 +790,34 @@ impl TelegramTransport for RealTelegramTransport {
         Ok(None)
     }
 
-
-
-    async fn update_pinned_manifest(
-        &self,
-        channel_id: i64,
-        manifest_bytes: &[u8],
-    ) -> Result<i32> {
-        let input_file = self.upload_bytes_to_telegram("manifest.json.zst", manifest_bytes).await?;
+    async fn update_pinned_manifest(&self, channel_id: i64, manifest_bytes: &[u8]) -> Result<i32> {
+        let input_file = self
+            .upload_bytes_to_telegram("manifest.json.zst", manifest_bytes)
+            .await?;
 
         let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
             channel_id,
             access_hash: 0,
         });
 
-        let media = tl::enums::InputMedia::UploadedDocument(tl::types::InputMediaUploadedDocument {
-            file: input_file,
-            mime_type: "application/x-zstd".to_string(),
-            attributes: vec![tl::enums::DocumentAttribute::Filename(
-                tl::types::DocumentAttributeFilename {
-                    file_name: "manifest.json.zst".to_string(),
-                },
-            )],
-            nosound_video: false,
-            force_file: true,
-            ttl_seconds: None,
-            spoiler: false,
-            stickers: None,
-            thumb: None,
-            video_cover: None,
-            video_timestamp: None,
-        });
+        let media =
+            tl::enums::InputMedia::UploadedDocument(tl::types::InputMediaUploadedDocument {
+                file: input_file,
+                mime_type: "application/x-zstd".to_string(),
+                attributes: vec![tl::enums::DocumentAttribute::Filename(
+                    tl::types::DocumentAttributeFilename {
+                        file_name: "manifest.json.zst".to_string(),
+                    },
+                )],
+                nosound_video: false,
+                force_file: true,
+                ttl_seconds: None,
+                spoiler: false,
+                stickers: None,
+                thumb: None,
+                video_cover: None,
+                video_timestamp: None,
+            });
 
         let send_req = tl::functions::messages::SendMedia {
             silent: true,
@@ -892,23 +891,24 @@ impl TelegramTransport for RealTelegramTransport {
             access_hash: 0,
         });
 
-        let media = tl::enums::InputMedia::UploadedDocument(tl::types::InputMediaUploadedDocument {
-            file: input_file,
-            mime_type: "application/octet-stream".to_string(),
-            attributes: vec![tl::enums::DocumentAttribute::Filename(
-                tl::types::DocumentAttributeFilename {
-                    file_name: filename.to_string(),
-                },
-            )],
-            nosound_video: false,
-            force_file: true,
-            ttl_seconds: None,
-            spoiler: false,
-            stickers: None,
-            thumb: None,
-            video_cover: None,
-            video_timestamp: None,
-        });
+        let media =
+            tl::enums::InputMedia::UploadedDocument(tl::types::InputMediaUploadedDocument {
+                file: input_file,
+                mime_type: "application/octet-stream".to_string(),
+                attributes: vec![tl::enums::DocumentAttribute::Filename(
+                    tl::types::DocumentAttributeFilename {
+                        file_name: filename.to_string(),
+                    },
+                )],
+                nosound_video: false,
+                force_file: true,
+                ttl_seconds: None,
+                spoiler: false,
+                stickers: None,
+                thumb: None,
+                video_cover: None,
+                video_timestamp: None,
+            });
 
         let send_req = tl::functions::messages::SendMedia {
             silent: false,
@@ -1055,7 +1055,10 @@ impl TelegramTransport for RealTelegramTransport {
         };
 
         self.client.invoke(&req).await.map_err(|e| {
-            ProtoFsError::Mtproto(format!("Failed to edit caption for message #{}: {}", message_id, e))
+            ProtoFsError::Mtproto(format!(
+                "Failed to edit caption for message #{}: {}",
+                message_id, e
+            ))
         })?;
 
         Ok(())
@@ -1102,7 +1105,10 @@ impl TelegramTransport for RealTelegramTransport {
         };
 
         let res = self.client.invoke(&req).await.map_err(|e| {
-            ProtoFsError::Mtproto(format!("Failed to scan message history for channel {}: {}", channel_id, e))
+            ProtoFsError::Mtproto(format!(
+                "Failed to scan message history for channel {}: {}",
+                channel_id, e
+            ))
         })?;
 
         let raw_messages = match res {
@@ -1135,7 +1141,8 @@ impl TelegramTransport for RealTelegramTransport {
                     document_size: size,
                     document_name: name,
                     is_pinned: m.pinned,
-                    date: chrono::DateTime::from_timestamp(m.date as i64, 0).unwrap_or_else(Utc::now),
+                    date: chrono::DateTime::from_timestamp(m.date as i64, 0)
+                        .unwrap_or_else(Utc::now),
                 });
             }
         }
