@@ -589,6 +589,20 @@ impl TelegramAuthClient {
     }
 }
 
+impl RealTelegramTransport {
+    async fn upload_bytes_to_telegram(&self, filename: &str, data: &[u8]) -> Result<tl::enums::InputFile> {
+        let temp = tempfile::NamedTempFile::new().map_err(ProtoFsError::Io)?;
+        std::fs::write(temp.path(), data).map_err(ProtoFsError::Io)?;
+        let uploaded = self
+            .client
+            .upload_file(temp.path())
+            .await
+            .map_err(|e| ProtoFsError::Mtproto(format!("Failed to upload file '{}': {}", filename, e)))?;
+        let raw_file: tl::enums::InputFile = uploaded.raw;
+        Ok(raw_file)
+    }
+}
+
 #[async_trait]
 impl TelegramTransport for RealTelegramTransport {
     async fn get_me(&self) -> Result<TelegramUser> {
@@ -703,16 +717,165 @@ impl TelegramTransport for RealTelegramTransport {
         Ok(owned)
     }
 
-    async fn get_pinned_manifest(&self, _channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {
+    async fn get_pinned_manifest(&self, channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {
+        let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
+            channel_id,
+            access_hash: 0,
+        });
+
+        let req = tl::functions::messages::Search {
+            peer: input_peer,
+            q: "#protofs_manifest_v1".to_string(),
+            from_id: None,
+            saved_peer_id: None,
+            top_msg_id: None,
+            filter: tl::enums::MessagesFilter::InputMessagesFilterDocument,
+            min_date: 0,
+            max_date: 0,
+            offset_id: 0,
+            add_offset: 0,
+            limit: 10,
+            max_id: 0,
+            min_id: 0,
+            hash: 0,
+            saved_reaction: None,
+        };
+
+        let res = match self.client.invoke(&req).await {
+            Ok(m) => m,
+            Err(_) => return Ok(None),
+        };
+
+        let messages = match res {
+            tl::enums::messages::Messages::Messages(m) => m.messages,
+            tl::enums::messages::Messages::Slice(s) => s.messages,
+            tl::enums::messages::Messages::ChannelMessages(c) => c.messages,
+            tl::enums::messages::Messages::NotModified(_) => Vec::new(),
+        };
+
+        for msg in messages {
+            if let tl::enums::Message::Message(m) = msg {
+                if let Some(tl::enums::MessageMedia::Document(doc_media)) = m.media
+                    && let Some(tl::enums::Document::Document(doc)) = doc_media.document
+                {
+                    let location = tl::enums::InputFileLocation::InputDocumentFileLocation(
+                        tl::types::InputDocumentFileLocation {
+                            id: doc.id,
+                            access_hash: doc.access_hash,
+                            file_reference: doc.file_reference,
+                            thumb_size: String::new(),
+                        },
+                    );
+                    let download_req = tl::functions::upload::GetFile {
+                        precise: true,
+                        cdn_supported: false,
+                        location,
+                        offset: 0,
+                        limit: 1048576 * 4,
+                    };
+                    if let Ok(file_res) = self.client.invoke(&download_req).await {
+                        let bytes = match file_res {
+                            tl::enums::upload::File::File(f) => f.bytes,
+                            tl::enums::upload::File::CdnRedirect(_) => Vec::new(),
+                        };
+                        if !bytes.is_empty() {
+                            return Ok(Some((m.id, bytes)));
+                        }
+                    }
+                }
+            }
+        }
         Ok(None)
     }
 
+
+
     async fn update_pinned_manifest(
         &self,
-        _channel_id: i64,
-        _manifest_bytes: &[u8],
+        channel_id: i64,
+        manifest_bytes: &[u8],
     ) -> Result<i32> {
-        Ok(1)
+        let input_file = self.upload_bytes_to_telegram("manifest.json.zst", manifest_bytes).await?;
+
+        let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
+            channel_id,
+            access_hash: 0,
+        });
+
+        let media = tl::enums::InputMedia::UploadedDocument(tl::types::InputMediaUploadedDocument {
+            file: input_file,
+            mime_type: "application/x-zstd".to_string(),
+            attributes: vec![tl::enums::DocumentAttribute::Filename(
+                tl::types::DocumentAttributeFilename {
+                    file_name: "manifest.json.zst".to_string(),
+                },
+            )],
+            nosound_video: false,
+            force_file: true,
+            ttl_seconds: None,
+            spoiler: false,
+            stickers: None,
+            thumb: None,
+            video_cover: None,
+            video_timestamp: None,
+        });
+
+        let send_req = tl::functions::messages::SendMedia {
+            silent: true,
+            background: false,
+            clear_draft: false,
+            noforwards: false,
+            update_stickersets_order: false,
+            invert_media: false,
+            peer: input_peer.clone(),
+            reply_to: None,
+            media,
+            message: "#protofs_manifest_v1".to_string(),
+            random_id: rand::random(),
+            reply_markup: None,
+            entities: None,
+            schedule_date: None,
+            send_as: None,
+            quick_reply_shortcut: None,
+            effect: None,
+            allow_paid_floodskip: false,
+            allow_paid_stars: None,
+            schedule_repeat_period: None,
+            suggested_post: None,
+        };
+
+        let updates = self.client.invoke(&send_req).await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to send pinned manifest message: {}", e))
+        })?;
+
+        let msg_id = match updates {
+            tl::enums::Updates::Updates(u) => u
+                .updates
+                .into_iter()
+                .find_map(|upd| match upd {
+                    tl::enums::Update::NewMessage(nm) => {
+                        if let tl::enums::Message::Message(m) = nm.message {
+                            Some(m.id)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                })
+                .unwrap_or(1),
+            _ => 1,
+        };
+
+        let pin_req = tl::functions::messages::UpdatePinnedMessage {
+            silent: true,
+            unpin: false,
+            pm_oneside: false,
+            peer: input_peer,
+            id: msg_id,
+        };
+        let _ = self.client.invoke(&pin_req).await;
+
+        Ok(msg_id)
     }
 
     async fn upload_document(
@@ -722,8 +885,79 @@ impl TelegramTransport for RealTelegramTransport {
         caption: &str,
         data: &[u8],
     ) -> Result<TelegramMessage> {
+        let input_file = self.upload_bytes_to_telegram(filename, data).await?;
+
+        let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
+            channel_id,
+            access_hash: 0,
+        });
+
+        let media = tl::enums::InputMedia::UploadedDocument(tl::types::InputMediaUploadedDocument {
+            file: input_file,
+            mime_type: "application/octet-stream".to_string(),
+            attributes: vec![tl::enums::DocumentAttribute::Filename(
+                tl::types::DocumentAttributeFilename {
+                    file_name: filename.to_string(),
+                },
+            )],
+            nosound_video: false,
+            force_file: true,
+            ttl_seconds: None,
+            spoiler: false,
+            stickers: None,
+            thumb: None,
+            video_cover: None,
+            video_timestamp: None,
+        });
+
+        let send_req = tl::functions::messages::SendMedia {
+            silent: false,
+            background: false,
+            clear_draft: false,
+            noforwards: false,
+            update_stickersets_order: false,
+            invert_media: false,
+            peer: input_peer,
+            reply_to: None,
+            media,
+            message: caption.to_string(),
+            random_id: rand::random(),
+            reply_markup: None,
+            entities: None,
+            schedule_date: None,
+            send_as: None,
+            quick_reply_shortcut: None,
+            effect: None,
+            allow_paid_floodskip: false,
+            allow_paid_stars: None,
+            schedule_repeat_period: None,
+            suggested_post: None,
+        };
+
+        let updates = self.client.invoke(&send_req).await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to send document message: {}", e))
+        })?;
+
+        let msg_id = match updates {
+            tl::enums::Updates::Updates(u) => u
+                .updates
+                .into_iter()
+                .find_map(|upd| match upd {
+                    tl::enums::Update::NewMessage(nm) => {
+                        if let tl::enums::Message::Message(m) = nm.message {
+                            Some(m.id)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                })
+                .unwrap_or(1),
+            _ => 1,
+        };
+
         Ok(TelegramMessage {
-            id: 1,
+            id: msg_id,
             channel_id,
             caption: Some(caption.to_string()),
             document_size: Some(data.len() as u64),
@@ -735,33 +969,177 @@ impl TelegramTransport for RealTelegramTransport {
 
     async fn download_range(
         &self,
-        _channel_id: i64,
-        _message_id: i32,
-        _offset: u64,
-        _limit: u32,
+        channel_id: i64,
+        message_id: i32,
+        offset: u64,
+        limit: u32,
     ) -> Result<Vec<u8>> {
+        let get_msg_req = tl::functions::channels::GetMessages {
+            channel: tl::enums::InputChannel::Channel(tl::types::InputChannel {
+                channel_id,
+                access_hash: 0,
+            }),
+            id: vec![tl::enums::InputMessage::Id(tl::types::InputMessageId {
+                id: message_id,
+            })],
+        };
+
+        let res = self.client.invoke(&get_msg_req).await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to fetch message #{}: {}", message_id, e))
+        })?;
+
+        let messages = match res {
+            tl::enums::messages::Messages::Messages(m) => m.messages,
+            tl::enums::messages::Messages::Slice(s) => s.messages,
+            tl::enums::messages::Messages::ChannelMessages(c) => c.messages,
+            tl::enums::messages::Messages::NotModified(_) => Vec::new(),
+        };
+
+        for msg in messages {
+            if let tl::enums::Message::Message(m) = msg
+                && let Some(tl::enums::MessageMedia::Document(doc_media)) = m.media
+                && let Some(tl::enums::Document::Document(doc)) = doc_media.document
+            {
+                let location = tl::enums::InputFileLocation::InputDocumentFileLocation(
+                    tl::types::InputDocumentFileLocation {
+                        id: doc.id,
+                        access_hash: doc.access_hash,
+                        file_reference: doc.file_reference,
+                        thumb_size: String::new(),
+                    },
+                );
+                let download_req = tl::functions::upload::GetFile {
+                    precise: true,
+                    cdn_supported: false,
+                    location,
+                    offset: offset as i64,
+                    limit: limit as i32,
+                };
+                if let Ok(file_res) = self.client.invoke(&download_req).await {
+                    let bytes = match file_res {
+                        tl::enums::upload::File::File(f) => f.bytes,
+                        tl::enums::upload::File::CdnRedirect(_) => Vec::new(),
+                    };
+                    return Ok(bytes);
+                }
+            }
+        }
+
         Ok(Vec::new())
     }
 
     async fn edit_caption(
         &self,
-        _channel_id: i64,
-        _message_id: i32,
-        _new_caption: &str,
+        channel_id: i64,
+        message_id: i32,
+        new_caption: &str,
     ) -> Result<()> {
+        let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
+            channel_id,
+            access_hash: 0,
+        });
+
+        let req = tl::functions::messages::EditMessage {
+            no_webpage: true,
+            invert_media: false,
+            peer: input_peer,
+            id: message_id,
+            message: Some(new_caption.to_string()),
+            media: None,
+            reply_markup: None,
+            entities: None,
+            schedule_date: None,
+            quick_reply_shortcut_id: None,
+            rich_message: None,
+            schedule_repeat_period: None,
+        };
+
+        self.client.invoke(&req).await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to edit caption for message #{}: {}", message_id, e))
+        })?;
+
         Ok(())
     }
 
-    async fn delete_message(&self, _channel_id: i64, _message_id: i32) -> Result<()> {
+    async fn delete_message(&self, channel_id: i64, message_id: i32) -> Result<()> {
+        let input_channel = tl::enums::InputChannel::Channel(tl::types::InputChannel {
+            channel_id,
+            access_hash: 0,
+        });
+
+        let req = tl::functions::channels::DeleteMessages {
+            channel: input_channel,
+            id: vec![message_id],
+        };
+
+        self.client.invoke(&req).await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to delete message #{}: {}", message_id, e))
+        })?;
+
         Ok(())
     }
 
     async fn scan_messages(
         &self,
-        _channel_id: i64,
-        _min_id: i32,
-        _limit: usize,
+        channel_id: i64,
+        min_id: i32,
+        limit: usize,
     ) -> Result<Vec<TelegramMessage>> {
-        Ok(Vec::new())
+        let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
+            channel_id,
+            access_hash: 0,
+        });
+
+        let req = tl::functions::messages::GetHistory {
+            peer: input_peer,
+            offset_id: 0,
+            offset_date: 0,
+            add_offset: 0,
+            limit: limit as i32,
+            max_id: 0,
+            min_id,
+            hash: 0,
+        };
+
+        let res = self.client.invoke(&req).await.map_err(|e| {
+            ProtoFsError::Mtproto(format!("Failed to scan message history for channel {}: {}", channel_id, e))
+        })?;
+
+        let raw_messages = match res {
+            tl::enums::messages::Messages::Messages(m) => m.messages,
+            tl::enums::messages::Messages::Slice(s) => s.messages,
+            tl::enums::messages::Messages::ChannelMessages(c) => c.messages,
+            tl::enums::messages::Messages::NotModified(_) => Vec::new(),
+        };
+
+        let mut result = Vec::new();
+        for msg in raw_messages {
+            if let tl::enums::Message::Message(m) = msg {
+                let mut size = None;
+                let mut name = None;
+                if let Some(tl::enums::MessageMedia::Document(doc_media)) = &m.media
+                    && let Some(tl::enums::Document::Document(doc)) = &doc_media.document
+                {
+                    size = Some(doc.size as u64);
+                    for attr in &doc.attributes {
+                        if let tl::enums::DocumentAttribute::Filename(f) = attr {
+                            name = Some(f.file_name.clone());
+                        }
+                    }
+                }
+
+                result.push(TelegramMessage {
+                    id: m.id,
+                    channel_id,
+                    caption: m.message.into(),
+                    document_size: size,
+                    document_name: name,
+                    is_pinned: m.pinned,
+                    date: chrono::DateTime::from_timestamp(m.date as i64, 0).unwrap_or_else(Utc::now),
+                });
+            }
+        }
+
+        Ok(result)
     }
 }
