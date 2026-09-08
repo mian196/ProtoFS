@@ -920,17 +920,17 @@ fn load_user_drives(app: &tauri::AppHandle, user_id: i64) -> Vec<DriveMetadata> 
         && let Ok(content) = std::fs::read(&path)
     {
         // Try encrypted format first, fall back to plaintext for migration
-        if let Ok(decrypted) = protofs_core::crypto::unprotect_secret(&content) {
-            if let Ok(drives) = serde_json::from_slice::<Vec<DriveMetadata>>(&decrypted) {
-                return drives;
-            }
+        if let Ok(decrypted) = protofs_core::crypto::unprotect_secret(&content)
+            && let Ok(drives) = serde_json::from_slice::<Vec<DriveMetadata>>(&decrypted)
+        {
+            return drives;
         }
-        if let Ok(s) = std::str::from_utf8(&content) {
-            if let Ok(drives) = serde_json::from_str::<Vec<DriveMetadata>>(s) {
-                // Migrate to encrypted format
-                save_user_drives(app, user_id, &drives);
-                return drives;
-            }
+        if let Ok(s) = std::str::from_utf8(&content)
+            && let Ok(drives) = serde_json::from_str::<Vec<DriveMetadata>>(s)
+        {
+            // Migrate to encrypted format
+            save_user_drives(app, user_id, &drives);
+            return drives;
         }
     }
     Vec::new()
