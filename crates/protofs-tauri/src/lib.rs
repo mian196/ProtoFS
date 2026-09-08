@@ -25,7 +25,7 @@ pub fn run() {
             let cache = CacheDatabase::open(&db_path).unwrap_or_else(|_| {
                 CacheDatabase::open_in_memory().expect("failed to open sqlite cache")
             });
-            let transport = DynamicTelegramTransport::new_mock();
+            let transport = DynamicTelegramTransport::new_unauthenticated();
             let engine = Arc::new(SyncEngine::new(Arc::new(transport.clone()), cache.clone()));
             let auth_client = Arc::new(TelegramAuthClient::new());
 

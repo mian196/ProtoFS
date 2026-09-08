@@ -9,7 +9,7 @@ pub mod vfs;
 pub use cache::{CacheDatabase, SearchResult, SyncPairEntry};
 pub use error::{ProtoFsError, Result};
 pub use manifest::ManifestSnapshot;
-pub use mtproto::{MockTelegramTransport, ParsedCaption, TelegramTransport};
+pub use mtproto::{DynamicTelegramTransport, ParsedCaption, TelegramTransport};
 pub use sync::SyncEngine;
 pub use vfs::{FileNode, FolderNode, ROOT_PARENT_ID, VfsNode, VfsTree};
 
@@ -186,7 +186,7 @@ mod tests {
     async fn test_sync_engine_end_to_end() {
         use std::sync::Arc;
 
-        let transport = Arc::new(MockTelegramTransport::new());
+        let transport = Arc::new(DynamicTelegramTransport::new_unauthenticated());
         let db = CacheDatabase::open_in_memory().unwrap();
         let engine = SyncEngine::new(transport.clone(), db);
 

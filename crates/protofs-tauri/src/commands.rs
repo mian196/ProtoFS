@@ -143,8 +143,6 @@ pub struct AuthSession {
     pub first_name: String,
     pub user_id: i64,
     pub active_drive_id: String,
-    #[serde(default)]
-    pub is_demo: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -210,14 +208,6 @@ pub async fn login_send_code(
         ));
     }
 
-    // Check if demo mode
-    if trimmed_phone == "demo"
-        || api_id.trim().to_lowercase() == "demo"
-        || trimmed_phone.starts_with("+1555")
-    {
-        let code_hash = format!("hash_{:x}", md5_hash(trimmed_phone));
-        return Ok(CommandResponse::ok(code_hash));
-    }
 
     let api_id_int: i32 = match api_id.trim().parse() {
         Ok(val) => val,
@@ -260,7 +250,6 @@ async fn finalize_login(
         first_name: tg_user.first_name,
         user_id: tg_user.id,
         active_drive_id: String::new(),
-        is_demo: false,
     };
 
     save_real_telegram_session_for_user(app, tg_user.id, session_bytes);
@@ -295,47 +284,7 @@ async fn finalize_login(
     session
 }
 
-async fn finalize_demo_login(
-    app: &tauri::AppHandle,
-    state: &AppState,
-    phone: String,
-    api_id: String,
-    api_hash: String,
-) -> AuthSession {
-    let session = AuthSession {
-        is_authenticated: true,
-        phone,
-        api_id,
-        api_hash,
-        username: Some("protofs_user".to_string()),
-        first_name: "ProtoFS User".to_string(),
-        user_id: 11100000,
-        active_drive_id: "personal".to_string(),
-        is_demo: true,
-    };
 
-    let mut registry = load_account_registry(app);
-    if let Some(pos) = registry
-        .accounts
-        .iter()
-        .position(|a| a.user_id == session.user_id)
-    {
-        registry.accounts[pos] = session.clone();
-    } else {
-        registry.accounts.push(session.clone());
-    }
-    registry.active_user_id = Some(session.user_id);
-    save_account_registry(app, &registry);
-
-    let mut lock = state.session.write().await;
-    *lock = Some(session.clone());
-    let mut drives_lock = state.drives.write().await;
-    *drives_lock = get_demo_drives();
-    drop(drives_lock);
-
-    save_auth_session(app, &session);
-    session
-}
 
 #[tauri::command]
 pub async fn login_verify_code(
@@ -354,20 +303,7 @@ pub async fn login_verify_code(
         ));
     }
 
-    // Check if demo login
-    if phone.trim() == "demo"
-        || api_id.trim().to_lowercase() == "demo"
-        || phone.trim().starts_with("+1555")
-        || phone.trim().starts_with("+1 (202) 555")
-        || trimmed_code == "12345"
-    {
-        let session = finalize_demo_login(&app, &state, phone, api_id, api_hash).await;
-        return Ok(CommandResponse::ok(AuthResponse {
-            session: Some(session),
-            requires_2fa: false,
-            hint: None,
-        }));
-    }
+
 
     // Real Telegram MTProto verification
     match state.auth_client.verify_code(trimmed_code).await {
@@ -443,15 +379,7 @@ pub async fn login_request_qr(
 ) -> Result<CommandResponse<QrStatusResponse>, String> {
     let state = app.state::<AppState>();
 
-    if api_id.trim().to_lowercase() == "demo" {
-        return Ok(CommandResponse::ok(QrStatusResponse {
-            token_url: "tg://login?token=demo_token_protofs_quick_test".to_string(),
-            expires_in_sec: 120,
-            status: "waiting_scan".to_string(),
-            session: None,
-            hint: None,
-        }));
-    }
+
 
     let api_id_int = match api_id.trim().parse::<i32>() {
         Ok(val) => val,
@@ -493,15 +421,7 @@ pub async fn login_check_qr(
 ) -> Result<CommandResponse<QrStatusResponse>, String> {
     let state = app.state::<AppState>();
 
-    if api_id.trim().to_lowercase() == "demo" {
-        return Ok(CommandResponse::ok(QrStatusResponse {
-            token_url: "tg://login?token=demo_token_protofs_quick_test".to_string(),
-            expires_in_sec: 120,
-            status: "waiting_scan".to_string(),
-            session: None,
-            hint: None,
-        }));
-    }
+
 
     match state.auth_client.check_qr_code().await {
         Ok(QrCheckOutcome::Waiting {
@@ -753,25 +673,19 @@ pub async fn get_session_status(
                 .find(|a| a.user_id == active_id)
                 .cloned()
         {
-            if account.is_demo {
-                state.transport.switch_to_mock().await;
-                let mut drives_lock = state.drives.write().await;
-                *drives_lock = get_demo_drives();
-            } else {
-                if let Some(session_bytes) = load_real_telegram_session_for_user(&app, active_id)
-                    && let Ok(api_id_int) = account.api_id.trim().parse::<i32>()
-                    && let Ok(real) = TelegramAuthClient::reconnect_from_session(
-                        api_id_int,
-                        account.api_hash.trim(),
-                        &session_bytes,
-                    )
-                    .await
-                {
-                    state.transport.switch_to_real(real).await;
-                }
-                let mut drives_lock = state.drives.write().await;
-                *drives_lock = load_user_drives(&app, account.user_id);
+            if let Some(session_bytes) = load_real_telegram_session_for_user(&app, active_id)
+                && let Ok(api_id_int) = account.api_id.trim().parse::<i32>()
+                && let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                    api_id_int,
+                    account.api_hash.trim(),
+                    &session_bytes,
+                )
+                .await
+            {
+                state.transport.switch_to_real(real).await;
             }
+            let mut drives_lock = state.drives.write().await;
+            *drives_lock = load_user_drives(&app, account.user_id);
             *lock = Some(account);
         }
     }
@@ -805,25 +719,19 @@ pub async fn switch_account_command(
     registry.active_user_id = Some(user_id);
     save_account_registry(&app, &registry);
 
-    if target_account.is_demo {
-        state.transport.switch_to_mock().await;
-        let mut drives_lock = state.drives.write().await;
-        *drives_lock = get_demo_drives();
-    } else {
-        if let Some(session_bytes) = load_real_telegram_session_for_user(&app, user_id)
-            && let Ok(api_id_int) = target_account.api_id.trim().parse::<i32>()
-            && let Ok(real) = TelegramAuthClient::reconnect_from_session(
-                api_id_int,
-                target_account.api_hash.trim(),
-                &session_bytes,
-            )
-            .await
-        {
-            state.transport.switch_to_real(real).await;
-        }
-        let mut drives_lock = state.drives.write().await;
-        *drives_lock = load_user_drives(&app, user_id);
+    if let Some(session_bytes) = load_real_telegram_session_for_user(&app, user_id)
+        && let Ok(api_id_int) = target_account.api_id.trim().parse::<i32>()
+        && let Ok(real) = TelegramAuthClient::reconnect_from_session(
+            api_id_int,
+            target_account.api_hash.trim(),
+            &session_bytes,
+        )
+        .await
+    {
+        state.transport.switch_to_real(real).await;
     }
+    let mut drives_lock = state.drives.write().await;
+    *drives_lock = load_user_drives(&app, user_id);
 
     let mut lock = state.session.write().await;
     *lock = Some(target_account.clone());
@@ -860,26 +768,20 @@ pub async fn remove_account_command(
             registry.active_user_id = Some(next_acc.user_id);
             save_account_registry(&app, &registry);
 
-            if next_acc.is_demo {
-                state.transport.switch_to_mock().await;
-                let mut drives_lock = state.drives.write().await;
-                *drives_lock = get_demo_drives();
-            } else {
-                if let Some(session_bytes) =
-                    load_real_telegram_session_for_user(&app, next_acc.user_id)
-                    && let Ok(api_id_int) = next_acc.api_id.trim().parse::<i32>()
-                    && let Ok(real) = TelegramAuthClient::reconnect_from_session(
-                        api_id_int,
-                        next_acc.api_hash.trim(),
-                        &session_bytes,
-                    )
-                    .await
-                {
-                    state.transport.switch_to_real(real).await;
-                }
-                let mut drives_lock = state.drives.write().await;
-                *drives_lock = load_user_drives(&app, next_acc.user_id);
+            if let Some(session_bytes) =
+                load_real_telegram_session_for_user(&app, next_acc.user_id)
+                && let Ok(api_id_int) = next_acc.api_id.trim().parse::<i32>()
+                && let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                    api_id_int,
+                    next_acc.api_hash.trim(),
+                    &session_bytes,
+                )
+                .await
+            {
+                state.transport.switch_to_real(real).await;
             }
+            let mut drives_lock = state.drives.write().await;
+            *drives_lock = load_user_drives(&app, next_acc.user_id);
 
             let mut lock = state.session.write().await;
             *lock = Some(next_acc.clone());
@@ -893,7 +795,6 @@ pub async fn remove_account_command(
             *lock = None;
             let mut drives_lock = state.drives.write().await;
             drives_lock.clear();
-            state.transport.switch_to_mock().await;
 
             if let (Some(enc_path), Some(legacy_path)) = get_session_paths(&app) {
                 if enc_path.exists() {
@@ -928,7 +829,6 @@ pub async fn logout_command(app: tauri::AppHandle) -> Result<CommandResponse<()>
         *lock = None;
         let mut drives_lock = state.drives.write().await;
         drives_lock.clear();
-        state.transport.switch_to_mock().await;
     }
 
     Ok(CommandResponse::ok(()))
@@ -975,34 +875,7 @@ pub async fn delete_secure_secret_command(
     }
 }
 
-pub fn get_demo_drives() -> Vec<DriveMetadata> {
-    vec![
-        DriveMetadata {
-            id: "personal".to_string(),
-            name: "Personal Drive".to_string(),
-            channel_id: -1001928472910,
-            pinned_manifest_msg_id: Some(104),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        },
-        DriveMetadata {
-            id: "work".to_string(),
-            name: "Work Archive".to_string(),
-            channel_id: -1001982736192,
-            pinned_manifest_msg_id: Some(88),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        },
-        DriveMetadata {
-            id: "media".to_string(),
-            name: "Cinema Vault".to_string(),
-            channel_id: -1001837492817,
-            pinned_manifest_msg_id: Some(210),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        },
-    ]
-}
+
 
 fn get_drives_file_path(app: &tauri::AppHandle, user_id: i64) -> Option<std::path::PathBuf> {
     if let Ok(dir) = app.path().app_data_dir() {
@@ -1046,18 +919,8 @@ pub async fn get_drives_command(
 ) -> Result<CommandResponse<Vec<DriveMetadata>>, String> {
     let state = app.state::<AppState>();
     let session_guard = state.session.read().await;
-    let (is_demo, user_id) = match session_guard.as_ref() {
-        Some(s) => (s.is_demo, Some(s.user_id)),
-        None => (false, None),
-    };
+    let user_id = session_guard.as_ref().map(|s| s.user_id);
     drop(session_guard);
-
-    if is_demo {
-        let drives = get_demo_drives();
-        let mut state_drives = state.drives.write().await;
-        *state_drives = drives.clone();
-        return Ok(CommandResponse::ok(drives));
-    }
 
     if let Some(uid) = user_id {
         let drives = load_user_drives(&app, uid)
@@ -1088,9 +951,7 @@ pub async fn delete_drive_command(
     let mut drives = state.drives.write().await;
     drives.retain(|d| d.id != drive_id);
     let session_guard = state.session.read().await;
-    if let Some(ref s) = *session_guard
-        && !s.is_demo
-    {
+    if let Some(ref s) = *session_guard {
         save_user_drives(&app, s.user_id, &drives);
     }
     drop(session_guard);
@@ -1134,9 +995,7 @@ pub async fn create_drive_command(
     drives.push(new_drive.clone());
 
     let session_guard = state.session.read().await;
-    if let Some(ref s) = *session_guard
-        && !s.is_demo
-    {
+    if let Some(ref s) = *session_guard {
         save_user_drives(&app, s.user_id, &drives);
     }
     drop(session_guard);
@@ -1201,9 +1060,7 @@ pub async fn adopt_channel_as_drive_command(
         drives.push(new_drive.clone());
 
         let session_guard = state.session.read().await;
-        if let Some(ref s) = *session_guard
-            && !s.is_demo
-        {
+        if let Some(ref s) = *session_guard {
             save_user_drives(&app, s.user_id, &drives);
         }
         drop(session_guard);

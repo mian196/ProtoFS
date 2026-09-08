@@ -47,12 +47,10 @@ class ProtoFsApp {
     if (!this.session || !this.session.is_authenticated) {
       this.renderLoginScreen();
     } else {
-      if (!this.session.is_demo) {
-        localStorage.removeItem('protofs_folders');
-        localStorage.removeItem('protofs_files');
-        localStorage.removeItem('protofs_drives');
-      }
-      this.activeDriveId = this.session.active_drive_id || (this.session.is_demo ? 'personal' : '');
+      localStorage.removeItem('protofs_folders');
+      localStorage.removeItem('protofs_files');
+      localStorage.removeItem('protofs_drives');
+      this.activeDriveId = this.session.active_drive_id || `drive_${this.session.user_id}`;
       await this.initWorkspace();
     }
   }
@@ -182,10 +180,7 @@ class ProtoFsApp {
                 </div>
               </div>
 
-              <button type="button" class="demo-credentials-btn" id="btnQuickDemo">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                <span>Use Quick Test / Demo Mode</span>
-              </button>
+
 
               <div class="form-group">
                 <label class="form-label">Telegram Phone Number</label>
@@ -233,15 +228,10 @@ class ProtoFsApp {
                   <a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org ↗</a>
                 </label>
                 <div class="form-row">
-                  <input type="text" class="form-input" id="inputApiId" placeholder="API ID (e.g. 20401928)" value="${escapeHtml(this.loginApiId || '20491820')}" required>
-                  <input type="password" class="form-input" id="inputApiHash" placeholder="API Hash (e.g. 3a9f...)" value="${escapeHtml(this.loginApiHash || 'e8b7c6d5a4f3210987654321fedcba09')}" required>
+                  <input type="text" class="form-input" id="inputApiId" placeholder="API ID (e.g. 20401928)" value="${escapeHtml(this.loginApiId)}" required>
+                  <input type="password" class="form-input" id="inputApiHash" placeholder="API Hash (e.g. 3a9f...)" value="${escapeHtml(this.loginApiHash)}" required>
                 </div>
               </div>
-
-              <button type="button" class="demo-credentials-btn" id="btnQuickDemo" style="width: 100%;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                <span>Use Quick Test / Demo Mode</span>
-              </button>
 
               <div class="qr-preview-box" id="qrPreviewBox">
                 <canvas id="qrCanvas"></canvas>
@@ -305,46 +295,7 @@ class ProtoFsApp {
       });
     }
 
-    const btnQuickDemo = document.getElementById('btnQuickDemo');
-    if (btnQuickDemo) {
-      btnQuickDemo.addEventListener('click', async () => {
-        const idEl = document.getElementById('inputApiId') as HTMLInputElement;
-        const hashEl = document.getElementById('inputApiHash') as HTMLInputElement;
-        const phoneEl = document.getElementById('inputPhone') as HTMLInputElement;
-        if (idEl) idEl.value = '20491820';
-        if (hashEl) hashEl.value = 'e8b7c6d5a4f3210987654321fedcba09';
-        if (phoneEl) phoneEl.value = '+1 (202) 555-0196';
 
-        this.loginApiId = '20491820';
-        this.loginApiHash = 'e8b7c6d5a4f3210987654321fedcba09';
-        this.loginPhone = '+1 (202) 555-0196';
-
-        if (this.authMethod === 'qr') {
-          // In QR mode, Quick Demo logs in directly with demo mode
-          try {
-            const res = await this.api.loginVerifyCode(
-              '+1 (202) 555-0196',
-              'demo',
-              'demo',
-              '12345'
-            );
-            if (res.session) {
-              this.session = res.session;
-              this.isAddingAccount = false;
-              this.stopQrPolling();
-              this.activeDriveId = 'personal';
-              await this.initWorkspace();
-            }
-          } catch (err: any) {
-            await this.showAlert({
-              title: 'Demo Mode Failed',
-              message: `Demo login error: ${err.message || err}`,
-              type: 'error',
-            });
-          }
-        }
-      });
-    }
 
     const formCredentials = document.getElementById('formCredentials');
     if (formCredentials) {
@@ -422,12 +373,10 @@ class ProtoFsApp {
           if (res.session) {
             this.session = res.session;
             this.isAddingAccount = false;
-            if (!res.session.is_demo) {
-              localStorage.removeItem('protofs_folders');
-              localStorage.removeItem('protofs_files');
-              localStorage.removeItem('protofs_drives');
-            }
-            this.activeDriveId = res.session.active_drive_id || (res.session.is_demo ? 'personal' : `drive_${res.session.user_id}`);
+            localStorage.removeItem('protofs_folders');
+            localStorage.removeItem('protofs_files');
+            localStorage.removeItem('protofs_drives');
+            this.activeDriveId = res.session.active_drive_id || `drive_${res.session.user_id}`;
             await this.initWorkspace();
           }
         } catch (err: any) {
@@ -457,12 +406,10 @@ class ProtoFsApp {
             this.session = res.session;
             this.isAddingAccount = false;
             this.loginStep = 'credentials';
-            if (!res.session.is_demo) {
-              localStorage.removeItem('protofs_folders');
-              localStorage.removeItem('protofs_files');
-              localStorage.removeItem('protofs_drives');
-            }
-            this.activeDriveId = res.session.active_drive_id || (res.session.is_demo ? 'personal' : `drive_${res.session.user_id}`);
+            localStorage.removeItem('protofs_folders');
+            localStorage.removeItem('protofs_files');
+            localStorage.removeItem('protofs_drives');
+            this.activeDriveId = res.session.active_drive_id || `drive_${res.session.user_id}`;
             await this.initWorkspace();
           }
         } catch (err: any) {
@@ -480,8 +427,8 @@ class ProtoFsApp {
     this.stopQrPolling();
     const idEl = document.getElementById('inputApiId') as HTMLInputElement;
     const hashEl = document.getElementById('inputApiHash') as HTMLInputElement;
-    const apiId = idEl ? idEl.value.trim() : this.loginApiId || '20491820';
-    const apiHash = hashEl ? hashEl.value.trim() : this.loginApiHash || 'e8b7c6d5a4f3210987654321fedcba09';
+    const apiId = idEl ? idEl.value.trim() : this.loginApiId;
+    const apiHash = hashEl ? hashEl.value.trim() : this.loginApiHash;
     this.loginApiId = apiId;
     this.loginApiHash = apiHash;
 
@@ -511,12 +458,10 @@ class ProtoFsApp {
             this.session = check.session;
             this.isAddingAccount = false;
             this.loginStep = 'credentials';
-            if (!check.session.is_demo) {
-              localStorage.removeItem('protofs_folders');
-              localStorage.removeItem('protofs_files');
-              localStorage.removeItem('protofs_drives');
-            }
-            this.activeDriveId = check.session.active_drive_id || (check.session.is_demo ? 'personal' : `drive_${check.session.user_id}`);
+            localStorage.removeItem('protofs_folders');
+            localStorage.removeItem('protofs_files');
+            localStorage.removeItem('protofs_drives');
+            this.activeDriveId = check.session.active_drive_id || `drive_${check.session.user_id}`;
             await this.initWorkspace();
           }
         } catch (pollErr) {
@@ -1887,7 +1832,7 @@ class ProtoFsApp {
         try {
           const newSession = await this.api.switchAccount(uid);
           this.session = newSession;
-          this.activeDriveId = newSession.active_drive_id || (newSession.is_demo ? 'personal' : '');
+          this.activeDriveId = newSession.active_drive_id || `drive_${newSession.user_id}`;
           this.currentFolderId = 'root';
           this.activeFilter = null;
           await this.initWorkspace();
@@ -1921,7 +1866,7 @@ class ProtoFsApp {
           const nextSession = await this.api.removeAccount(uid);
           if (nextSession) {
             this.session = nextSession;
-            this.activeDriveId = nextSession.active_drive_id || (nextSession.is_demo ? 'personal' : '');
+            this.activeDriveId = nextSession.active_drive_id || `drive_${nextSession.user_id}`;
             this.currentFolderId = 'root';
             this.activeFilter = null;
             await this.initWorkspace();
@@ -1963,7 +1908,7 @@ class ProtoFsApp {
           const nextSession = await this.api.removeAccount(this.session.user_id);
           if (nextSession) {
             this.session = nextSession;
-            this.activeDriveId = nextSession.active_drive_id || (nextSession.is_demo ? 'personal' : `drive_${nextSession.user_id}`);
+            this.activeDriveId = nextSession.active_drive_id || `drive_${nextSession.user_id}`;
             this.currentFolderId = 'root';
             this.activeFilter = null;
             await this.initWorkspace();

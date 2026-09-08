@@ -123,7 +123,6 @@ export class ProtoFsApi {
       first_name: 'ProtoFS User',
       user_id: 11100000,
       active_drive_id: 'personal',
-      is_demo: true,
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(session));
     return { session, requires_2fa: false };
@@ -162,7 +161,6 @@ export class ProtoFsApi {
       first_name: 'ProtoFS User',
       user_id: 11100000,
       active_drive_id: 'personal',
-      is_demo: true,
     };
     localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(session));
     return { session, requires_2fa: false };
@@ -325,22 +323,6 @@ export class ProtoFsApi {
       }
     }
 
-    const session = await this.getSessionStatus();
-    if (session && !session.is_demo) {
-      const cached = localStorage.getItem(STORAGE_KEY_DRIVES);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) {
-            return parsed.filter((d: any) => !(d.channel_id === 0 && d.name === 'ProtoFS Cloud Drive'));
-          }
-        } catch {
-          // ignore
-        }
-      }
-      return [];
-    }
-
     const cached = localStorage.getItem(STORAGE_KEY_DRIVES);
     if (cached) {
       try {
@@ -352,29 +334,6 @@ export class ProtoFsApi {
         // ignore
       }
     }
-
-    if (session?.is_demo) {
-      const defaultDrives: DriveMetadata[] = [
-        {
-          id: 'personal',
-          name: 'Personal Drive',
-          channel_id: -1001928472910,
-          pinned_manifest_msg_id: 104,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: 'work',
-          name: 'Work Archive',
-          channel_id: -1001982736192,
-          pinned_manifest_msg_id: 88,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ];
-      return defaultDrives;
-    }
-
     return [];
   }
 
@@ -530,14 +489,7 @@ export class ProtoFsApi {
       }
     }
 
-    const session = await this.getSessionStatus();
-    // Real account should never see mock demo files
-    if (session && !session.is_demo) {
-      return { folders: [], files: [] };
-    }
-
-    // Local state fallback with rich realistic data for demo
-    return this.getLocalDriveData(driveId);
+    return { folders: [], files: [] };
   }
 
   async createFolder(driveId: string, parentId: string, name: string): Promise<FolderNode> {
@@ -1891,210 +1843,7 @@ export class ProtoFsApi {
     return cached ? JSON.parse(cached) : [];
   }
 
-  private getLocalDriveData(driveId: string): { folders: FolderNode[]; files: FileNode[] } {
-    let folders = this.getStoredFolders();
-    let files = this.getStoredFiles();
 
-    if (folders.length === 0 && files.length === 0) {
-      folders = [
-        { id: 'f_docs', drive_id: 'personal', parent_id: 'root', name: 'Personal Documents', count: '14 files', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-        { id: 'f_media', drive_id: 'personal', parent_id: 'root', name: 'Cinema Vault', count: '8 files', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-        { id: 'f_code', drive_id: 'personal', parent_id: 'root', name: 'Rust Projects', count: '32 files', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-        { id: 'f_camera', drive_id: 'personal', parent_id: 'root', name: 'Camera Auto-Backup', count: '1,420 photos', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-        { id: 'f_vault', drive_id: 'personal', parent_id: 'root', name: 'Encrypted Vault', count: '6 files', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-        { id: 'f_docs_tax', drive_id: 'personal', parent_id: 'f_docs', name: 'Tax Receipts 2025', count: '5 files', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-        { id: 'f_docs_legal', drive_id: 'personal', parent_id: 'f_docs', name: 'Contracts & Legal', count: '3 files', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-      ];
-      files = [
-        {
-          id: 'file_1',
-          drive_id: 'personal',
-          parent_id: 'root',
-          name: 'Cyberpunk_2077_NightCity_4K.mp4',
-          size: '1.84 GB',
-          size_bytes: 1975684956,
-          type: 'video',
-          telegram_message_id: 10492,
-          encrypted: true,
-          encryption_iv: 'a8b7c6d5e4f3a2b1',
-          sha256_hash: '3a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b',
-          pinned: true,
-          trashed: false,
-          date: 'Today, 12:40 PM',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: 'file_2',
-          drive_id: 'personal',
-          parent_id: 'root',
-          name: 'ProtoFS_Core_v0.2.0_x86_64.msi',
-          size: '42.5 MB',
-          size_bytes: 44564480,
-          type: 'binary',
-          telegram_message_id: 10488,
-          encrypted: false,
-          pinned: false,
-          trashed: false,
-          date: 'Yesterday',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: 'file_3',
-          drive_id: 'personal',
-          parent_id: 'root',
-          name: 'Q3_Financial_Forecast_Confidential.xlsx',
-          size: '4.2 MB',
-          size_bytes: 4404019,
-          type: 'sheet',
-          telegram_message_id: 10450,
-          encrypted: true,
-          encryption_iv: 'b2c3d4e5f6a7b8c9',
-          pinned: true,
-          trashed: false,
-          date: 'Sep 04, 2026',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: 'file_4',
-          drive_id: 'personal',
-          parent_id: 'root',
-          name: 'ProtoFS_Architecture_Whitepaper.pdf',
-          size: '890 KB',
-          size_bytes: 911360,
-          type: 'pdf',
-          telegram_message_id: 10421,
-          encrypted: false,
-          pinned: false,
-          trashed: false,
-          date: 'Sep 02, 2026',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: 'file_5',
-          drive_id: 'personal',
-          parent_id: 'root',
-          name: 'ProtoFS_Product_Specification.docx',
-          size: '1.24 MB',
-          size_bytes: 1300234,
-          type: 'doc',
-          telegram_message_id: 10410,
-          encrypted: false,
-          pinned: true,
-          trashed: false,
-          date: 'Aug 29, 2026',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: 'file_6',
-          drive_id: 'personal',
-          parent_id: 'root',
-          name: 'Investor_Pitch_Deck_2026.pptx',
-          size: '8.65 MB',
-          size_bytes: 9070200,
-          type: 'presentation',
-          telegram_message_id: 10398,
-          encrypted: false,
-          pinned: false,
-          trashed: false,
-          date: 'Aug 25, 2026',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: 'file_7',
-          drive_id: 'personal',
-          parent_id: 'root',
-          name: 'Security_Architecture_Briefing.mp3',
-          size: '14.2 MB',
-          size_bytes: 14889780,
-          type: 'audio',
-          telegram_message_id: 10382,
-          encrypted: true,
-          encryption_iv: 'c3d4e5f6a7b8c9d0',
-          pinned: false,
-          trashed: false,
-          date: 'Aug 20, 2026',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ];
-      localStorage.setItem(STORAGE_KEY_FOLDERS, JSON.stringify(folders));
-      localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
-    } else {
-      let updated = false;
-      if (!files.some(f => f.type === 'doc')) {
-        files.push({
-          id: 'file_5',
-          drive_id: 'personal',
-          parent_id: 'root',
-          name: 'ProtoFS_Product_Specification.docx',
-          size: '1.24 MB',
-          size_bytes: 1300234,
-          type: 'doc',
-          telegram_message_id: 10410,
-          encrypted: false,
-          pinned: true,
-          trashed: false,
-          date: 'Aug 29, 2026',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-        updated = true;
-      }
-      if (!files.some(f => f.type === 'presentation')) {
-        files.push({
-          id: 'file_6',
-          drive_id: 'personal',
-          parent_id: 'root',
-          name: 'Investor_Pitch_Deck_2026.pptx',
-          size: '8.65 MB',
-          size_bytes: 9070200,
-          type: 'presentation',
-          telegram_message_id: 10398,
-          encrypted: false,
-          pinned: false,
-          trashed: false,
-          date: 'Aug 25, 2026',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-        updated = true;
-      }
-      if (!files.some(f => f.type === 'audio')) {
-        files.push({
-          id: 'file_7',
-          drive_id: 'personal',
-          parent_id: 'root',
-          name: 'Security_Architecture_Briefing.mp3',
-          size: '14.2 MB',
-          size_bytes: 14889780,
-          type: 'audio',
-          telegram_message_id: 10382,
-          encrypted: true,
-          encryption_iv: 'c3d4e5f6a7b8c9d0',
-          pinned: false,
-          trashed: false,
-          date: 'Aug 20, 2026',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
-        updated = true;
-      }
-      if (updated) {
-        localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
-      }
-    }
-
-    return {
-      folders: folders.filter(f => f.drive_id === driveId),
-      files: files.filter(f => f.drive_id === driveId),
-    };
-  }
 }
 
 function detectFileType(name: string): 'video' | 'image' | 'pdf' | 'audio' | 'sheet' | 'doc' | 'presentation' | 'binary' {
