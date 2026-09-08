@@ -13,6 +13,21 @@ use protofs_core::mtproto::{
 use protofs_core::sync::SyncEngine;
 use protofs_core::vfs::{DriveMetadata, FileNode, FileVersion, FolderNode, VfsNode};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+/// Creates a std::process::Command configured on Windows with CREATE_NO_WINDOW
+/// (0x08000000) so no console window flashes or pops up for child processes.
+pub fn silent_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportDriveResult {
     pub export_path: String,
@@ -1943,7 +1958,7 @@ pub async fn get_shell_integration_status_command()
         let send_to_lnk = send_to_dir.join("ProtoFS.lnk");
         let send_to_enabled = send_to_cmd.exists() || send_to_lnk.exists();
 
-        let reg_output = std::process::Command::new("reg")
+        let reg_output = silent_command("reg")
             .args(["query", r"HKCU\Software\Classes\*\shell\ProtoFS"])
             .output();
         let context_menu_enabled = match reg_output {
@@ -2024,7 +2039,7 @@ pub async fn set_shell_integration_command(
 
         let esc_exe = target_exe.replace('/', "\\");
         if enable_context_menu {
-            let _ = std::process::Command::new("reg")
+            let _ = silent_command("reg")
                 .args([
                     "add",
                     r"HKCU\Software\Classes\*\shell\ProtoFS",
@@ -2034,7 +2049,7 @@ pub async fn set_shell_integration_command(
                     "/f",
                 ])
                 .output();
-            let _ = std::process::Command::new("reg")
+            let _ = silent_command("reg")
                 .args([
                     "add",
                     r"HKCU\Software\Classes\*\shell\ProtoFS",
@@ -2046,7 +2061,7 @@ pub async fn set_shell_integration_command(
                 ])
                 .output();
             let cmd_val = format!("\"{}\" --upload \"%1\"", esc_exe);
-            let _ = std::process::Command::new("reg")
+            let _ = silent_command("reg")
                 .args([
                     "add",
                     r"HKCU\Software\Classes\*\shell\ProtoFS\command",
@@ -2057,7 +2072,7 @@ pub async fn set_shell_integration_command(
                 ])
                 .output();
 
-            let _ = std::process::Command::new("reg")
+            let _ = silent_command("reg")
                 .args([
                     "add",
                     r"HKCU\Software\Classes\Directory\shell\ProtoFS",
@@ -2067,7 +2082,7 @@ pub async fn set_shell_integration_command(
                     "/f",
                 ])
                 .output();
-            let _ = std::process::Command::new("reg")
+            let _ = silent_command("reg")
                 .args([
                     "add",
                     r"HKCU\Software\Classes\Directory\shell\ProtoFS",
@@ -2078,7 +2093,7 @@ pub async fn set_shell_integration_command(
                     "/f",
                 ])
                 .output();
-            let _ = std::process::Command::new("reg")
+            let _ = silent_command("reg")
                 .args([
                     "add",
                     r"HKCU\Software\Classes\Directory\shell\ProtoFS\command",
@@ -2089,10 +2104,10 @@ pub async fn set_shell_integration_command(
                 ])
                 .output();
         } else {
-            let _ = std::process::Command::new("reg")
+            let _ = silent_command("reg")
                 .args(["delete", r"HKCU\Software\Classes\*\shell\ProtoFS", "/f"])
                 .output();
-            let _ = std::process::Command::new("reg")
+            let _ = silent_command("reg")
                 .args([
                     "delete",
                     r"HKCU\Software\Classes\Directory\shell\ProtoFS",
@@ -2101,7 +2116,7 @@ pub async fn set_shell_integration_command(
                 .output();
         }
 
-        let reg_output = std::process::Command::new("reg")
+        let reg_output = silent_command("reg")
             .args(["query", r"HKCU\Software\Classes\*\shell\ProtoFS"])
             .output();
         let context_menu_enabled = match reg_output {
@@ -2183,17 +2198,17 @@ pub async fn get_pending_uploads_command() -> Result<CommandResponse<Vec<String>
 pub async fn open_path_in_explorer_command(path: String) -> Result<CommandResponse<bool>, String> {
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("explorer").arg(&path).spawn();
+        let _ = silent_command("explorer").arg(&path).spawn();
         Ok(CommandResponse::ok(true))
     }
     #[cfg(target_os = "linux")]
     {
-        let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+        let _ = silent_command("xdg-open").arg(&path).spawn();
         Ok(CommandResponse::ok(true))
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open").arg(&path).spawn();
+        let _ = silent_command("open").arg(&path).spawn();
         Ok(CommandResponse::ok(true))
     }
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -2612,23 +2627,27 @@ fn count_dir_files_and_bytes(dir: &std::path::Path) -> (usize, u64) {
     (count, bytes)
 }
 
+static WINFSP_INSTALLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
 fn is_winfsp_installed() -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        if std::path::Path::new(r"C:\Program Files (x86)\WinFsp\bin\launcher-x64.exe").exists()
-            || std::path::Path::new(r"C:\Program Files\WinFsp\bin\launcher-x64.exe").exists()
+    *WINFSP_INSTALLED.get_or_init(|| {
+        #[cfg(target_os = "windows")]
         {
-            return true;
+            if std::path::Path::new(r"C:\Program Files (x86)\WinFsp\bin\launcher-x64.exe").exists()
+                || std::path::Path::new(r"C:\Program Files\WinFsp\bin\launcher-x64.exe").exists()
+            {
+                return true;
+            }
+            if let Ok(out) = silent_command("reg")
+                .args(["query", r"HKLM\Software\WinFsp", "/v", "InstallDir"])
+                .output()
+                && out.status.success()
+            {
+                return true;
+            }
         }
-        if let Ok(out) = std::process::Command::new("reg")
-            .args(["query", r"HKLM\Software\WinFsp", "/v", "InstallDir"])
-            .output()
-            && out.status.success()
-        {
-            return true;
-        }
-    }
-    false
+        false
+    })
 }
 
 fn is_drive_letter_mounted(letter: &str) -> bool {
@@ -2820,11 +2839,11 @@ pub async fn mount_virtual_drive_command(
         let drive_arg = format!("{}:", target_letter);
         let dir_str = mount_dir.to_string_lossy().to_string();
 
-        let _ = std::process::Command::new("subst")
+        let _ = silent_command("subst")
             .args([&drive_arg, "/D"])
             .output();
 
-        let res = std::process::Command::new("subst")
+        let res = silent_command("subst")
             .args([&drive_arg, &dir_str])
             .output();
 
@@ -2888,7 +2907,7 @@ pub async fn unmount_virtual_drive_command(
     #[cfg(target_os = "windows")]
     {
         let drive_arg = format!("{}:", letter);
-        let _ = std::process::Command::new("subst")
+        let _ = silent_command("subst")
             .args([&drive_arg, "/D"])
             .output();
     }
@@ -2924,7 +2943,7 @@ pub async fn open_virtual_drive_in_explorer_command(
     {
         let clean = drive_letter.trim().trim_end_matches([':', '\\', '/']);
         let target = format!("{}:\\", clean);
-        let _ = std::process::Command::new("explorer").arg(&target).spawn();
+        let _ = silent_command("explorer").arg(&target).spawn();
         Ok(CommandResponse::ok(true))
     }
     #[cfg(not(target_os = "windows"))]
