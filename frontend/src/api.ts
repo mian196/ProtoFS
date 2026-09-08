@@ -83,8 +83,8 @@ export class ProtoFsApi {
         throw new Error(err.message || String(err));
       }
     }
-    // Web fallback for testing without Tauri binary
-    return 'demo_code_hash_12345';
+    // Tauri environment required
+    throw new Error('ProtoFS requires the desktop Tauri runtime for MTProto operations.');
   }
 
   async loginVerifyCode(
@@ -182,12 +182,7 @@ export class ProtoFsApi {
       }
     }
 
-    return {
-      token_url: 'tg://login?token=demo_token_protofs_quick_test',
-      expires_in_sec: 120,
-      status: 'waiting_scan',
-      session: null,
-    };
+    throw new Error('ProtoFS requires the desktop Tauri runtime for MTProto operations.');
   }
 
   async loginCheckQr(apiId: string, apiHash: string): Promise<QrStatusResponse> {
@@ -1601,21 +1596,7 @@ export class ProtoFsApi {
         };
 
     const rawHist = localStorage.getItem('protofs_workmanager_history');
-    const recentHistory: WorkManagerJobRecord[] = rawHist
-      ? JSON.parse(rawHist)
-      : [
-          {
-            id: 'wm_demo_1',
-            timestamp: Date.now() - 3600000,
-            formatted_time: new Date(Date.now() - 3600000).toISOString(),
-            files_synced: 14,
-            bytes_transferred: 4892100,
-            formatted_bytes: '4.7 MB',
-            duration_ms: 1820,
-            success: true,
-            message: 'Periodic sync completed: 14 files synchronized',
-          },
-        ];
+    const recentHistory: WorkManagerJobRecord[] = rawHist ? JSON.parse(rawHist) : [];
 
     return {
       is_supported: true,

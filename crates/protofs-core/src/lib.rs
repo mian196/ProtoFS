@@ -95,7 +95,7 @@ mod tests {
     fn test_manifest_zstd_compression_roundtrip() {
         let mut tree = VfsTree::new();
         tree.insert(VfsNode::Folder(FolderNode {
-            id: "f_demo".to_string(),
+            id: "f_vault".to_string(),
             drive_id: "personal".to_string(),
             parent_id: ROOT_PARENT_ID.to_string(),
             name: "Vault".to_string(),
