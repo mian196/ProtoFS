@@ -28,6 +28,7 @@ mod tests {
             drive_id: "drive_main".to_string(),
             parent_id: ROOT_PARENT_ID.to_string(),
             name: "Documents".to_string(),
+            is_trashed: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -100,6 +101,7 @@ mod tests {
             drive_id: "personal".to_string(),
             parent_id: ROOT_PARENT_ID.to_string(),
             name: "Vault".to_string(),
+            is_trashed: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }));
@@ -147,6 +149,7 @@ mod tests {
             drive_id: "drive1".to_string(),
             parent_id: ROOT_PARENT_ID.to_string(),
             name: "Financial Audits".to_string(),
+            is_trashed: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }));

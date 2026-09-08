@@ -3,6 +3,15 @@ use crate::vfs::model::{FileNode, FileVersion, FolderNode, ROOT_PARENT_ID, VfsNo
 use chrono::Utc;
 use std::collections::{HashMap, HashSet};
 
+pub struct VersionUpdate {
+    pub new_message_id: i32,
+    pub new_size: u64,
+    pub new_mime: Option<String>,
+    pub new_sha256: Option<String>,
+    pub is_encrypted: bool,
+    pub encryption_iv: Option<String>,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct VfsTree {
     nodes: HashMap<String, VfsNode>,
@@ -20,6 +29,14 @@ impl VfsTree {
     pub fn insert(&mut self, node: VfsNode) {
         let id = node.id().to_string();
         let parent_id = node.parent_id().to_string();
+
+        if parent_id != ROOT_PARENT_ID && !self.nodes.contains_key(&parent_id) {
+            tracing::warn!(
+                "Inserting node {} under non-existent parent {}",
+                id,
+                parent_id
+            );
+        }
 
         if let Some(old_node) = self.nodes.get(&id) {
             let old_parent = old_node.parent_id().to_string();
@@ -96,6 +113,13 @@ impl VfsTree {
             return Ok(());
         }
 
+        if new_parent_id != ROOT_PARENT_ID && !self.nodes.contains_key(new_parent_id) {
+            return Err(ProtoFsError::NodeNotFound(format!(
+                "Target parent node {} does not exist",
+                new_parent_id
+            )));
+        }
+
         if let Some(children) = self.children_by_parent.get_mut(&old_parent_id) {
             children.remove(id);
         }
@@ -161,6 +185,48 @@ impl VfsTree {
             }
         }
         removed
+    }
+
+    pub fn record_file_version_with(
+        &mut self,
+        file_id: &str,
+        update: &VersionUpdate,
+    ) -> Result<u32> {
+        let node = self
+            .nodes
+            .get_mut(file_id)
+            .ok_or_else(|| ProtoFsError::NodeNotFound(file_id.to_string()))?;
+
+        if let VfsNode::File(f) = node {
+            let past_version = FileVersion {
+                version: f.version,
+                telegram_message_id: f.telegram_message_id,
+                size_bytes: f.size_bytes,
+                mime_type: f.mime_type.clone(),
+                sha256_hash: f.sha256_hash.clone(),
+                is_encrypted: f.is_encrypted,
+                encryption_iv: f.encryption_iv.clone(),
+                created_at: f.updated_at,
+            };
+            f.history.insert(0, past_version);
+            if f.history.len() > 10 {
+                f.history.truncate(10);
+            }
+
+            f.version += 1;
+            f.telegram_message_id = update.new_message_id;
+            f.size_bytes = update.new_size;
+            f.mime_type = update.new_mime.clone();
+            f.sha256_hash = update.new_sha256.clone();
+            f.is_encrypted = update.is_encrypted;
+            f.encryption_iv = update.encryption_iv.clone();
+            f.updated_at = Utc::now();
+            Ok(f.version)
+        } else {
+            Err(ProtoFsError::Vfs(
+                "Node is a folder, not a file".to_string(),
+            ))
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -19,6 +19,8 @@ pub struct FolderNode {
     pub drive_id: String,
     pub parent_id: String,
     pub name: String,
+    #[serde(default)]
+    pub is_trashed: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -13,6 +13,9 @@ use protofs_core::mtproto::{
 use protofs_core::sync::SyncEngine;
 use protofs_core::vfs::{DriveMetadata, FileNode, FileVersion, FolderNode, VfsNode};
 
+const LOCAL_CACHE_BYTES: u64 = 42 * 1024 * 1024;
+const P2P_TRANSFER_HISTORY_LIMIT: usize = 20;
+
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -538,7 +541,9 @@ fn save_auth_session(app: &tauri::AppHandle, session: &AuthSession) {
         && let Ok(json) = serde_json::to_string(session)
         && let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes())
     {
-        let _ = std::fs::write(enc_path, encrypted);
+        if let Err(e) = std::fs::write(enc_path, encrypted) {
+            tracing::error!("Failed to write encrypted session: {}", e);
+        }
         if legacy_path.exists() {
             let _ = std::fs::remove_file(legacy_path);
         }
@@ -548,14 +553,16 @@ fn save_auth_session(app: &tauri::AppHandle, session: &AuthSession) {
 fn save_real_telegram_session_for_user(app: &tauri::AppHandle, user_id: i64, session_bytes: &[u8]) {
     if let Some(path) = get_user_session_path(app, user_id)
         && let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes)
+        && let Err(e) = std::fs::write(path, encrypted)
     {
-        let _ = std::fs::write(path, encrypted);
+        tracing::error!("Failed to save session for user {}: {}", user_id, e);
     }
     // Also save to legacy path for backward compatibility
     if let Some(path) = get_real_session_path(app)
         && let Ok(encrypted) = protofs_core::crypto::protect_secret(session_bytes)
+        && let Err(e) = std::fs::write(path, encrypted)
     {
-        let _ = std::fs::write(path, encrypted);
+        tracing::error!("Failed to save legacy session: {}", e);
     }
 }
 
@@ -574,8 +581,9 @@ fn save_account_registry(app: &tauri::AppHandle, registry: &AccountRegistry) {
     if let Some(path) = get_accounts_path(app)
         && let Ok(json) = serde_json::to_string(registry)
         && let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes())
+        && let Err(e) = std::fs::write(path, encrypted)
     {
-        let _ = std::fs::write(path, encrypted);
+        tracing::error!("Failed to save account registry: {}", e);
     }
 }
 
@@ -652,35 +660,41 @@ pub async fn get_session_status(
     app: tauri::AppHandle,
 ) -> Result<CommandResponse<Option<AuthSession>>, String> {
     let state = app.state::<AppState>();
-    let mut lock = state.session.write().await;
 
-    // If in-memory state is empty, restore active account from registry
-    if lock.is_none() {
-        let registry = load_account_registry(&app);
-        if let Some(active_id) = registry.active_user_id
-            && let Some(account) = registry
-                .accounts
-                .iter()
-                .find(|a| a.user_id == active_id)
-                .cloned()
-        {
-            if let Some(session_bytes) = load_real_telegram_session_for_user(&app, active_id)
-                && let Ok(api_id_int) = account.api_id.trim().parse::<i32>()
-                && let Ok(real) = TelegramAuthClient::reconnect_from_session(
-                    api_id_int,
-                    account.api_hash.trim(),
-                    &session_bytes,
-                )
-                .await
-            {
-                state.transport.switch_to_real(real).await;
-            }
-            let mut drives_lock = state.drives.write().await;
-            *drives_lock = load_user_drives(&app, account.user_id);
-            *lock = Some(account);
+    // Check if session is already populated
+    {
+        let lock = state.session.read().await;
+        if lock.is_some() {
+            return Ok(CommandResponse::ok(lock.clone()));
         }
     }
 
+    // Session is empty — restore from registry outside the lock
+    let registry = load_account_registry(&app);
+    if let Some(active_id) = registry.active_user_id
+        && let Some(account) = registry
+            .accounts
+            .iter()
+            .find(|a| a.user_id == active_id)
+            .cloned()
+    {
+        if let Some(session_bytes) = load_real_telegram_session_for_user(&app, active_id)
+            && let Ok(api_id_int) = account.api_id.trim().parse::<i32>()
+            && let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                api_id_int,
+                account.api_hash.trim(),
+                &session_bytes,
+            )
+            .await
+        {
+            state.transport.switch_to_real(real).await;
+        }
+        let user_drives = load_user_drives(&app, account.user_id);
+        *state.drives.write().await = user_drives;
+        *state.session.write().await = Some(account);
+    }
+
+    let lock = state.session.read().await;
     Ok(CommandResponse::ok(lock.clone()))
 }
 
@@ -700,12 +714,19 @@ pub async fn switch_account_command(
     let state = app.state::<AppState>();
     let mut registry = load_account_registry(&app);
 
-    let target_account = registry
+    let target_account = match registry
         .accounts
         .iter()
         .find(|a| a.user_id == user_id)
         .cloned()
-        .ok_or_else(|| "Account not found in registered accounts".to_string())?;
+    {
+        Some(account) => account,
+        None => {
+            return Ok(CommandResponse::err(
+                "Account not found in registered accounts".to_string(),
+            ));
+        }
+    };
 
     registry.active_user_id = Some(user_id);
     save_account_registry(&app, &registry);
@@ -1126,6 +1147,7 @@ pub async fn create_folder_command(
         drive_id: drive_id.clone(),
         parent_id,
         name,
+        is_trashed: false,
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
@@ -1182,7 +1204,7 @@ pub async fn upload_file_command(
 
     let file = if let Some(existing_id) = existing_file_id {
         let mut tree = state.engine.get_or_create_tree(&drive_id).await;
-        let _ = tree.record_file_version(
+        if let Err(e) = tree.record_file_version(
             &existing_id,
             new_msg_id,
             size_bytes,
@@ -1190,7 +1212,9 @@ pub async fn upload_file_command(
             sha,
             is_encrypted,
             iv,
-        );
+        ) {
+            tracing::warn!("Failed to record file version: {}", e);
+        }
         tree.get_file(&existing_id)
             .cloned()
             .ok_or_else(|| "File disappeared after version record".to_string())?
@@ -1277,6 +1301,21 @@ pub async fn export_drive_command(
 ) -> Result<CommandResponse<ExportDriveResult>, String> {
     let state = app.state::<AppState>();
     let tree = state.engine.get_or_create_tree(&drive_id).await;
+
+    let target = std::path::PathBuf::from(&target_path);
+    if !target.is_absolute() {
+        return Ok(CommandResponse::err(
+            "Export path must be absolute".to_string(),
+        ));
+    }
+    if target
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Ok(CommandResponse::err(
+            "Export path must not contain '..' components".to_string(),
+        ));
+    }
 
     let drives = state.drives.read().await;
     let drive_name = drives
@@ -1748,7 +1787,7 @@ pub async fn get_storage_usage_command(
             document_bytes,
             audio_bytes,
             other_bytes,
-            local_cache_bytes: 42 * 1024 * 1024,
+            local_cache_bytes: LOCAL_CACHE_BYTES,
         }))
     } else {
         // Fallback with empty or default usage
@@ -1769,7 +1808,7 @@ pub async fn get_storage_usage_command(
 #[tauri::command]
 pub async fn check_for_updates_command() -> Result<CommandResponse<UpdateInfo>, String> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
-    let latest_version = "0.2.1".to_string();
+    let latest_version = env!("CARGO_PKG_VERSION").to_string();
     let update_available = latest_version != current_version;
 
     let release_notes = "### ProtoFS v0.2.1 Release Highlights:\n\n\
@@ -1785,7 +1824,7 @@ pub async fn check_for_updates_command() -> Result<CommandResponse<UpdateInfo>, 
         latest_version,
         update_available,
         release_notes,
-        release_date: "2026-09-07".to_string(),
+        release_date: env!("CARGO_PKG_VERSION").to_string(),
         download_url: "https://github.com/mian196/ProtoFS/releases/tag/v0.2.1".to_string(),
         signature_verified: false, // TODO: implement actual signature verification
         channel: "Stable (GitHub Releases)".to_string(),
@@ -3386,8 +3425,14 @@ fn generate_p2p_pin() -> String {
 #[tauri::command]
 pub async fn get_p2p_status_command() -> Result<CommandResponse<P2pStatus>, String> {
     let local_ip = get_local_lan_ip();
-    let session = P2P_ACTIVE_SESSION.lock().unwrap().clone();
-    let history = P2P_TRANSFER_HISTORY.lock().unwrap().clone();
+    let session = P2P_ACTIVE_SESSION
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let history = P2P_TRANSFER_HISTORY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
 
     Ok(CommandResponse::ok(P2pStatus {
         is_supported: true,
@@ -3445,7 +3490,7 @@ pub async fn start_p2p_session_command(
         target_file_size,
     };
 
-    *P2P_ACTIVE_SESSION.lock().unwrap() = Some(session_info.clone());
+    *P2P_ACTIVE_SESSION.lock().unwrap_or_else(|e| e.into_inner()) = Some(session_info.clone());
 
     Ok(CommandResponse::ok(session_info))
 }
@@ -3458,7 +3503,17 @@ pub async fn connect_p2p_peer_command(
     target_folder_id: Option<String>,
     drive_id: Option<String>,
 ) -> Result<CommandResponse<P2pTransferProgress>, String> {
-    let active_session = P2P_ACTIVE_SESSION.lock().unwrap().clone();
+    // TODO: This function is a STUB — no actual P2P transfer occurs.
+    // Metrics below are fabricated for UI demonstration purposes only.
+    // Implement real TCP/UDP transfer before production use.
+    tracing::warn!(
+        "connect_p2p_peer_command called — P2P transfer is not yet implemented, returning stub metrics"
+    );
+
+    let active_session = P2P_ACTIVE_SESSION
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
     let start = std::time::Instant::now();
 
     let (file_name, file_size, role) = if let Some(ref s) = active_session {
@@ -3537,20 +3592,22 @@ pub async fn connect_p2p_peer_command(
         formatted_speed,
     };
 
-    let mut history = P2P_TRANSFER_HISTORY.lock().unwrap();
+    let mut history = P2P_TRANSFER_HISTORY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     history.insert(0, progress.clone());
-    if history.len() > 20 {
+    if history.len() > P2P_TRANSFER_HISTORY_LIMIT {
         history.truncate(20);
     }
 
     // Reset active session after completion
-    *P2P_ACTIVE_SESSION.lock().unwrap() = None;
+    *P2P_ACTIVE_SESSION.lock().unwrap_or_else(|e| e.into_inner()) = None;
 
     Ok(CommandResponse::ok(progress))
 }
 
 #[tauri::command]
 pub async fn cancel_p2p_session_command() -> Result<CommandResponse<bool>, String> {
-    *P2P_ACTIVE_SESSION.lock().unwrap() = None;
+    *P2P_ACTIVE_SESSION.lock().unwrap_or_else(|e| e.into_inner()) = None;
     Ok(CommandResponse::ok(true))
 }

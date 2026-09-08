@@ -66,10 +66,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let results = cache.search(&drive, &query)?;
             println!("Found {} results for '{}':", results.len(), query);
             for r in results {
-                let size = r.size_bytes
+                let size = r
+                    .size_bytes
                     .map(|s| format!("{} B", s))
                     .unwrap_or_else(|| "-".to_string());
-                println!("  [{}] {} (ID: {}, Parent: {}, Size: {})", r.kind, r.name, r.id, r.parent_id, size);
+                println!(
+                    "  [{}] {} (ID: {}, Parent: {}, Size: {})",
+                    r.kind, r.name, r.id, r.parent_id, size
+                );
             }
         }
     }

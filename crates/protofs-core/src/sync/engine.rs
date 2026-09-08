@@ -219,7 +219,9 @@ impl<T: TelegramTransport> SyncEngine<T> {
             file.is_trashed = true;
             file.updated_at = chrono::Utc::now();
             tree.insert(VfsNode::File(file));
-        } else if let Some(VfsNode::Folder(folder)) = tree.remove(node_id) {
+        } else if let Some(VfsNode::Folder(mut folder)) = tree.remove(node_id) {
+            folder.is_trashed = true;
+            folder.updated_at = chrono::Utc::now();
             tree.insert(VfsNode::Folder(folder));
         }
         let mut dirty = self.is_dirty_by_drive.write().await;
@@ -236,6 +238,10 @@ impl<T: TelegramTransport> SyncEngine<T> {
             file.is_trashed = false;
             file.updated_at = chrono::Utc::now();
             tree.insert(VfsNode::File(file));
+        } else if let Some(VfsNode::Folder(mut folder)) = tree.remove(node_id) {
+            folder.is_trashed = false;
+            folder.updated_at = chrono::Utc::now();
+            tree.insert(VfsNode::Folder(folder));
         }
         let mut dirty = self.is_dirty_by_drive.write().await;
         dirty.insert(drive_id.to_string(), true);

@@ -36,9 +36,9 @@ pub struct CacheDatabase {
 
 impl CacheDatabase {
     fn lock_conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
-        self.conn
-            .lock()
-            .map_err(|_| crate::error::ProtoFsError::Vfs("Cache database lock poisoned".to_string()))
+        self.conn.lock().map_err(|_| {
+            crate::error::ProtoFsError::Vfs("Cache database lock poisoned".to_string())
+        })
     }
 
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
@@ -83,6 +83,7 @@ impl CacheDatabase {
                 drive_id TEXT NOT NULL,
                 parent_id TEXT NOT NULL,
                 name TEXT NOT NULL,
+                is_trashed INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY (drive_id) REFERENCES drives(id) ON DELETE CASCADE
@@ -101,6 +102,8 @@ impl CacheDatabase {
                 sha256_hash TEXT,
                 is_pinned_offline INTEGER NOT NULL DEFAULT 0,
                 is_trashed INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                history_json TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY (drive_id) REFERENCES drives(id) ON DELETE CASCADE
@@ -175,8 +178,8 @@ impl CacheDatabase {
         {
             let mut stmt = tx.prepare(
                 r#"
-                INSERT INTO folders (id, drive_id, parent_id, name, created_at, updated_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                INSERT INTO folders (id, drive_id, parent_id, name, is_trashed, created_at, updated_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                 "#,
             )?;
             let mut fts_stmt = tx.prepare(
@@ -189,6 +192,7 @@ impl CacheDatabase {
                     folder.drive_id,
                     folder.parent_id,
                     folder.name,
+                    if folder.is_trashed { 1 } else { 0 },
                     folder.created_at.to_rfc3339(),
                     folder.updated_at.to_rfc3339(),
                 ])?;
@@ -208,9 +212,10 @@ impl CacheDatabase {
                 INSERT INTO files (
                     id, drive_id, parent_id, name, size_bytes, mime_type,
                     telegram_message_id, is_encrypted, encryption_iv, sha256_hash,
-                    is_pinned_offline, is_trashed, created_at, updated_at
+                    is_pinned_offline, is_trashed, version, history_json,
+                    created_at, updated_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
                 "#,
             )?;
             let mut fts_stmt = tx.prepare(
@@ -218,6 +223,11 @@ impl CacheDatabase {
             )?;
 
             for file in &manifest.files {
+                let history_json = if file.history.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::to_string(&file.history).unwrap_or_default())
+                };
                 stmt.execute(params![
                     file.id,
                     file.drive_id,
@@ -231,6 +241,8 @@ impl CacheDatabase {
                     file.sha256_hash,
                     if file.is_pinned_offline { 1 } else { 0 },
                     if file.is_trashed { 1 } else { 0 },
+                    file.version as i64,
+                    history_json,
                     file.created_at.to_rfc3339(),
                     file.updated_at.to_rfc3339(),
                 ])?;
@@ -280,16 +292,18 @@ impl CacheDatabase {
         // Load folders
         {
             let mut stmt = conn.prepare(
-                "SELECT id, drive_id, parent_id, name, created_at, updated_at FROM folders WHERE drive_id = ?1",
+                "SELECT id, drive_id, parent_id, name, is_trashed, created_at, updated_at FROM folders WHERE drive_id = ?1 AND is_trashed = 0",
             )?;
             let rows = stmt.query_map(params![drive_id], |row| {
-                let created_str: String = row.get(4)?;
-                let updated_str: String = row.get(5)?;
+                let is_trashed: i32 = row.get(4)?;
+                let created_str: String = row.get(5)?;
+                let updated_str: String = row.get(6)?;
                 Ok(FolderNode {
                     id: row.get(0)?,
                     drive_id: row.get(1)?,
                     parent_id: row.get(2)?,
                     name: row.get(3)?,
+                    is_trashed: is_trashed == 1,
                     created_at: DateTime::parse_from_rfc3339(&created_str)
                         .map(|dt| dt.with_timezone(&Utc))
                         .unwrap_or_else(|_| Utc::now()),
@@ -310,7 +324,8 @@ impl CacheDatabase {
                 r#"
                 SELECT id, drive_id, parent_id, name, size_bytes, mime_type,
                        telegram_message_id, is_encrypted, encryption_iv, sha256_hash,
-                       is_pinned_offline, is_trashed, created_at, updated_at
+                       is_pinned_offline, is_trashed, version, history_json,
+                       created_at, updated_at
                 FROM files WHERE drive_id = ?1 AND is_trashed = 0
                 "#,
             )?;
@@ -319,8 +334,14 @@ impl CacheDatabase {
                 let encrypted: i32 = row.get(7)?;
                 let pinned: i32 = row.get(10)?;
                 let trashed: i32 = row.get(11)?;
-                let created_str: String = row.get(12)?;
-                let updated_str: String = row.get(13)?;
+                let version: i64 = row.get(12)?;
+                let history_json: Option<String> = row.get(13)?;
+                let created_str: String = row.get(14)?;
+                let updated_str: String = row.get(15)?;
+
+                let history: Vec<crate::vfs::model::FileVersion> = history_json
+                    .and_then(|json| serde_json::from_str(&json).ok())
+                    .unwrap_or_default();
 
                 Ok(FileNode {
                     id: row.get(0)?,
@@ -335,8 +356,8 @@ impl CacheDatabase {
                     sha256_hash: row.get(9)?,
                     is_pinned_offline: pinned == 1,
                     is_trashed: trashed == 1,
-                    version: 1,
-                    history: Vec::new(),
+                    version: version as u32,
+                    history,
                     created_at: DateTime::parse_from_rfc3339(&created_str)
                         .map(|dt| dt.with_timezone(&Utc))
                         .unwrap_or_else(|_| Utc::now()),
