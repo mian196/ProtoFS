@@ -13,7 +13,7 @@ class ProtoFsApp {
   private activeDriveId = 'personal';
   private currentFolderId = 'root';
   private activeFilter: string | null = null;
-  private viewMode: 'grid' | 'list' = 'grid';
+  private viewMode: 'grid' | 'list' = (localStorage.getItem('protofs_view_mode') as 'grid' | 'list') || 'grid';
   private selectedIds = new Set<string>();
   private activeTransfers: TransferItem[] = [];
   private virtualDriveStatus: VirtualDriveStatus | null = null;
@@ -1705,6 +1705,7 @@ class ProtoFsApp {
     // View toggle handlers
     document.getElementById('btnViewGrid')?.addEventListener('click', () => {
       this.viewMode = 'grid';
+      localStorage.setItem('protofs_view_mode', 'grid');
       document.getElementById('btnViewGrid')?.classList.add('active');
       document.getElementById('btnViewList')?.classList.remove('active');
       this.renderContent();
@@ -1712,6 +1713,7 @@ class ProtoFsApp {
 
     document.getElementById('btnViewList')?.addEventListener('click', () => {
       this.viewMode = 'list';
+      localStorage.setItem('protofs_view_mode', 'list');
       document.getElementById('btnViewList')?.classList.add('active');
       document.getElementById('btnViewGrid')?.classList.remove('active');
       this.renderContent();
@@ -2584,6 +2586,13 @@ class ProtoFsApp {
     );
 
     document.getElementById('btnCancelRename')?.addEventListener('click', () => this.closeModal());
+    setTimeout(() => {
+      const input = document.getElementById('inputRenameName') as HTMLInputElement;
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 50);
     document.getElementById('btnConfirmRename')?.addEventListener('click', async () => {
       const input = document.getElementById('inputRenameName') as HTMLInputElement;
       if (input && input.value.trim()) {
