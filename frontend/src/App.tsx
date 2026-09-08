@@ -239,7 +239,7 @@ export const App: React.FC = () => {
   ];
 
   return (
-    <div className="flex h-screen w-screen bg-slate-950 overflow-hidden font-sans text-slate-100">
+    <div className="flex h-screen w-screen bg-slate-100/60 dark:bg-slate-950 overflow-hidden font-sans text-slate-900 dark:text-slate-100 transition-colors">
       {/* Hidden file input */}
       <input
         ref={fileInputRef}

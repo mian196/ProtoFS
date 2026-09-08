@@ -27,7 +27,6 @@ export const EmptyFolderState: React.FC<EmptyFolderStateProps> = ({ onUploadClic
           size="sm"
           onClick={onUploadClick}
           icon={<Upload className="w-4 h-4" />}
-          nestedPill
           trailingIcon={<Upload className="w-3 h-3" />}
         >
           Upload Files

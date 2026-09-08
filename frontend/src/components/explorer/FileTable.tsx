@@ -18,10 +18,10 @@ export const FileTable: React.FC<FileTableProps> = ({
   onContextMenu,
 }) => {
   return (
-    <div className="w-full overflow-x-auto rounded-2xl bg-slate-900/60 border border-white/[0.06] backdrop-blur-md">
+    <div className="w-full overflow-x-auto rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm">
       <table className="w-full text-left border-collapse">
         <thead>
-          <tr className="border-b border-white/10 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+          <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             <th className="py-3 px-4">Name</th>
             <th className="py-3 px-4">Size</th>
             <th className="py-3 px-4 hidden sm:table-cell">Type</th>
@@ -29,7 +29,7 @@ export const FileTable: React.FC<FileTableProps> = ({
             <th className="py-3 px-4 text-right">Actions</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-white/[0.02]">
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
           {nodes.map((node) => (
             <FileTableRow
               key={node.data.id}
@@ -45,3 +45,4 @@ export const FileTable: React.FC<FileTableProps> = ({
     </div>
   );
 };
+

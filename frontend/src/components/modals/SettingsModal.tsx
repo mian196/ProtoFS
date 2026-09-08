@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Trash2,
   ShieldCheck,
@@ -9,25 +9,51 @@ import {
   Lock,
   Eye,
   EyeOff,
-  Palette,
+  Sun,
+  Moon,
   FileArchive,
   RefreshCw,
   AlertCircle,
+  HardDrive,
+  FolderSync,
+  Camera,
+  Layers,
+  Sparkles,
+  ExternalLink,
+  Power,
+  Clock,
+  CheckCircle2,
 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { useThemeStore, type ThemePalette } from '../../stores/useThemeStore';
+import { useThemeStore } from '../../stores/useThemeStore';
 import { useDriveStore } from '../../stores/useDriveStore';
 import { useAuthStore } from '../../stores/useAuthStore';
+import { useNativeStore } from '../../stores/useNativeStore';
 import { api } from '../../api';
+import type {
+  ShellIntegrationStatus,
+  CameraBackupConfig,
+  WorkManagerSyncStatus,
+  UpdateInfo,
+} from '../../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type SettingsTab = 'general' | 'encryption' | 'backup';
+type SettingsTab =
+  | 'appearance'
+  | 'shell'
+  | 'mount'
+  | 'camera'
+  | 'background'
+  | 'encryption'
+  | 'backup'
+  | 'storage'
+  | 'updates';
 
 // Helpers for client-side AES-GCM password encryption of export bundles
 async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
@@ -69,12 +95,36 @@ function hexToBytes(hex: string): Uint8Array {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const { theme, setTheme } = useThemeStore();
-  const { drives, loadDrives } = useDriveStore();
+  const { drives, activeDrive, loadDrives } = useDriveStore();
   const { session, accounts, loadAccounts } = useAuthStore();
+  const { virtualDrive, mountVirtualDrive, unmountVirtualDrive, loadNativeStatus } = useNativeStore();
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
+
+  // Shell Integration state
+  const [shellStatus, setShellStatus] = useState<ShellIntegrationStatus | null>(null);
+  const [shellSaving, setShellSaving] = useState(false);
+
+  // Virtual drive state
+  const [selectedDriveLetter, setSelectedDriveLetter] = useState('X');
+  const [onDemandStreaming, setOnDemandStreaming] = useState(true);
+
+  // Camera backup state
+  const [cameraConfig, setCameraConfig] = useState<CameraBackupConfig | null>(null);
+  const [cameraSaving, setCameraSaving] = useState(false);
+
+  // WorkManager Background Sync state
+  const [workManagerStatus, setWorkManagerStatus] = useState<WorkManagerSyncStatus | null>(null);
+  const [triggeringSync, setTriggeringSync] = useState(false);
+
+  // Storage usage breakdown
+  const [storageMetrics, setStorageMetrics] = useState<any>(null);
   const [clearingCache, setClearingCache] = useState(false);
   const [cacheCleared, setCacheCleared] = useState(false);
+
+  // Update check
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   // Encryption Key Configuration State
   const [masterPassphrase, setMasterPassphrase] = useState(
@@ -97,39 +147,83 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [importSuccess, setImportSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const themeOptions: { id: ThemePalette; name: string; desc: string; color: string }[] = [
-    {
-      id: 'nordic',
-      name: 'Nordic Frost',
-      desc: 'Deep OLED Navy substrate with Electric Ice Blue accents',
-      color: '#38BDF8',
-    },
-    {
-      id: 'cyberpunk',
-      name: 'Cyberpunk Neon',
-      desc: 'OLED Black with Neon Mint and Aviation Rose',
-      color: '#00F5D4',
-    },
-    {
-      id: 'forest',
-      name: 'Forest Slate',
-      desc: 'Subdued Pine substrate with Emerald accents',
-      color: '#10B981',
-    },
-    {
-      id: 'obsidian',
-      name: 'Obsidian Amber',
-      desc: 'Warm Obsidian substrate with Golden Amber accents',
-      color: '#F59E0B',
-    },
-  ];
+  // Load backend states when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadNativeStatus();
+      api.getShellIntegrationStatus().then(setShellStatus).catch(() => {});
+      api.getWorkManagerSyncStatus().then(setWorkManagerStatus).catch(() => {});
+      if (activeDrive) {
+        api.getCameraBackupConfig(activeDrive.id).then(setCameraConfig).catch(() => {});
+        api.getStorageUsage(activeDrive.id).then(setStorageMetrics).catch(() => {});
+      }
+    }
+  }, [isOpen, activeDrive, loadNativeStatus]);
+
+  const handleToggleShellIntegration = async (type: 'sendTo' | 'contextMenu') => {
+    if (!shellStatus) return;
+    setShellSaving(true);
+    const newSendTo = type === 'sendTo' ? !shellStatus.send_to_enabled : shellStatus.send_to_enabled;
+    const newContextMenu = type === 'contextMenu' ? !shellStatus.context_menu_enabled : shellStatus.context_menu_enabled;
+    try {
+      const updated = await api.setShellIntegration(newSendTo, newContextMenu);
+      setShellStatus(updated);
+    } finally {
+      setShellSaving(false);
+    }
+  };
+
+  const handleSaveCameraConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeDrive || !cameraConfig) return;
+    setCameraSaving(true);
+    try {
+      await api.configureCameraBackup(activeDrive.id, {
+        localPath: cameraConfig.local_path,
+        remoteFolderId: 'root',
+        wifiOnly: cameraConfig.wifi_only,
+        chargingOnly: cameraConfig.charging_only,
+        includeVideos: cameraConfig.include_videos,
+        originalQuality: cameraConfig.original_quality,
+      });
+      const updated = await api.getCameraBackupConfig(activeDrive.id);
+      setCameraConfig(updated);
+    } finally {
+      setCameraSaving(false);
+    }
+  };
+
+  const handleTriggerBackgroundSync = async () => {
+    setTriggeringSync(true);
+    try {
+      await api.triggerImmediateBackgroundSync();
+      const updated = await api.getWorkManagerSyncStatus();
+      setWorkManagerStatus(updated);
+    } finally {
+      setTriggeringSync(false);
+    }
+  };
+
+  const handleCheckUpdates = async () => {
+    setCheckingUpdate(true);
+    try {
+      const info = await api.checkForUpdates();
+      setUpdateInfo(info);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   const handleClearWalCache = async () => {
     setClearingCache(true);
     try {
-      await api.clearVirtualDriveCache('personal');
+      await api.clearVirtualDriveCache(activeDrive?.id || 'personal');
       setClearingCache(false);
       setCacheCleared(true);
+      if (activeDrive) {
+        const metrics = await api.getStorageUsage(activeDrive.id);
+        setStorageMetrics(metrics);
+      }
       setTimeout(() => setCacheCleared(false), 2500);
     } catch {
       setClearingCache(false);
@@ -145,7 +239,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const handleExportBackup = async () => {
     setIsExporting(true);
     try {
-      // Gather full settings, drives, manifests, sync pairs, and accounts
       const backupData = {
         version: '0.3.0',
         exported_at: new Date().toISOString(),
@@ -192,7 +285,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         outputContent = JSON.stringify(backupData, null, 2);
       }
 
-      // Download file to user
       const blob = new Blob([outputContent], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -220,7 +312,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       const text = await importFile.text();
       let parsed: any = JSON.parse(text);
 
-      // Check if encrypted
       if (parsed.encrypted && parsed.ciphertext) {
         if (!importPassword) {
           throw new Error('This backup is encrypted with AES-256. Please enter the backup decryption password.');
@@ -243,7 +334,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         }
       }
 
-      // Restore configuration
       if (parsed.theme) setTheme(parsed.theme);
       if (parsed.master_passphrase) {
         localStorage.setItem('protofs_master_passphrase', parsed.master_passphrase);
@@ -272,87 +362,627 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     }
   };
 
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'appearance', label: 'Theme & Style', icon: <Sun className="w-3.5 h-3.5" /> },
+    { id: 'shell', label: 'Windows Shell', icon: <ExternalLink className="w-3.5 h-3.5" /> },
+    { id: 'mount', label: 'Virtual Drive', icon: <HardDrive className="w-3.5 h-3.5" /> },
+    { id: 'camera', label: 'Camera Roll', icon: <Camera className="w-3.5 h-3.5" /> },
+    { id: 'background', label: 'Background Sync', icon: <FolderSync className="w-3.5 h-3.5" /> },
+    { id: 'encryption', label: 'Zero-Knowledge', icon: <KeyRound className="w-3.5 h-3.5" /> },
+    { id: 'backup', label: 'Backup Center', icon: <FileArchive className="w-3.5 h-3.5" /> },
+    { id: 'storage', label: 'Storage & Cache', icon: <Layers className="w-3.5 h-3.5" /> },
+    { id: 'updates', label: 'Updates', icon: <Sparkles className="w-3.5 h-3.5" /> },
+  ];
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Settings & Vault Preferences"
-      subtitle="Configure themes, Zero-Knowledge encryption keys, and full system backup import/export"
-      maxWidth="lg"
+      title="System Settings & Backend Control"
+      subtitle="Configure appearance, Windows shell shortcuts, native virtual drives, and encryption"
+      maxWidth="3xl"
     >
-      <div className="space-y-5">
-        {/* Navigation Tabs */}
-        <div className="flex rounded-xl p-1 bg-slate-950 border border-white/5">
-          <button
-            onClick={() => setActiveTab('general')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
-              activeTab === 'general' ? 'bg-sky-500/20 text-sky-400 font-semibold' : 'text-slate-400'
-            }`}
-          >
-            <Palette className="w-3.5 h-3.5" />
-            <span>General & Themes</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('encryption')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
-              activeTab === 'encryption' ? 'bg-sky-500/20 text-sky-400 font-semibold' : 'text-slate-400'
-            }`}
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>Encryption Keys</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('backup')}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
-              activeTab === 'backup' ? 'bg-sky-500/20 text-sky-400 font-semibold' : 'text-slate-400'
-            }`}
-          >
-            <FileArchive className="w-3.5 h-3.5" />
-            <span>Backup Export / Import</span>
-          </button>
+      <div className="flex flex-col md:flex-row gap-6 min-h-[460px]">
+        {/* Left Vertical Tab Navigation */}
+        <div className="w-full md:w-48 shrink-0 flex md:flex-col gap-1 overflow-x-auto md:overflow-visible pb-2 md:pb-0 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 pr-0 md:pr-4">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left whitespace-nowrap ${
+                activeTab === t.id
+                  ? 'bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 font-semibold border border-sky-500/30'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+              }`}
+            >
+              {t.icon}
+              <span>{t.label}</span>
+            </button>
+          ))}
         </div>
 
-        {/* Tab 1: General & Appearance */}
-        {activeTab === 'general' && (
-          <div className="space-y-5">
-            {/* Color Palette Selector */}
-            <div className="space-y-3">
-              <p className="text-xs font-semibold text-slate-200">
-                UI Color Palette (WCAG AA High-Contrast)
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {themeOptions.map((t) => (
-                  <div
-                    key={t.id}
-                    onClick={() => setTheme(t.id)}
-                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
-                      theme === t.id
-                        ? 'bg-white/[0.06] border-sky-400/50 shadow-md'
-                        : 'bg-slate-950/60 border-white/5 hover:border-white/15'
-                    }`}
-                  >
-                    <div
-                      className="w-5 h-5 rounded-full shrink-0 mt-0.5 border border-white/20 flex items-center justify-center"
-                      style={{ backgroundColor: t.color }}
-                    >
-                      {theme === t.id && <Check className="w-3 h-3 text-slate-950 stroke-[3]" />}
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-200">{t.name}</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{t.desc}</p>
-                    </div>
+        {/* Right Content Area */}
+        <div className="flex-1 min-w-0 max-h-[460px] overflow-y-auto pr-1 space-y-4 no-scrollbar">
+          {/* 1. Theme & Appearance */}
+          {activeTab === 'appearance' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Theme & Display Mode
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Switch between shadcn light and dark mode with high-contrast accessibility.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setTheme('light')}
+                  className={`p-4 rounded-2xl border text-left transition-all flex items-start gap-3.5 ${
+                    theme === 'light'
+                      ? 'bg-sky-50 border-sky-500 shadow-sm'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 shrink-0">
+                    <Sun className="w-5 h-5" />
                   </div>
-                ))}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-slate-900">Light Mode</p>
+                      {theme === 'light' && <Check className="w-4 h-4 text-sky-600" />}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Clean white substrate with slate borders and optimal daylight legibility.
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTheme('dark')}
+                  className={`p-4 rounded-2xl border text-left transition-all flex items-start gap-3.5 ${
+                    theme === 'dark'
+                      ? 'bg-slate-900 border-sky-500 shadow-sm'
+                      : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400 shrink-0">
+                    <Moon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-white">Dark Mode</p>
+                      {theme === 'dark' && <Check className="w-4 h-4 text-sky-400" />}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Deep OLED slate substrate with electric sky accents for reduced eye strain.
+                    </p>
+                  </div>
+                </button>
               </div>
             </div>
+          )}
 
-            {/* SQLite Cache Maintenance */}
-            <div className="p-4 rounded-2xl bg-slate-950/70 border border-white/5 space-y-3">
-              <div className="flex items-center justify-between">
+          {/* 2. Windows Shell Integration */}
+          {activeTab === 'shell' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Windows Explorer Shell Integration
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Add ProtoFS shortcuts directly into the Windows right-click context menu and SendTo folder.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                      "Send to ProtoFS" Shortcut
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Enables one-click encrypted uploading from the Windows SendTo menu.
+                    </p>
+                  </div>
+                  <Button
+                    variant={shellStatus?.send_to_enabled ? 'primary' : 'outline'}
+                    size="sm"
+                    onClick={() => handleToggleShellIntegration('sendTo')}
+                    disabled={shellSaving}
+                  >
+                    {shellStatus?.send_to_enabled ? 'Enabled' : 'Disabled'}
+                  </Button>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                      Windows Explorer Context Menu
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Integrates "Upload to ProtoFS" in directory and file context menus.
+                    </p>
+                  </div>
+                  <Button
+                    variant={shellStatus?.context_menu_enabled ? 'primary' : 'outline'}
+                    size="sm"
+                    onClick={() => handleToggleShellIntegration('contextMenu')}
+                    disabled={shellSaving}
+                  >
+                    {shellStatus?.context_menu_enabled ? 'Enabled' : 'Disabled'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 3. Virtual Drive Mount */}
+          {activeTab === 'mount' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Virtual Drive & Explorer Mapping
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Map your Telegram Zero-Knowledge cloud drive directly as a native Windows drive letter.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Power
+                      className={`w-4 h-4 ${
+                        virtualDrive?.is_mounted ? 'text-emerald-500' : 'text-slate-400'
+                      }`}
+                    />
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                        {virtualDrive?.is_mounted
+                          ? `Mounted on ${virtualDrive.drive_letter}:\\`
+                          : 'Drive Currently Unmounted'}
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {virtualDrive?.is_mounted
+                          ? `${virtualDrive.cached_files_count} files cached in SQLite WAL`
+                          : 'Select target drive letter and mount'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    variant={virtualDrive?.is_mounted ? 'danger' : 'primary'}
+                    size="sm"
+                    onClick={async () => {
+                      if (!activeDrive) return;
+                      if (virtualDrive?.is_mounted) {
+                        await unmountVirtualDrive(activeDrive.id);
+                      } else {
+                        await mountVirtualDrive(activeDrive.id, selectedDriveLetter, onDemandStreaming);
+                      }
+                    }}
+                  >
+                    {virtualDrive?.is_mounted ? 'Unmount Drive' : 'Mount Drive'}
+                  </Button>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Preferred Drive Letter
+                    </label>
+                    <select
+                      value={selectedDriveLetter}
+                      onChange={(e) => setSelectedDriveLetter(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-slate-100 rounded-xl px-3 py-2 border border-slate-200 dark:border-slate-800 focus:outline-none"
+                    >
+                      {['P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'].map((letter) => (
+                        <option key={letter} value={letter}>
+                          {letter}: (Windows Drive)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-5">
+                    <input
+                      type="checkbox"
+                      id="onDemand"
+                      checked={onDemandStreaming}
+                      onChange={(e) => setOnDemandStreaming(e.target.checked)}
+                      className="rounded text-sky-500"
+                    />
+                    <label htmlFor="onDemand" className="text-xs text-slate-700 dark:text-slate-300">
+                      On-Demand 64KB Chunk Streaming
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 4. Camera Roll Auto-Backup */}
+          {activeTab === 'camera' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Camera Roll & Photos Continuous Sync
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Automatically watch local pictures and camera folder to encrypt and backup new media.
+                </p>
+              </div>
+
+              {cameraConfig && (
+                <form onSubmit={handleSaveCameraConfig} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Local Photos Folder Path
+                    </label>
+                    <Input
+                      value={cameraConfig.local_path}
+                      onChange={(e) =>
+                        setCameraConfig({ ...cameraConfig, local_path: e.target.value })
+                      }
+                      className="text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1 text-xs text-slate-700 dark:text-slate-300">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={cameraConfig.wifi_only}
+                        onChange={(e) =>
+                          setCameraConfig({ ...cameraConfig, wifi_only: e.target.checked })
+                        }
+                      />
+                      <span>Wi-Fi Only</span>
+                    </label>
+
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={cameraConfig.include_videos}
+                        onChange={(e) =>
+                          setCameraConfig({ ...cameraConfig, include_videos: e.target.checked })
+                        }
+                      />
+                      <span>Include Videos</span>
+                    </label>
+
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={cameraConfig.original_quality}
+                        onChange={(e) =>
+                          setCameraConfig({ ...cameraConfig, original_quality: e.target.checked })
+                        }
+                      />
+                      <span>Lossless Original Quality</span>
+                    </label>
+
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={cameraConfig.charging_only}
+                        onChange={(e) =>
+                          setCameraConfig({ ...cameraConfig, charging_only: e.target.checked })
+                        }
+                      />
+                      <span>Charging Only</span>
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <Button variant="primary" size="sm" type="submit" disabled={cameraSaving}>
+                      {cameraSaving ? 'Saving...' : 'Save Camera Sync'}
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {/* 5. WorkManager Background Sync */}
+          {activeTab === 'background' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Background Sync & WorkManager
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Periodic synchronization engine for unattended automated file syncing.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-sky-500" />
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                        Periodic Background Sync
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Next scheduled run:{' '}
+                        {workManagerStatus?.next_scheduled_run
+                          ? new Date(workManagerStatus.next_scheduled_run).toLocaleTimeString()
+                          : 'Idle'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleTriggerBackgroundSync}
+                    disabled={triggeringSync}
+                    icon={<RefreshCw className={`w-3.5 h-3.5 ${triggeringSync ? 'animate-spin' : ''}`} />}
+                  >
+                    Sync Now
+                  </Button>
+                </div>
+
+                {workManagerStatus?.recent_history && workManagerStatus.recent_history.length > 0 && (
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1.5">
+                    <p className="text-[11px] font-mono uppercase text-slate-400">Recent Sync Runs</p>
+                    {workManagerStatus.recent_history.slice(0, 3).map((hist) => (
+                      <div
+                        key={hist.id}
+                        className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-mono flex items-center justify-between"
+                      >
+                        <span className="text-slate-700 dark:text-slate-300">{hist.message}</span>
+                        <span className="text-emerald-500 shrink-0">Success</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 6. Zero-Knowledge Encryption Keys */}
+          {activeTab === 'encryption' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Zero-Knowledge Master Key & Passphrase
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Master encryption key used for Argon2id key derivation and AES-256-GCM chunks.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                    Master Passphrase
+                  </p>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleSaveMasterKey}
+                    icon={keySaved ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                  >
+                    {keySaved ? 'Saved!' : 'Save Key'}
+                  </Button>
+                </div>
+
+                <div className="relative">
+                  <Input
+                    type={showPassphrase ? 'text' : 'password'}
+                    value={masterPassphrase}
+                    onChange={(e) => setMasterPassphrase(e.target.value)}
+                    placeholder="Enter master passphrase"
+                    className="pr-10 font-mono text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassphrase(!showPassphrase)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                  >
+                    {showPassphrase ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300 flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span>
+                  ProtoFS uses Argon2id key derivation (64MB memory cost, 3 iterations) with authenticated AES-256-GCM 64 KB chunks. Keys never leave your machine in plaintext.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* 7. Full Backup Export & Import */}
+          {activeTab === 'backup' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Full System Backup & Portability Center
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Export or import all connected drives, manifests, sync pairs, and configurations.
+                </p>
+              </div>
+
+              {/* Export */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                  Export System Backup
+                </p>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={exportEncrypt}
+                      onChange={(e) => setExportEncrypt(e.target.checked)}
+                      className="rounded text-sky-500"
+                    />
+                    <span>Encrypt with AES-256-GCM password (Recommended)</span>
+                  </label>
+
+                  {exportEncrypt && (
+                    <Input
+                      type="password"
+                      placeholder="Enter backup encryption password..."
+                      value={exportPassword}
+                      onChange={(e) => setExportPassword(e.target.value)}
+                      className="text-xs font-mono"
+                    />
+                  )}
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleExportBackup}
+                    disabled={isExporting || (exportEncrypt && !exportPassword.trim())}
+                    icon={
+                      exportSuccess ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : isExporting ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )
+                    }
+                  >
+                    {exportSuccess ? 'Downloaded!' : isExporting ? 'Exporting...' : 'Export (.pfsbak)'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Import */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                  Import & Restore Backup
+                </p>
+
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".pfsbak,.json"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setImportFile(e.target.files[0]);
+                      setImportError(null);
+                    }
+                  }}
+                />
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    icon={<Upload className="w-3.5 h-3.5" />}
+                  >
+                    {importFile ? 'Change File' : 'Select Backup File'}
+                  </Button>
+
+                  {importFile && (
+                    <span className="text-xs font-mono text-sky-600 dark:text-sky-400 truncate">
+                      {importFile.name}
+                    </span>
+                  )}
+                </div>
+
+                {importFile && (
+                  <div className="space-y-2 pt-1">
+                    <Input
+                      type="password"
+                      placeholder="Decryption password (if encrypted)..."
+                      value={importPassword}
+                      onChange={(e) => setImportPassword(e.target.value)}
+                      className="text-xs font-mono"
+                    />
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleImportBackup}
+                      disabled={isImporting}
+                      icon={
+                        isImporting ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Check className="w-3.5 h-3.5" />
+                        )
+                      }
+                    >
+                      {isImporting ? 'Restoring...' : 'Restore Backup'}
+                    </Button>
+                  </div>
+                )}
+
+                {importError && (
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-600 dark:text-rose-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{importError}</span>
+                  </div>
+                )}
+
+                {importSuccess && (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-600 dark:text-emerald-300 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>Backup restored successfully!</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 8. Storage & SQLite WAL Cache */}
+          {activeTab === 'storage' && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Storage Telemetry & SQLite Cache
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Inspect memory-mapped WAL cache and breakdown of channel storage assets.
+                </p>
+              </div>
+
+              {storageMetrics && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
+                    <p className="text-[10px] uppercase font-mono text-slate-400">Total Files</p>
+                    <p className="text-base font-bold text-slate-900 dark:text-white mt-0.5">
+                      {storageMetrics.total_files}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
+                    <p className="text-[10px] uppercase font-mono text-slate-400">Folders</p>
+                    <p className="text-base font-bold text-slate-900 dark:text-white mt-0.5">
+                      {storageMetrics.total_folders}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800">
+                    <p className="text-[10px] uppercase font-mono text-slate-400">Cache Size</p>
+                    <p className="text-base font-bold text-sky-600 dark:text-sky-400 mt-0.5">
+                      {(storageMetrics.local_cache_bytes / (1024 * 1024)).toFixed(1)} MB
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-slate-200">Local SQLite WAL Cache</p>
-                  <p className="text-[11px] text-slate-400">
-                    Clears unpinned chunk files and resets the local memory-mapped database cache.
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                    Local SQLite WAL Cache Eviction
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Flush unpinned decrypted chunks and clean up temporary storage blocks.
                   </p>
                 </div>
                 <Button
@@ -362,7 +992,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   disabled={clearingCache}
                   icon={
                     cacheCleared ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
                     ) : (
                       <Trash2 className="w-3.5 h-3.5" />
                     )
@@ -372,210 +1002,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </Button>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Tab 2: Zero-Knowledge Encryption Keys */}
-        {activeTab === 'encryption' && (
-          <div className="space-y-4">
-            <div className="p-4 rounded-2xl bg-slate-950/70 border border-white/5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-slate-200">Master Key & Passphrase</p>
-                  <p className="text-[11px] text-slate-400">
-                    Used to derive Argon2id / AES-256-GCM symmetric encryption keys for all channel file chunks.
-                  </p>
-                </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSaveMasterKey}
-                  icon={keySaved ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                >
-                  {keySaved ? 'Saved!' : 'Save Key'}
-                </Button>
-              </div>
-
-              <div className="relative mt-2">
-                <Input
-                  type={showPassphrase ? 'text' : 'password'}
-                  value={masterPassphrase}
-                  onChange={(e) => setMasterPassphrase(e.target.value)}
-                  placeholder="Enter strong master passphrase"
-                  className="pr-10 font-mono text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassphrase(!showPassphrase)}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
-                >
-                  {showPassphrase ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Cryptographic Spec Card */}
-            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300">
-                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Zero-Knowledge Hardened Cryptography</span>
-              </div>
-              <ul className="text-[11px] text-emerald-200/90 font-mono space-y-1 list-disc list-inside">
-                <li>Key Derivation: Argon2id (Memory: 64MB, Iterations: 3, Parallelism: 4)</li>
-                <li>Stream Cipher: AES-256-GCM with 64 KB authenticated chunks</li>
-                <li>Integrity Verification: SHA-256 Merkle root verification</li>
-                <li>Plaintext master keys are never stored on Telegram or transmitted over networks.</li>
-              </ul>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 3: Full Backup Export & Import */}
-        {activeTab === 'backup' && (
-          <div className="space-y-4">
-            {/* Export Card */}
-            <div className="p-4 rounded-2xl bg-slate-950/70 border border-white/5 space-y-3">
+          {/* 9. Updates & Releases */}
+          {activeTab === 'updates' && (
+            <div className="space-y-4">
               <div>
-                <p className="text-xs font-semibold text-slate-200">Export Full System Backup</p>
-                <p className="text-[11px] text-slate-400">
-                  Export all connected drive manifests, sync pairs, Telegram account metadata, and encryption configurations to a portable file.
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  Version & Release Highlights
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Check for latest releases with SHA256 cryptographic signature validation.
                 </p>
               </div>
 
-              <div className="space-y-2 pt-1">
-                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={exportEncrypt}
-                    onChange={(e) => setExportEncrypt(e.target.checked)}
-                    className="rounded bg-slate-900 border-white/20 text-sky-500 focus:ring-0"
-                  />
-                  <span>Encrypt export file with AES-256-GCM password (Recommended)</span>
-                </label>
-
-                {exportEncrypt && (
-                  <Input
-                    type="password"
-                    placeholder="Enter backup encryption password..."
-                    value={exportPassword}
-                    onChange={(e) => setExportPassword(e.target.value)}
-                    className="text-xs font-mono"
-                  />
-                )}
-              </div>
-
-              <div className="flex justify-end pt-1">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleExportBackup}
-                  disabled={isExporting || (exportEncrypt && !exportPassword.trim())}
-                  icon={
-                    exportSuccess ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : isExporting ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Download className="w-3.5 h-3.5" />
-                    )
-                  }
-                >
-                  {exportSuccess ? 'Backup Downloaded!' : isExporting ? 'Exporting...' : 'Export Backup (.pfsbak)'}
-                </Button>
-              </div>
-            </div>
-
-            {/* Import Card */}
-            <div className="p-4 rounded-2xl bg-slate-950/70 border border-white/5 space-y-3">
-              <div>
-                <p className="text-xs font-semibold text-slate-200">Import & Restore Backup</p>
-                <p className="text-[11px] text-slate-400">
-                  Restore your drives, channels, sync pairs, and master keys from a `.pfsbak` or `.json` file.
-                </p>
-              </div>
-
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".pfsbak,.json"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    setImportFile(e.target.files[0]);
-                    setImportError(null);
-                  }
-                }}
-              />
-
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  icon={<Upload className="w-3.5 h-3.5" />}
-                >
-                  {importFile ? 'Change File' : 'Select Backup File'}
-                </Button>
-
-                {importFile && (
-                  <span className="text-xs font-mono text-sky-400 truncate max-w-[200px]">
-                    {importFile.name}
-                  </span>
-                )}
-              </div>
-
-              {importFile && (
-                <div className="space-y-2 pt-1">
-                  <Input
-                    type="password"
-                    placeholder="Enter backup decryption password (if encrypted)..."
-                    value={importPassword}
-                    onChange={(e) => setImportPassword(e.target.value)}
-                    className="text-xs font-mono"
-                  />
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                      ProtoFS v0.3.0 (Production Channel)
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                      Cryptographic signature verified
+                    </p>
+                  </div>
                   <Button
-                    variant="primary"
+                    variant="secondary"
                     size="sm"
-                    onClick={handleImportBackup}
-                    disabled={isImporting}
-                    icon={
-                      isImporting ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Check className="w-3.5 h-3.5" />
-                      )
-                    }
+                    onClick={handleCheckUpdates}
+                    disabled={checkingUpdate}
+                    icon={<RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? 'animate-spin' : ''}`} />}
                   >
-                    {isImporting ? 'Restoring...' : 'Restore Backup'}
+                    Check Now
                   </Button>
                 </div>
-              )}
 
-              {importError && (
-                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>{importError}</span>
-                </div>
-              )}
-
-              {importSuccess && (
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Backup successfully restored! Drives and configurations updated.</span>
-                </div>
-              )}
+                {updateInfo && (
+                  <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs space-y-2">
+                    <p className="font-semibold text-slate-900 dark:text-white">
+                      {updateInfo.update_available ? 'New Version Available!' : 'Up to date!'}
+                    </p>
+                    <pre className="text-[11px] font-mono text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
+                      {updateInfo.release_notes}
+                    </pre>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-
-        <div className="flex justify-end pt-2 border-t border-white/5">
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            Done
-          </Button>
+          )}
         </div>
+      </div>
+
+      <div className="flex justify-end pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Done
+        </Button>
       </div>
     </Modal>
   );
 };
+
 

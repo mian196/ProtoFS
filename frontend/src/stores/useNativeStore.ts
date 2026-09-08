@@ -17,7 +17,11 @@ interface NativeState {
   isLoading: boolean;
 
   loadNativeStatus: (driveId?: string) => Promise<void>;
-  mountVirtualDrive: (driveId: string, letter?: string) => Promise<VirtualDriveStatus | null>;
+  mountVirtualDrive: (
+    driveId: string,
+    letter?: string,
+    onDemandStream?: boolean
+  ) => Promise<VirtualDriveStatus | null>;
   unmountVirtualDrive: (driveId: string) => Promise<VirtualDriveStatus | null>;
   loadSyncPairs: (driveId?: string) => Promise<void>;
 }
@@ -55,8 +59,8 @@ export const useNativeStore = create<NativeState>((set) => ({
     }
   },
 
-  mountVirtualDrive: async (driveId: string, letter?: string) => {
-    const res = await api.mountVirtualDrive(driveId, letter);
+  mountVirtualDrive: async (driveId: string, letter?: string, onDemandStream = true) => {
+    const res = await api.mountVirtualDrive(driveId, letter, onDemandStream);
     set({ virtualDrive: res });
     return res;
   },

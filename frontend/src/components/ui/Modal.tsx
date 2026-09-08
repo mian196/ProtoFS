@@ -44,41 +44,39 @@ export const Modal: React.FC<ModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-950/80 backdrop-blur-md transition-opacity"
+        className="fixed inset-0 bg-slate-950/60 dark:bg-slate-950/80 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 
-      {/* Modal Dialog Card */}
+      {/* Clean Single-Border Dialog Card */}
       <div
-        className={`relative w-full ${maxWidthClasses} rounded-3xl p-1.5 bg-white/[0.04] border border-white/10 backdrop-blur-2xl shadow-2xl z-10 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] scale-100`}
+        className={`relative w-full ${maxWidthClasses} rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl z-10 p-6 transition-all duration-200`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="rounded-[calc(1.5rem-0.375rem)] bg-slate-900/95 border border-white/[0.05] p-6 shadow-inner">
-          {/* Header */}
-          {(title || subtitle) && (
-            <div className="flex items-start justify-between pb-4 mb-4 border-b border-white/5">
-              <div>
-                {title && (
-                  <h3 className="text-lg font-semibold text-slate-100 tracking-tight">
-                    {title}
-                  </h3>
-                )}
-                {subtitle && (
-                  <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
-                )}
-              </div>
-              <button
-                onClick={onClose}
-                className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
+        {/* Header */}
+        {(title || subtitle) && (
+          <div className="flex items-start justify-between pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              {title && (
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 tracking-tight">
+                  {title}
+                </h3>
+              )}
+              {subtitle && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{subtitle}</p>
+              )}
             </div>
-          )}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
-          {/* Content */}
-          <div className="relative">{children}</div>
-        </div>
+        {/* Content */}
+        <div className="relative">{children}</div>
       </div>
     </div>
   );
