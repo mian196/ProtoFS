@@ -29,6 +29,8 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 # Storage, Compression & Database
 rusqlite = { version = "0.32", features = ["bundled", "bundled-full", "vtab"] }
 zstd = "0.13"
+notify = "6.1"
+tempfile = "3.12"
 
 # Cryptography & Security
 ring = "0.17"

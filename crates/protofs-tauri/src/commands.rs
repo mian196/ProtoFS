@@ -1068,6 +1068,10 @@ pub async fn adopt_channel_as_drive_command(
     name: String,
 ) -> Result<CommandResponse<DriveMetadata>, String> {
     let state = app.state::<AppState>();
+    let mut drives = state.drives.write().await;
+    if let Some(existing) = drives.iter().find(|d| d.channel_id == channel_id) {
+        return Ok(CommandResponse::ok(existing.clone()));
+    }
     let id = format!("drive_{}", Utc::now().timestamp_millis());
     let new_drive = DriveMetadata {
         id: id.clone(),
@@ -1077,19 +1081,15 @@ pub async fn adopt_channel_as_drive_command(
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
+    drives.push(new_drive.clone());
 
-    let mut drives = state.drives.write().await;
-    if !drives.iter().any(|d| d.channel_id == channel_id) {
-        drives.push(new_drive.clone());
-
-        let session_guard = state.session.read().await;
-        if let Some(ref s) = *session_guard {
-            save_user_drives(&app, s.user_id, &drives);
-        }
-        drop(session_guard);
-
-        let _ = state.engine.get_or_create_tree(&id).await;
+    let session_guard = state.session.read().await;
+    if let Some(ref s) = *session_guard {
+        save_user_drives(&app, s.user_id, &drives);
     }
+    drop(session_guard);
+
+    let _ = state.engine.get_or_create_tree(&id).await;
 
     Ok(CommandResponse::ok(new_drive))
 }
@@ -1407,7 +1407,9 @@ pub async fn export_drive_command(
 
     let _ = std::fs::write(
         &manifest_path,
-        serde_json::to_string_pretty(&manifest_data).unwrap_or_default().as_bytes(),
+        serde_json::to_string_pretty(&manifest_data)
+            .unwrap_or_default()
+            .as_bytes(),
     );
 
     Ok(CommandResponse::ok(ExportDriveResult {
@@ -1609,6 +1611,34 @@ pub struct CameraBackupConfig {
     pub last_backup_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+fn get_default_camera_path() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        let user = std::env::var("USERPROFILE").unwrap_or_default();
+        let camera_roll = std::path::PathBuf::from(&user).join("Pictures\\Camera Roll");
+        if camera_roll.exists() {
+            camera_roll.to_string_lossy().to_string()
+        } else {
+            std::path::PathBuf::from(&user)
+                .join("Pictures")
+                .to_string_lossy()
+                .to_string()
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        std::path::PathBuf::from(&home)
+            .join("Pictures/Camera")
+            .to_string_lossy()
+            .to_string()
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        "/DCIM/Camera".to_string()
+    }
+}
+
 #[tauri::command]
 pub async fn get_camera_backup_config_command(
     app: tauri::AppHandle,
@@ -1622,33 +1652,7 @@ pub async fn get_camera_backup_config_command(
             || p.local_path.contains("Pictures")
     });
 
-    let default_path = {
-        #[cfg(target_os = "windows")]
-        {
-            let user = std::env::var("USERPROFILE").unwrap_or_default();
-            let camera_roll = std::path::PathBuf::from(&user).join("Pictures\\Camera Roll");
-            if camera_roll.exists() {
-                camera_roll.to_string_lossy().to_string()
-            } else {
-                std::path::PathBuf::from(&user)
-                    .join("Pictures")
-                    .to_string_lossy()
-                    .to_string()
-            }
-        }
-        #[cfg(target_os = "linux")]
-        {
-            let home = std::env::var("HOME").unwrap_or_default();
-            std::path::PathBuf::from(&home)
-                .join("Pictures/Camera")
-                .to_string_lossy()
-                .to_string()
-        }
-        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
-        {
-            "/DCIM/Camera".to_string()
-        }
-    };
+    let default_path = get_default_camera_path();
 
     if let Some(pair) = camera_pair {
         let is_wifi = !pair.sync_mode.contains("wifi:false");
@@ -2507,7 +2511,7 @@ fn get_protofs_mount_dir(app: &tauri::AppHandle, drive_id: &str) -> std::path::P
 fn load_mount_state(app: &tauri::AppHandle) -> PersistedMountState {
     let path = get_protofs_mount_dir(app, "_system").join("mount_state.json");
     if path.exists()
-            && let Ok(bytes) = std::fs::read(&path)
+        && let Ok(bytes) = std::fs::read(&path)
         && let Ok(state) = serde_json::from_slice::<PersistedMountState>(&bytes)
     {
         return state;
@@ -2535,14 +2539,14 @@ async fn count_dir_files_and_bytes_async(dir: std::path::PathBuf) -> (usize, u64
                         let (sub_c, sub_b) = count_dir_files_and_bytes_sync(&entry.path());
                         count += sub_c;
                         bytes += sub_b;
-                } else {
-                    count += 1;
-                    bytes += meta.len();
+                    } else {
+                        count += 1;
+                        bytes += meta.len();
+                    }
                 }
             }
         }
-    }
-    (count, bytes)
+        (count, bytes)
     })
     .await
     .unwrap_or((0, 0))
@@ -2726,7 +2730,8 @@ pub async fn get_virtual_drive_status_command(
     let available_letters = get_available_drive_letters();
     let winfsp_available = is_winfsp_installed();
     let mount_dir = get_protofs_mount_dir(&app, &drive_id);
-    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes_async(mount_dir.clone()).await;
+    let (cached_files_count, cached_bytes) =
+        count_dir_files_and_bytes_async(mount_dir.clone()).await;
 
     let (is_mounted, drive_letter, mount_path, last_mounted_at) =
         if let Some(info) = mount_state.mounts.get(&drive_id) {
@@ -2828,7 +2833,8 @@ pub async fn mount_virtual_drive_command(
     );
     save_mount_state(&app, &mount_state);
 
-    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes_async(mount_dir.clone()).await;
+    let (cached_files_count, cached_bytes) =
+        count_dir_files_and_bytes_async(mount_dir.clone()).await;
     let winfsp_available = is_winfsp_installed();
     let driver_mode = if winfsp_available {
         "WinFsp FUSE (Native Kernel Driver)".to_string()
@@ -2870,7 +2876,8 @@ pub async fn unmount_virtual_drive_command(
     }
 
     let mount_dir = get_protofs_mount_dir(&app, &drive_id);
-    let (cached_files_count, cached_bytes) = count_dir_files_and_bytes_async(mount_dir.clone()).await;
+    let (cached_files_count, cached_bytes) =
+        count_dir_files_and_bytes_async(mount_dir.clone()).await;
     let winfsp_available = is_winfsp_installed();
     let driver_mode = if winfsp_available {
         "WinFsp FUSE (Native Kernel Driver)".to_string()
@@ -3177,24 +3184,22 @@ pub struct WorkManagerSyncStatus {
     pub recent_history: Vec<WorkManagerJobRecord>,
 }
 
-fn get_workmanager_config_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+fn get_workmanager_dir(app: &tauri::AppHandle) -> std::path::PathBuf {
     let base = app
         .path()
         .app_data_dir()
         .unwrap_or_else(|_| std::path::PathBuf::from("."));
     let dir = base.join("workmanager");
     ensure_dir(&dir);
-    dir.join("workmanager_sync_config.json")
+    dir
+}
+
+fn get_workmanager_config_path(app: &tauri::AppHandle) -> std::path::PathBuf {
+    get_workmanager_dir(app).join("workmanager_sync_config.json")
 }
 
 fn get_workmanager_history_path(app: &tauri::AppHandle) -> std::path::PathBuf {
-    let base = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let dir = base.join("workmanager");
-    ensure_dir(&dir);
-    dir.join("sync_worker_history.json")
+    get_workmanager_dir(app).join("sync_worker_history.json")
 }
 
 fn load_workmanager_config(app: &tauri::AppHandle) -> WorkManagerSyncConfig {
