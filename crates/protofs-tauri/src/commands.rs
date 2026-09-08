@@ -251,7 +251,6 @@ async fn finalize_login(
 ) -> AuthSession {
     state.transport.switch_to_real(real_transport).await;
 
-    let drive_id = format!("drive_{}", tg_user.id);
     let session = AuthSession {
         is_authenticated: true,
         phone: phone.unwrap_or_else(|| "+Telegram User".to_string()),
@@ -260,7 +259,7 @@ async fn finalize_login(
         username: tg_user.username,
         first_name: tg_user.first_name,
         user_id: tg_user.id,
-        active_drive_id: drive_id.clone(),
+        active_drive_id: String::new(),
         is_demo: false,
     };
 
@@ -279,19 +278,11 @@ async fn finalize_login(
     registry.active_user_id = Some(session.user_id);
     save_account_registry(app, &registry);
 
-    let mut user_drives = load_user_drives(app, tg_user.id);
-    if user_drives.is_empty() {
-        let initial_drive = DriveMetadata {
-            id: drive_id,
-            name: "ProtoFS Cloud Drive".to_string(),
-            channel_id: 0,
-            pinned_manifest_msg_id: Some(1),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        user_drives.push(initial_drive);
-        save_user_drives(app, tg_user.id, &user_drives);
-    }
+    let user_drives = load_user_drives(app, tg_user.id)
+        .into_iter()
+        .filter(|d| !(d.channel_id == 0 && d.name == "ProtoFS Cloud Drive"))
+        .collect::<Vec<_>>();
+    save_user_drives(app, tg_user.id, &user_drives);
 
     let mut drives_lock = state.drives.write().await;
     *drives_lock = user_drives;
@@ -1069,31 +1060,41 @@ pub async fn get_drives_command(
     }
 
     if let Some(uid) = user_id {
-        let drives = load_user_drives(&app, uid);
-        if !drives.is_empty() {
-            let mut state_drives = state.drives.write().await;
-            *state_drives = drives.clone();
-            return Ok(CommandResponse::ok(drives));
-        }
-
-        // For a real account with no saved drives, create initial "ProtoFS Cloud Drive"
-        let initial_drive = DriveMetadata {
-            id: format!("drive_{}", uid),
-            name: "ProtoFS Cloud Drive".to_string(),
-            channel_id: 0,
-            pinned_manifest_msg_id: Some(1),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        let initial_drives = vec![initial_drive];
-        save_user_drives(&app, uid, &initial_drives);
+        let drives = load_user_drives(&app, uid)
+            .into_iter()
+            .filter(|d| !(d.channel_id == 0 && d.name == "ProtoFS Cloud Drive"))
+            .collect::<Vec<_>>();
+        save_user_drives(&app, uid, &drives);
         let mut state_drives = state.drives.write().await;
-        *state_drives = initial_drives.clone();
-        return Ok(CommandResponse::ok(initial_drives));
+        *state_drives = drives.clone();
+        return Ok(CommandResponse::ok(drives));
     }
 
     let drives = state.drives.read().await;
-    Ok(CommandResponse::ok(drives.clone()))
+    let filtered_drives: Vec<DriveMetadata> = drives
+        .iter()
+        .filter(|d| !(d.channel_id == 0 && d.name == "ProtoFS Cloud Drive"))
+        .cloned()
+        .collect();
+    Ok(CommandResponse::ok(filtered_drives))
+}
+
+#[tauri::command]
+pub async fn delete_drive_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+) -> Result<CommandResponse<bool>, String> {
+    let state = app.state::<AppState>();
+    let mut drives = state.drives.write().await;
+    drives.retain(|d| d.id != drive_id);
+    let session_guard = state.session.read().await;
+    if let Some(ref s) = *session_guard
+        && !s.is_demo
+    {
+        save_user_drives(&app, s.user_id, &drives);
+    }
+    drop(session_guard);
+    Ok(CommandResponse::ok(true))
 }
 
 #[tauri::command]
@@ -1220,6 +1221,10 @@ pub async fn load_drive_command(
     channel_id: i64,
 ) -> Result<CommandResponse<Vec<VfsNode>>, String> {
     let state = app.state::<AppState>();
+
+    if drive_id.is_empty() {
+        return Ok(CommandResponse::ok(Vec::new()));
+    }
 
     // Only attempt remote channel scan if a valid non-zero channel ID is provided
     if channel_id != 0
@@ -2761,6 +2766,26 @@ pub async fn get_virtual_drive_status_command(
     app: tauri::AppHandle,
     drive_id: String,
 ) -> Result<CommandResponse<VirtualDriveStatus>, String> {
+    if drive_id.is_empty() {
+        let winfsp_available = is_winfsp_installed();
+        return Ok(CommandResponse::ok(VirtualDriveStatus {
+            is_mounted: false,
+            drive_id: String::new(),
+            drive_letter: "P".to_string(),
+            mount_path: "P:\\".to_string(),
+            driver_mode: if winfsp_available {
+                "WinFsp FUSE (Native Kernel Driver)".to_string()
+            } else {
+                "Windows Native Drive Mapping (Zero-Install)".to_string()
+            },
+            winfsp_available,
+            available_letters: get_available_drive_letters(),
+            cached_files_count: 0,
+            cached_bytes: 0,
+            last_mounted_at: None,
+        }));
+    }
+
     let mount_state = load_mount_state(&app);
     let available_letters = get_available_drive_letters();
     let winfsp_available = is_winfsp_installed();

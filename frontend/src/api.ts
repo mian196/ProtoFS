@@ -315,8 +315,10 @@ export class ProtoFsApi {
     if (isTauri()) {
       try {
         const res = await invoke<TauriCommandResponse<DriveMetadata[]>>('get_drives_command');
-        if (res.success && res.data && res.data.length > 0) {
-          return res.data;
+        if (res.success && res.data) {
+          const filtered = res.data.filter(d => !(d.channel_id === 0 && d.name === 'ProtoFS Cloud Drive'));
+          localStorage.setItem(STORAGE_KEY_DRIVES, JSON.stringify(filtered));
+          return filtered;
         }
       } catch (err) {
         console.warn('Tauri get_drives_command error, falling back:', err);
@@ -325,40 +327,73 @@ export class ProtoFsApi {
 
     const session = await this.getSessionStatus();
     if (session && !session.is_demo) {
-      return [
+      const cached = localStorage.getItem(STORAGE_KEY_DRIVES);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            return parsed.filter((d: any) => !(d.channel_id === 0 && d.name === 'ProtoFS Cloud Drive'));
+          }
+        } catch {
+          // ignore
+        }
+      }
+      return [];
+    }
+
+    const cached = localStorage.getItem(STORAGE_KEY_DRIVES);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((d: any) => !(d.channel_id === 0 && d.name === 'ProtoFS Cloud Drive'));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (session?.is_demo) {
+      const defaultDrives: DriveMetadata[] = [
         {
-          id: `drive_${session.user_id}`,
-          name: 'ProtoFS Cloud Drive',
-          channel_id: 0,
-          pinned_manifest_msg_id: 1,
+          id: 'personal',
+          name: 'Personal Drive',
+          channel_id: -1001928472910,
+          pinned_manifest_msg_id: 104,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 'work',
+          name: 'Work Archive',
+          channel_id: -1001982736192,
+          pinned_manifest_msg_id: 88,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
       ];
+      return defaultDrives;
     }
 
-    const cached = localStorage.getItem(STORAGE_KEY_DRIVES);
-    if (cached) return JSON.parse(cached);
+    return [];
+  }
 
-    const defaultDrives: DriveMetadata[] = [
-      {
-        id: 'personal',
-        name: 'Personal Drive',
-        channel_id: -1001928472910,
-        pinned_manifest_msg_id: 104,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: 'work',
-        name: 'Work Archive',
-        channel_id: -1001982736192,
-        pinned_manifest_msg_id: 88,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    ];
-    return defaultDrives;
+  async deleteDrive(driveId: string): Promise<boolean> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<boolean>>('delete_drive_command', { driveId });
+        if (res.success) {
+          const drives = (await this.getDrives()).filter(d => d.id !== driveId);
+          localStorage.setItem(STORAGE_KEY_DRIVES, JSON.stringify(drives));
+          return true;
+        }
+      } catch (err) {
+        console.warn('Tauri delete_drive_command error:', err);
+      }
+    }
+    const drives = (await this.getDrives()).filter(d => d.id !== driveId);
+    localStorage.setItem(STORAGE_KEY_DRIVES, JSON.stringify(drives));
+    return true;
   }
 
   async createDrive(name: string, channelId: number): Promise<DriveMetadata> {
@@ -461,6 +496,9 @@ export class ProtoFsApi {
   // -------------------------------------------------------------------------
 
   async loadDrive(driveId: string, channelId: number): Promise<{ folders: FolderNode[]; files: FileNode[] }> {
+    if (!driveId) {
+      return { folders: [], files: [] };
+    }
     if (isTauri()) {
       try {
         const res = await invoke<TauriCommandResponse<any[]>>('load_drive_command', {
@@ -1376,6 +1414,7 @@ export class ProtoFsApi {
   // -------------------------------------------------------------------------
 
   async getVirtualDriveStatus(driveId: string): Promise<VirtualDriveStatus | null> {
+    if (!driveId) return null;
     if (isTauri()) {
       try {
         const res = await invoke<TauriCommandResponse<VirtualDriveStatus>>('get_virtual_drive_status_command', { driveId });
