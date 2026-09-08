@@ -221,7 +221,11 @@ mod tests {
         async fn get_pinned_manifest(&self, _channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {
             Ok(self.pinned_manifest.lock().unwrap().clone())
         }
-        async fn update_pinned_manifest(&self, _channel_id: i64, manifest_bytes: &[u8]) -> Result<i32> {
+        async fn update_pinned_manifest(
+            &self,
+            _channel_id: i64,
+            manifest_bytes: &[u8],
+        ) -> Result<i32> {
             let mut pinned = self.pinned_manifest.lock().unwrap();
             *pinned = Some((1, manifest_bytes.to_vec()));
             Ok(1)
@@ -256,7 +260,12 @@ mod tests {
         ) -> Result<Vec<u8>> {
             Ok(vec![])
         }
-        async fn edit_caption(&self, _channel_id: i64, _message_id: i32, _new_caption: &str) -> Result<()> {
+        async fn edit_caption(
+            &self,
+            _channel_id: i64,
+            _message_id: i32,
+            _new_caption: &str,
+        ) -> Result<()> {
             Ok(())
         }
         async fn delete_message(&self, _channel_id: i64, _message_id: i32) -> Result<()> {
@@ -265,10 +274,13 @@ mod tests {
         async fn scan_messages(
             &self,
             _channel_id: i64,
-            _min_id: i32,
+            min_id: i32,
             _limit: usize,
         ) -> Result<Vec<TelegramMessage>> {
-            Ok(self.messages.lock().unwrap().clone())
+            let msgs = self.messages.lock().unwrap();
+            let filtered: Vec<TelegramMessage> =
+                msgs.iter().filter(|m| m.id > min_id).cloned().collect();
+            Ok(filtered)
         }
     }
 
