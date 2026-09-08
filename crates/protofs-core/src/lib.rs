@@ -182,11 +182,100 @@ mod tests {
         assert_eq!(loaded_tree.count(), 2);
     }
 
+    #[derive(Default)]
+    struct MockTestTransport {
+        pinned_manifest: std::sync::Mutex<Option<(i32, Vec<u8>)>>,
+        messages: std::sync::Mutex<Vec<TelegramMessage>>,
+    }
+
+    #[async_trait::async_trait]
+    impl TelegramTransport for MockTestTransport {
+        async fn get_me(&self) -> Result<TelegramUser> {
+            Ok(TelegramUser {
+                id: 100,
+                first_name: "Test".to_string(),
+                username: Some("testuser".to_string()),
+                phone: Some("+123456789".to_string()),
+            })
+        }
+        async fn create_channel(&self, title: &str, _about: &str) -> Result<ChannelInfo> {
+            Ok(ChannelInfo {
+                id: 9999,
+                title: title.to_string(),
+                access_hash: 12345,
+            })
+        }
+        async fn list_owned_channels(&self) -> Result<Vec<OwnedChannel>> {
+            Ok(vec![OwnedChannel {
+                channel_id: 9999,
+                title: "Personal Drive".to_string(),
+                is_channel: true,
+                is_group: false,
+                is_creator: true,
+                is_admin: true,
+                is_protofs_drive: true,
+                about: Some("ProtoFS Root".to_string()),
+            }])
+        }
+        async fn get_pinned_manifest(&self, _channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {
+            Ok(self.pinned_manifest.lock().unwrap().clone())
+        }
+        async fn update_pinned_manifest(&self, _channel_id: i64, manifest_bytes: &[u8]) -> Result<i32> {
+            let mut pinned = self.pinned_manifest.lock().unwrap();
+            *pinned = Some((1, manifest_bytes.to_vec()));
+            Ok(1)
+        }
+        async fn upload_document(
+            &self,
+            channel_id: i64,
+            filename: &str,
+            caption: &str,
+            data: &[u8],
+        ) -> Result<TelegramMessage> {
+            let mut msgs = self.messages.lock().unwrap();
+            let id = (msgs.len() + 1) as i32;
+            let msg = TelegramMessage {
+                id,
+                channel_id,
+                caption: Some(caption.to_string()),
+                document_size: Some(data.len() as u64),
+                document_name: Some(filename.to_string()),
+                is_pinned: false,
+                date: Utc::now(),
+            };
+            msgs.push(msg.clone());
+            Ok(msg)
+        }
+        async fn download_range(
+            &self,
+            _channel_id: i64,
+            _message_id: i32,
+            _offset: u64,
+            _limit: u32,
+        ) -> Result<Vec<u8>> {
+            Ok(vec![])
+        }
+        async fn edit_caption(&self, _channel_id: i64, _message_id: i32, _new_caption: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn delete_message(&self, _channel_id: i64, _message_id: i32) -> Result<()> {
+            Ok(())
+        }
+        async fn scan_messages(
+            &self,
+            _channel_id: i64,
+            _min_id: i32,
+            _limit: usize,
+        ) -> Result<Vec<TelegramMessage>> {
+            Ok(self.messages.lock().unwrap().clone())
+        }
+    }
+
     #[tokio::test]
     async fn test_sync_engine_end_to_end() {
         use std::sync::Arc;
 
-        let transport = Arc::new(DynamicTelegramTransport::new_unauthenticated());
+        let transport = Arc::new(MockTestTransport::default());
         let db = CacheDatabase::open_in_memory().unwrap();
         let engine = SyncEngine::new(transport.clone(), db);
 
