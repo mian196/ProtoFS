@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit",
+    "lint": "eslint src/ && tsc --noEmit",
     "tauri": "tauri"
   },
   "dependencies": {

@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -56,22 +58,7 @@ pub struct RealTelegramTransport {
 
 // Base64URL encoder without padding for Telegram QR login tokens
 fn base64url_encode(data: &[u8]) -> String {
-    const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let mut out = String::with_capacity((data.len() * 4).div_ceil(3));
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0];
-        let b1 = chunk.get(1).copied().unwrap_or(0);
-        let b2 = chunk.get(2).copied().unwrap_or(0);
-        out.push(CHARSET[(b0 >> 2) as usize] as char);
-        out.push(CHARSET[(((b0 & 3) << 4) | (b1 >> 4)) as usize] as char);
-        if chunk.len() > 1 {
-            out.push(CHARSET[(((b1 & 15) << 2) | (b2 >> 6)) as usize] as char);
-        }
-        if chunk.len() > 2 {
-            out.push(CHARSET[(b2 & 63) as usize] as char);
-        }
-    }
-    out
+    URL_SAFE_NO_PAD.encode(data)
 }
 
 async fn get_channel_access_hash(session: &MemorySession, channel_id: i64) -> i64 {

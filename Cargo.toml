@@ -38,6 +38,7 @@ argon2 = "0.5"
 rand = "0.8"
 subtle = "2.6"
 zeroize = { version = "1.8", features = ["derive"] }
+base64 = "0.22"
 
 # Telegram MTProto (Real Client via Codeberg)
 grammers-client = { git = "https://codeberg.org/Lonami/grammers.git", rev = "5e16253b2ff8cbea94e8fffdfeccc109217ba762" }

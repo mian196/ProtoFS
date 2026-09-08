@@ -908,18 +908,30 @@ fn get_drives_file_path(app: &tauri::AppHandle, user_id: i64) -> Option<std::pat
 fn save_user_drives(app: &tauri::AppHandle, user_id: i64, drives: &[DriveMetadata]) {
     if let Some(path) = get_drives_file_path(app, user_id)
         && let Ok(json) = serde_json::to_string_pretty(drives)
+        && let Ok(encrypted) = protofs_core::crypto::protect_secret(json.as_bytes())
     {
-        let _ = std::fs::write(&path, json.into_bytes());
+        let _ = std::fs::write(&path, encrypted);
     }
 }
 
 fn load_user_drives(app: &tauri::AppHandle, user_id: i64) -> Vec<DriveMetadata> {
     if let Some(path) = get_drives_file_path(app, user_id)
         && path.exists()
-        && let Ok(content) = std::fs::read_to_string(&path)
-        && let Ok(drives) = serde_json::from_str::<Vec<DriveMetadata>>(&content)
+        && let Ok(content) = std::fs::read(&path)
     {
-        return drives;
+        // Try encrypted format first, fall back to plaintext for migration
+        if let Ok(decrypted) = protofs_core::crypto::unprotect_secret(&content) {
+            if let Ok(drives) = serde_json::from_slice::<Vec<DriveMetadata>>(&decrypted) {
+                return drives;
+            }
+        }
+        if let Ok(s) = std::str::from_utf8(&content) {
+            if let Ok(drives) = serde_json::from_str::<Vec<DriveMetadata>>(s) {
+                // Migrate to encrypted format
+                save_user_drives(app, user_id, &drives);
+                return drives;
+            }
+        }
     }
     Vec::new()
 }

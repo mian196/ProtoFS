@@ -30,6 +30,7 @@ argon2 = { workspace = true }
 rand = { workspace = true }
 subtle = { workspace = true }
 zeroize = { workspace = true }
+base64 = { workspace = true }
 
 # Telegram MTProto (Real Client)
 grammers-client = { workspace = true }
