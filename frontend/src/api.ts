@@ -1893,3 +1893,6 @@ function formatDate(isoString: string): string {
     return 'Recently';
   }
 }
+
+export const api = new ProtoFsApi();
+
