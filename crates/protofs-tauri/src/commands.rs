@@ -1167,7 +1167,7 @@ pub async fn upload_file_command(
     } else {
         None
     };
-    let sha = Some(format!("{:x}", md5_hash(&name)));
+    let sha = Some(format!("{:x}", fnv1a_hash_filename(&name)));
     let mime = Some(guess_mime(&name));
 
     let file = if let Some(existing_id) = existing_file_id {
@@ -1775,7 +1775,7 @@ pub async fn check_for_updates_command() -> Result<CommandResponse<UpdateInfo>, 
         release_notes,
         release_date: "2026-09-07".to_string(),
         download_url: "https://github.com/mian196/ProtoFS/releases/tag/v0.2.1".to_string(),
-        signature_verified: true,
+        signature_verified: false, // TODO: implement actual signature verification
         channel: "Stable (GitHub Releases)".to_string(),
     }))
 }
@@ -1872,9 +1872,10 @@ pub async fn set_shell_integration_command(
         let send_to_cmd = send_to_dir.join("ProtoFS.cmd");
 
         if enable_send_to {
+            let safe_exe = target_exe.replace('"', "\"\"");
             let cmd_content = format!(
-                "@echo off\r\nstart \"\" \"{}\" --upload %*\r\n",
-                target_exe.replace('/', "\\")
+                "@echo off\r\nstart \"\" \"{}\" --upload \"%*\"\r\n",
+                safe_exe.replace('/', "\\")
             );
             std::fs::write(&send_to_cmd, cmd_content).map_err(|e| e.to_string())?;
         } else {
@@ -2046,6 +2047,13 @@ pub async fn get_pending_uploads_command() -> Result<CommandResponse<Vec<String>
 
 #[tauri::command]
 pub async fn open_path_in_explorer_command(path: String) -> Result<CommandResponse<bool>, String> {
+    let p = std::path::Path::new(&path);
+    if !p.is_absolute() {
+        return Ok(CommandResponse::err("Path must be absolute".to_string()));
+    }
+    if path.contains("://") || path.contains('&') || path.contains('|') || path.contains(';') {
+        return Ok(CommandResponse::err("Invalid path characters".to_string()));
+    }
     #[cfg(target_os = "windows")]
     {
         let _ = silent_command("explorer").arg(&path).spawn();
@@ -2398,7 +2406,7 @@ fn guess_mime(filename: &str) -> String {
     }
 }
 
-fn md5_hash(input: &str) -> u64 {
+fn fnv1a_hash_filename(input: &str) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
     for b in input.bytes() {
         h = (h ^ (b as u64)).wrapping_mul(0x100000001b3);
@@ -3356,11 +3364,9 @@ fn get_local_lan_ip() -> String {
 }
 
 fn generate_p2p_pin() -> String {
-    let nanos = chrono::Utc::now()
-        .timestamp_nanos_opt()
-        .unwrap_or(0)
-        .unsigned_abs();
-    let num = (nanos % 900_000 + 100_000) as u32;
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let num: u32 = rng.gen_range(100_000..1_000_000);
     let s = num.to_string();
     format!("{}-{}", &s[..3], &s[3..])
 }

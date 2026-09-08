@@ -120,11 +120,17 @@ mod platform {
     fn get_machine_key() -> [u8; 32] {
         let id = std::fs::read_to_string("/etc/machine-id")
             .unwrap_or_else(|_| "protofs-default-entropy-seed-key".to_string());
+
+        use ring::hkdf;
+        let salt = hkdf::Salt::new(hkdf::HKDF_SHA256, b"protofs-machine-key-salt");
+        let prk = salt.extract(id.as_bytes());
+        let info = [b"protofs-aes-gcm-key".as_slice()];
+        let okm = prk
+            .expand(&info, hkdf::HKDF_SHA256)
+            .expect("HKDF expansion should not fail");
+
         let mut key = [0u8; 32];
-        let bytes = id.as_bytes();
-        for (i, b) in bytes.iter().enumerate() {
-            key[i % 32] ^= *b;
-        }
+        okm.fill(&mut key).expect("32 bytes should fit");
         key
     }
 

@@ -9,7 +9,7 @@ use grammers_client::client::LoginToken;
 use grammers_client::{Client, SignInError};
 use grammers_mtsender::{SenderPool, SenderPoolHandle};
 use grammers_session::storages::MemorySession;
-use grammers_session::types::{DcOption, PeerInfo, UpdatesState};
+use grammers_session::types::{DcOption, PeerId, PeerInfo, UpdatesState};
 use grammers_session::{Session, SessionData};
 use grammers_tl_types as tl;
 
@@ -74,13 +74,33 @@ fn base64url_encode(data: &[u8]) -> String {
     out
 }
 
-fn export_session_bytes(session: &Arc<MemorySession>) -> Result<Vec<u8>> {
-    let home_dc = session.home_dc_id().unwrap_or(1);
+async fn export_session_bytes(session: &Arc<MemorySession>) -> Result<Vec<u8>> {
+    let home_dc = session
+        .home_dc_id()
+        .map_err(|e| ProtoFsError::Mtproto(format!("Failed to get home DC: {}", e)))?;
+
+    let mut dc_options = HashMap::new();
+    for id in 1..=5 {
+        if let Ok(Some(dc)) = session.dc_option(id) {
+            dc_options.insert(id, dc);
+        }
+    }
+
+    let mut peer_infos = HashMap::new();
+    if let Ok(Some(self_peer)) = session.peer(PeerId::self_user()).await {
+        peer_infos.insert(self_peer.id(), self_peer);
+    }
+
+    let updates_state = session
+        .updates_state()
+        .await
+        .map_err(|e| ProtoFsError::Mtproto(format!("Failed to get updates state: {}", e)))?;
+
     let exported = ExportedSession {
         home_dc,
-        dc_options: Vec::new(),
-        peer_infos: Vec::new(),
-        updates_state: UpdatesState::default(),
+        dc_options: dc_options.into_values().collect(),
+        peer_infos: peer_infos.into_values().collect(),
+        updates_state,
     };
     serde_json::to_vec(&exported)
         .map_err(|e| ProtoFsError::Mtproto(format!("Failed to serialize session: {}", e)))
@@ -218,7 +238,7 @@ impl TelegramAuthClient {
                         username: user.username().map(|s| s.to_string()),
                         phone: Some(phone.clone()),
                     };
-                    let session_bytes = export_session_bytes(session)?;
+                    let session_bytes = export_session_bytes(session).await?;
                     let transport = RealTelegramTransport {
                         client: client.clone(),
                         session: Arc::clone(session),
@@ -296,7 +316,7 @@ impl TelegramAuthClient {
                     username: user.username().map(|s| s.to_string()),
                     phone: Some(phone.clone()),
                 };
-                let session_bytes = export_session_bytes(session)?;
+                let session_bytes = export_session_bytes(session).await?;
                 let transport = RealTelegramTransport {
                     client: client.clone(),
                     session: Arc::clone(session),
@@ -345,7 +365,7 @@ impl TelegramAuthClient {
                     username: user.username().map(|s| s.to_string()),
                     phone: None,
                 };
-                let session_bytes = export_session_bytes(session)?;
+                let session_bytes = export_session_bytes(session).await?;
                 let transport = RealTelegramTransport {
                     client: client.clone(),
                     session: Arc::clone(session),
@@ -513,7 +533,7 @@ impl TelegramAuthClient {
                             }
                         };
 
-                        let session_bytes = export_session_bytes(session)?;
+                        let session_bytes = export_session_bytes(session).await?;
                         let transport = RealTelegramTransport {
                             client: client.clone(),
                             session: Arc::clone(session),
@@ -760,29 +780,28 @@ impl TelegramTransport for RealTelegramTransport {
                 && let Some(tl::enums::MessageMedia::Document(doc_media)) = m.media
                 && let Some(tl::enums::Document::Document(doc)) = doc_media.document
             {
-                    let location = tl::enums::InputFileLocation::InputDocumentFileLocation(
-                        tl::types::InputDocumentFileLocation {
-                            id: doc.id,
-                            access_hash: doc.access_hash,
-                            file_reference: doc.file_reference,
-                            thumb_size: String::new(),
-                        },
-                    );
-                    let download_req = tl::functions::upload::GetFile {
-                        precise: true,
-                        cdn_supported: false,
-                        location,
-                        offset: 0,
-                        limit: 1048576 * 4,
+                let location = tl::enums::InputFileLocation::InputDocumentFileLocation(
+                    tl::types::InputDocumentFileLocation {
+                        id: doc.id,
+                        access_hash: doc.access_hash,
+                        file_reference: doc.file_reference,
+                        thumb_size: String::new(),
+                    },
+                );
+                let download_req = tl::functions::upload::GetFile {
+                    precise: true,
+                    cdn_supported: false,
+                    location,
+                    offset: 0,
+                    limit: 1048576 * 4,
+                };
+                if let Ok(file_res) = self.client.invoke(&download_req).await {
+                    let bytes = match file_res {
+                        tl::enums::upload::File::File(f) => f.bytes,
+                        tl::enums::upload::File::CdnRedirect(_) => Vec::new(),
                     };
-                    if let Ok(file_res) = self.client.invoke(&download_req).await {
-                        let bytes = match file_res {
-                            tl::enums::upload::File::File(f) => f.bytes,
-                            tl::enums::upload::File::CdnRedirect(_) => Vec::new(),
-                        };
-                        if !bytes.is_empty() {
-                            return Ok(Some((m.id, bytes)));
-                        }
+                    if !bytes.is_empty() {
+                        return Ok(Some((m.id, bytes)));
                     }
                 }
             }
