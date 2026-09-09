@@ -28,6 +28,7 @@ use std::os::windows::process::CommandExt;
 /// Creates a std::process::Command configured on Windows with CREATE_NO_WINDOW
 /// (0x08000000) so no console window flashes or pops up for child processes.
 pub fn silent_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    #[allow(unused_mut)]
     let mut cmd = std::process::Command::new(program);
     #[cfg(target_os = "windows")]
     {
