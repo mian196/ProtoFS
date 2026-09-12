@@ -377,4 +377,38 @@ mod tests {
         assert_eq!(node.id, uploaded_node.id);
         assert_eq!(decrypted_data, original_data);
     }
+
+    #[tokio::test]
+    async fn test_self_healing_rebuild_with_nested_folders() {
+        use std::sync::Arc;
+
+        let transport = Arc::new(MockTestTransport::default());
+        let db = CacheDatabase::open_in_memory().unwrap();
+        let engine = SyncEngine::new(transport.clone(), db);
+
+        let channel = transport
+            .create_channel("Nested Drive", "Self-Healing Test")
+            .await
+            .unwrap();
+
+        // Upload file under non-root folder: "folder_Documents"
+        let cap =
+            ParsedCaption::new("folder_Documents", "report.pdf", false, None, None).serialize();
+        transport
+            .upload_document(channel.id, "report.pdf", &cap, b"PDF_DATA")
+            .await
+            .unwrap();
+
+        // Rebuild scan should discover file AND synthesize "folder_Documents"
+        let tree = engine.load_drive("nested_drive", channel.id).await.unwrap();
+        assert_eq!(tree.count(), 2); // 1 synthesized folder + 1 file
+
+        let folder = tree.get_folder("folder_Documents");
+        assert!(folder.is_some());
+        assert_eq!(folder.unwrap().name, "Documents");
+
+        let file = tree.get_file("file_1");
+        assert!(file.is_some());
+        assert_eq!(file.unwrap().parent_id, "folder_Documents");
+    }
 }

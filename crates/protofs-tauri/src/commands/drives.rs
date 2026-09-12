@@ -227,15 +227,35 @@ pub async fn load_drive_command(
         return Ok(CommandResponse::ok(Vec::new()));
     }
 
-    // Only attempt remote channel scan if a valid non-zero channel ID is provided
-    if channel_id != 0
-        && let Ok(tree) = state.engine.load_drive(&drive_id, channel_id).await
-    {
-        let nodes: Vec<VfsNode> = tree.all_nodes().cloned().collect();
-        return Ok(CommandResponse::ok(nodes));
+    let target_channel_id = if channel_id != 0 {
+        channel_id
+    } else {
+        let drives = state.drives.read().await;
+        drives
+            .iter()
+            .find(|d| d.id == drive_id)
+            .map(|d| d.channel_id)
+            .unwrap_or(0)
+    };
+
+    if target_channel_id != 0 {
+        match state.engine.load_drive(&drive_id, target_channel_id).await {
+            Ok(tree) => {
+                let nodes: Vec<VfsNode> = tree.all_nodes().cloned().collect();
+                return Ok(CommandResponse::ok(nodes));
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to load remote drive '{}' from channel {}: {}. Falling back to local cache.",
+                    drive_id,
+                    target_channel_id,
+                    e
+                );
+            }
+        }
     }
 
-    // Otherwise get or create the local in-memory tree for this drive
+    // Fallback to local cache/in-memory tree
     let tree = state.engine.get_or_create_tree(&drive_id).await;
     let nodes: Vec<VfsNode> = tree.all_nodes().cloned().collect();
     Ok(CommandResponse::ok(nodes))
@@ -248,7 +268,30 @@ pub async fn flush_manifest_command(
     channel_id: i64,
 ) -> Result<CommandResponse<()>, String> {
     let state = app.state::<AppState>();
-    match state.engine.flush_manifest(&drive_id, channel_id).await {
+
+    let target_channel_id = if channel_id != 0 {
+        channel_id
+    } else {
+        let drives = state.drives.read().await;
+        drives
+            .iter()
+            .find(|d| d.id == drive_id)
+            .map(|d| d.channel_id)
+            .unwrap_or(0)
+    };
+
+    if target_channel_id == 0 {
+        return Ok(CommandResponse::err(format!(
+            "Drive '{}' has no associated Telegram channel to flush manifest to",
+            drive_id
+        )));
+    }
+
+    match state
+        .engine
+        .flush_manifest(&drive_id, target_channel_id)
+        .await
+    {
         Ok(_) => Ok(CommandResponse::ok(())),
         Err(e) => Ok(CommandResponse::err(e.to_string())),
     }

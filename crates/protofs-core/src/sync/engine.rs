@@ -105,6 +105,29 @@ impl<T: TelegramTransport> SyncEngine<T> {
                 if let Some(ref caption) = msg.caption
                     && let Ok(parsed) = ParsedCaption::parse(caption)
                 {
+                    // Synthesize intermediate parent folder if not yet in tree and not root
+                    if parsed.parent_id != "root" && tree.get(&parsed.parent_id).is_none() {
+                        let folder_name = parsed
+                            .parent_id
+                            .trim_start_matches("folder_")
+                            .replace('_', " ");
+                        let clean_name = if folder_name.is_empty() {
+                            parsed.parent_id.clone()
+                        } else {
+                            folder_name
+                        };
+
+                        tree.insert(VfsNode::Folder(crate::vfs::FolderNode {
+                            id: parsed.parent_id.clone(),
+                            drive_id: drive_id.to_string(),
+                            parent_id: "root".to_string(),
+                            name: clean_name,
+                            is_trashed: false,
+                            created_at: msg.date,
+                            updated_at: msg.date,
+                        }));
+                    }
+
                     let file_node = FileNode {
                         id: format!("file_{}", msg.id),
                         drive_id: drive_id.to_string(),
