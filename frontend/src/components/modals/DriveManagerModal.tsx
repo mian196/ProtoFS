@@ -31,10 +31,9 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
     if (isOpen) {
       loadDrives();
       loadChannels();
-      checkConnection();
       setError(null);
     }
-  }, [isOpen, loadDrives, loadChannels, checkConnection]);
+  }, [isOpen, loadDrives, loadChannels]);
 
   const handleRetryConnection = async () => {
     setIsRetrying(true);
@@ -53,7 +52,7 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
     e.preventDefault();
     if (!driveName.trim()) return;
 
-    if (!isOnline) {
+    if (connectionStatus === 'disconnected') {
       setError('Telegram MTProto is unreachable. Please connect to a VPN and retry.');
       return;
     }
@@ -78,7 +77,8 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
     }
   };
 
-  const isOnline = connectionStatus === 'connected';
+  const isDisconnected = connectionStatus === 'disconnected';
+  const isOnline = !isDisconnected;
 
   return (
     <Modal
@@ -89,8 +89,8 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
       maxWidth="md"
     >
       <div className="space-y-4">
-        {/* Offline / VPN Alert */}
-        {!isOnline && (
+        {/* Offline / VPN Alert (only shown when connection is verified disconnected) */}
+        {isDisconnected && (
           <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex items-start justify-between gap-3 text-xs text-rose-300">
             <div className="flex items-start gap-2.5 min-w-0">
               <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
