@@ -4,12 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tauri::Manager;
 
+#[cfg(target_os = "windows")]
+use super::silent_command;
 use super::{
     AppState, CommandResponse, DocumentsProviderStatus, P2P_TRANSFER_HISTORY_LIMIT,
     SafTestQueryResult, VirtualDriveStatus, ensure_dir,
 };
-#[cfg(target_os = "windows")]
-use super::silent_command;
 
 // ---------------------------------------------------------------------------
 // Native Virtual Drive Mount
