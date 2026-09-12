@@ -159,7 +159,9 @@ impl<T: TelegramTransport> SyncEngine<T> {
 
         // Create initial manifest and flush to channel
         let snapshot = ManifestSnapshot::from_tree(drive_id, 1, &tree);
-        self.cache.batch_insert_manifest(&snapshot)?;
+        if let Err(e) = self.cache.batch_insert_manifest(&snapshot) {
+            warn!("Failed to cache rebuilt manifest to SQLite: {}", e);
+        }
 
         let compressed = snapshot.to_compressed_bytes()?;
         let pinned_msg_id = self
@@ -195,7 +197,12 @@ impl<T: TelegramTransport> SyncEngine<T> {
         let next_version = current_version + 1;
 
         let snapshot = ManifestSnapshot::from_tree(drive_id, next_version, &tree_snapshot);
-        self.cache.batch_insert_manifest(&snapshot)?;
+        if let Err(e) = self.cache.batch_insert_manifest(&snapshot) {
+            warn!(
+                "Failed to batch insert manifest into local SQLite cache: {}",
+                e
+            );
+        }
 
         let compressed = snapshot.to_compressed_bytes()?;
         self.transport

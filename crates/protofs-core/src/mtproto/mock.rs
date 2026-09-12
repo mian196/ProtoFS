@@ -232,6 +232,27 @@ impl TelegramTransport for MockTelegramTransport {
         Ok(())
     }
 
+    async fn send_text_message(&self, channel_id: i64, text: &str) -> Result<i32> {
+        let mut next_id = self.next_msg_id.write().await;
+        let msg_id = *next_id;
+        *next_id += 1;
+
+        let msg = TelegramMessage {
+            id: msg_id,
+            channel_id,
+            caption: Some(text.to_string()),
+            document_size: None,
+            document_name: None,
+            is_pinned: false,
+            date: Utc::now(),
+        };
+
+        let mut messages = self.messages.write().await;
+        messages.entry(channel_id).or_default().push(msg);
+
+        Ok(msg_id)
+    }
+
     async fn scan_messages(
         &self,
         channel_id: i64,

@@ -106,7 +106,7 @@ pub async fn create_drive_command(
     let state = app.state::<AppState>();
     let id = format!("drive_{}", Utc::now().timestamp_millis());
 
-    let resolved_channel_id = if channel_id == 0 {
+    let (resolved_channel_id, was_created) = if channel_id == 0 {
         let channel_title = format!("[ProtoFS] {}", name);
         let channel_about = format!("ProtoFS Encrypted Cloud Storage [protofs-id: {}]", id);
         match state
@@ -114,7 +114,7 @@ pub async fn create_drive_command(
             .create_channel(&channel_title, &channel_about)
             .await
         {
-            Ok(info) => info.id,
+            Ok(info) => (info.id, true),
             Err(e) => {
                 return Ok(CommandResponse::err(format!(
                     "Failed to create Telegram channel: {}",
@@ -123,14 +123,61 @@ pub async fn create_drive_command(
             }
         }
     } else {
-        channel_id
+        (channel_id, false)
     };
+
+    // 1. Send introductory welcome banner if newly created
+    if was_created && resolved_channel_id != 0 {
+        let welcome_text = format!(
+            "🚀 ProtoFS Cloud Storage Initialized\n\
+             ===================================\n\
+             📁 Drive Name: {}\n\
+             🆔 Drive ID: {}\n\
+             🔒 Protocol: ProtoFS v0.3.0 (MTProto + Argon2id / AES-256-GCM)\n\
+             ⚡ Status: Active & Ready\n\
+             ===================================\n\
+             ℹ️ Notice: This channel stores your ProtoFS filesystem data, encrypted chunks, and compressed snapshots. Please do not delete pinned manifest messages.",
+            name, id
+        );
+        let _ = state
+            .transport
+            .send_text_message(resolved_channel_id, &welcome_text)
+            .await;
+    }
+
+    // 2. Initialize in-memory drive tree and synthesize/pin initial manifest.json.zst v1
+    let tree = state.engine.get_or_create_tree(&id).await;
+    let mut pinned_msg_id = Some(1);
+
+    if resolved_channel_id != 0 {
+        let snapshot = protofs_core::manifest::ManifestSnapshot::from_tree(&id, 1, &tree);
+        let _ = state.cache.batch_insert_manifest(&snapshot);
+        if let Ok(compressed) = snapshot.to_compressed_bytes() {
+            match state
+                .transport
+                .update_pinned_manifest(resolved_channel_id, &compressed)
+                .await
+            {
+                Ok(msg_id) => {
+                    pinned_msg_id = Some(msg_id);
+                    tracing::info!(
+                        "Synthesized and pinned initial manifest v1 (msg #{}) for drive '{}'",
+                        msg_id,
+                        id
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to pin initial manifest for drive '{}': {}", id, e);
+                }
+            }
+        }
+    }
 
     let new_drive = DriveMetadata {
         id: id.clone(),
         name,
         channel_id: resolved_channel_id,
-        pinned_manifest_msg_id: Some(1),
+        pinned_manifest_msg_id: pinned_msg_id,
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
@@ -143,9 +190,6 @@ pub async fn create_drive_command(
         save_user_drives(&app, s.user_id, &drives);
     }
     drop(session_guard);
-
-    // Initialize in-memory drive tree in sync engine
-    let _ = state.engine.get_or_create_tree(&id).await;
 
     Ok(CommandResponse::ok(new_drive))
 }
@@ -194,11 +238,42 @@ pub async fn adopt_channel_as_drive_command(
         return Ok(CommandResponse::ok(existing.clone()));
     }
     let id = format!("drive_{}", Utc::now().timestamp_millis());
+
+    let welcome_text = format!(
+        "🚀 ProtoFS Cloud Storage Connected\n\
+         ===================================\n\
+         📁 Drive Name: {}\n\
+         🆔 Drive ID: {}\n\
+         ⚡ Status: Channel adopted as active virtual drive\n\
+         ===================================",
+        name, id
+    );
+    let _ = state
+        .transport
+        .send_text_message(channel_id, &welcome_text)
+        .await;
+
+    let tree = state.engine.get_or_create_tree(&id).await;
+    let mut pinned_msg_id = Some(1);
+
+    if channel_id != 0 {
+        let snapshot = protofs_core::manifest::ManifestSnapshot::from_tree(&id, 1, &tree);
+        let _ = state.cache.batch_insert_manifest(&snapshot);
+        if let Ok(compressed) = snapshot.to_compressed_bytes()
+            && let Ok(msg_id) = state
+                .transport
+                .update_pinned_manifest(channel_id, &compressed)
+                .await
+        {
+            pinned_msg_id = Some(msg_id);
+        }
+    }
+
     let new_drive = DriveMetadata {
         id: id.clone(),
         name,
         channel_id,
-        pinned_manifest_msg_id: Some(1),
+        pinned_manifest_msg_id: pinned_msg_id,
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
@@ -210,9 +285,42 @@ pub async fn adopt_channel_as_drive_command(
     }
     drop(session_guard);
 
-    let _ = state.engine.get_or_create_tree(&id).await;
-
     Ok(CommandResponse::ok(new_drive))
+}
+
+#[tauri::command]
+pub async fn sync_and_prune_drives_command(
+    app: tauri::AppHandle,
+) -> Result<CommandResponse<Vec<DriveMetadata>>, String> {
+    let state = app.state::<AppState>();
+
+    // Fetch live owned channels from Telegram
+    if let Ok(owned) = state.transport.list_owned_channels().await {
+        let valid_ids: std::collections::HashSet<i64> =
+            owned.into_iter().map(|c| c.channel_id.abs()).collect();
+        let mut drives = state.drives.write().await;
+
+        drives.retain(|d| {
+            d.channel_id == 0
+                || valid_ids.contains(&d.channel_id.abs())
+                || valid_ids.iter().any(|&vid| {
+                    let s_vid = vid.to_string();
+                    let s_did = d.channel_id.abs().to_string();
+                    s_vid.ends_with(&s_did) || s_did.ends_with(&s_vid)
+                })
+        });
+
+        let session_guard = state.session.read().await;
+        if let Some(ref s) = *session_guard {
+            save_user_drives(&app, s.user_id, &drives);
+        }
+        drop(session_guard);
+
+        return Ok(CommandResponse::ok(drives.clone()));
+    }
+
+    let drives = state.drives.read().await;
+    Ok(CommandResponse::ok(drives.clone()))
 }
 
 #[tauri::command]
@@ -245,6 +353,26 @@ pub async fn load_drive_command(
                 return Ok(CommandResponse::ok(nodes));
             }
             Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("CHANNEL_INVALID") {
+                    tracing::warn!(
+                        "Channel {} was deleted from Telegram. Auto-pruning drive '{}'",
+                        target_channel_id,
+                        drive_id
+                    );
+                    let mut drives = state.drives.write().await;
+                    drives.retain(|d| d.id != drive_id);
+                    let session_guard = state.session.read().await;
+                    if let Some(ref s) = *session_guard {
+                        save_user_drives(&app, s.user_id, &drives);
+                    }
+                    drop(session_guard);
+                    return Ok(CommandResponse::err(
+                        "This drive channel was deleted from Telegram and has been unlinked."
+                            .to_string(),
+                    ));
+                }
+
                 tracing::warn!(
                     "Failed to load remote drive '{}' from channel {}: {}. Falling back to local cache.",
                     drive_id,

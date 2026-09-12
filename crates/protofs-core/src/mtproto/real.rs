@@ -1144,6 +1144,64 @@ impl TelegramTransport for RealTelegramTransport {
         Ok(())
     }
 
+    async fn send_text_message(&self, channel_id: i64, text: &str) -> Result<i32> {
+        let (channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
+        let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
+            channel_id,
+            access_hash,
+        });
+
+        let send_req = tl::functions::messages::SendMessage {
+            no_webpage: true,
+            silent: false,
+            background: false,
+            clear_draft: false,
+            noforwards: false,
+            update_stickersets_order: false,
+            invert_media: false,
+            peer: input_peer,
+            reply_to: None,
+            message: text.to_string(),
+            random_id: rand::random(),
+            reply_markup: None,
+            entities: None,
+            schedule_date: None,
+            send_as: None,
+            quick_reply_shortcut: None,
+            rich_message: None,
+            effect: None,
+            allow_paid_floodskip: false,
+            allow_paid_stars: None,
+            schedule_repeat_period: None,
+            suggested_post: None,
+        };
+
+        let updates =
+            self.client.invoke(&send_req).await.map_err(|e| {
+                ProtoFsError::Mtproto(format!("Failed to send text message: {}", e))
+            })?;
+
+        let msg_id = match updates {
+            tl::enums::Updates::Updates(u) => u
+                .updates
+                .into_iter()
+                .find_map(|upd| match upd {
+                    tl::enums::Update::NewMessage(nm) => {
+                        if let tl::enums::Message::Message(m) = nm.message {
+                            Some(m.id)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                })
+                .unwrap_or(1),
+            _ => 1,
+        };
+
+        Ok(msg_id)
+    }
+
     async fn scan_messages(
         &self,
         channel_id: i64,

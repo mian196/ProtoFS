@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { HardDrive, Loader2, Check, Sparkles, Link2, AlertTriangle, ShieldCheck, RefreshCw } from 'lucide-react';
+import {
+  HardDrive,
+  Loader2,
+  Check,
+  Sparkles,
+  Link2,
+  AlertTriangle,
+  ShieldCheck,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -14,8 +24,16 @@ interface DriveManagerModalProps {
 }
 
 export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, onClose }) => {
-  const { drives, activeDrive, setActiveDrive, loadDrives, channels, loadChannels } =
-    useDriveStore();
+  const {
+    drives,
+    activeDrive,
+    setActiveDrive,
+    loadDrives,
+    deleteDrive,
+    syncAndPruneDrives,
+    channels,
+    loadChannels,
+  } = useDriveStore();
   const { loadDirectory } = useVfsStore();
   const { connectionStatus, checkConnection } = useAuthStore();
 
@@ -25,6 +43,7 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
   const [channelId, setChannelId] = useState('');
   const [loading, setLoading] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,6 +59,12 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
     await checkConnection();
     await loadChannels();
     setIsRetrying(false);
+  };
+
+  const handleSyncDrives = async () => {
+    setIsSyncing(true);
+    await syncAndPruneDrives();
+    setIsSyncing(false);
   };
 
   const handleSelectDrive = async (drive: any) => {
@@ -135,36 +160,75 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
         </div>
 
         {mode === 'list' ? (
-          <div className="space-y-2 max-h-64 overflow-y-auto no-scrollbar">
-            {drives.map((d) => (
-              <div
-                key={d.id}
-                onClick={() => handleSelectDrive(d)}
-                className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
-                  activeDrive?.id === d.id
-                    ? 'bg-sky-500/15 border-sky-500/40 text-white'
-                    : 'bg-slate-950/60 border-white/5 hover:bg-white/5 text-slate-300'
-                }`}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] text-slate-400 font-mono">
+                {drives.length} active drive{drives.length === 1 ? '' : 's'}
+              </span>
+              <button
+                type="button"
+                onClick={handleSyncDrives}
+                disabled={isSyncing}
+                className="flex items-center gap-1.5 text-[11px] text-sky-400 hover:text-sky-300 transition-colors font-medium cursor-pointer"
+                title="Cross-reference with Telegram and remove deleted channels"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
-                    <HardDrive className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold">{d.name}</p>
-                    <p className="text-[10px] text-slate-400 font-mono">
-                      ID: {d.id} • Channel: {d.channel_id}
-                    </p>
-                  </div>
-                </div>
+                <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Syncing...' : 'Sync with Telegram'}</span>
+              </button>
+            </div>
 
-                {activeDrive?.id === d.id && (
-                  <span className="p-1 rounded-full bg-sky-500/20 text-sky-400">
-                    <Check className="w-3.5 h-3.5" />
-                  </span>
-                )}
-              </div>
-            ))}
+            <div className="space-y-2 max-h-64 overflow-y-auto no-scrollbar">
+              {drives.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-slate-950/40 border border-white/5 text-center text-xs text-slate-400">
+                  No active virtual drives found. Click "+ Create / Link Drive" to create or adopt a channel.
+                </div>
+              ) : (
+                drives.map((d) => (
+                  <div
+                    key={d.id}
+                    onClick={() => handleSelectDrive(d)}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                      activeDrive?.id === d.id
+                        ? 'bg-sky-500/15 border-sky-500/40 text-white'
+                        : 'bg-slate-950/60 border-white/5 hover:bg-white/5 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0">
+                        <HardDrive className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold truncate">{d.name}</p>
+                        <p className="text-[10px] text-slate-400 font-mono truncate">
+                          ID: {d.id} • Channel: {d.channel_id}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      {activeDrive?.id === d.id && (
+                        <span className="p-1 rounded-full bg-sky-500/20 text-sky-400">
+                          <Check className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Unlink drive "${d.name}" from ProtoFS?`)) {
+                            deleteDrive(d.id);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        title="Unlink / Delete Drive"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         ) : (
           <form onSubmit={handleCreateDrive} className="space-y-4">

@@ -68,6 +68,11 @@ pub async fn upload_file_command(
             .await
         {
             Ok(file_node) => {
+                // Keep the pinned manifest.json.zst updated with every upload
+                if let Err(e) = state.engine.flush_manifest(&drive_id, channel_id).await {
+                    tracing::warn!("Auto-flush manifest after upload failed: {}", e);
+                }
+
                 let _ = app.emit(
                     "upload-progress",
                     serde_json::json!({

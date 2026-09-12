@@ -166,6 +166,16 @@ impl TelegramTransport for DynamicTelegramTransport {
         }
     }
 
+    async fn send_text_message(&self, channel_id: i64, text: &str) -> Result<i32> {
+        let lock = self.backend.read().await;
+        match &*lock {
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
+            TransportBackend::Real(r) => r.send_text_message(channel_id, text).await,
+        }
+    }
+
     async fn scan_messages(
         &self,
         channel_id: i64,

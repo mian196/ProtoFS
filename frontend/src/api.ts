@@ -351,6 +351,22 @@ export class ProtoFsApi {
     return true;
   }
 
+  async syncAndPruneDrives(): Promise<DriveMetadata[]> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<DriveMetadata[]>>('sync_and_prune_drives_command');
+        if (res.success && res.data) {
+          const filtered = res.data.filter(d => !(d.channel_id === 0 && d.name === 'ProtoFS Cloud Drive'));
+          localStorage.setItem(STORAGE_KEY_DRIVES, JSON.stringify(filtered));
+          return filtered;
+        }
+      } catch (err) {
+        console.warn('Tauri sync_and_prune_drives_command error:', err);
+      }
+    }
+    return this.getDrives();
+  }
+
   async createDrive(name: string, channelId: number): Promise<DriveMetadata> {
     if (isTauri()) {
       try {

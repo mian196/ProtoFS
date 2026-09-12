@@ -136,6 +136,29 @@ impl CacheDatabase {
             "#,
         )?;
 
+        // Auto-migrate existing databases to add any missing columns safely
+        let _ = conn.execute(
+            "ALTER TABLE folders ADD COLUMN is_trashed INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE files ADD COLUMN is_trashed INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE files ADD COLUMN version INTEGER NOT NULL DEFAULT 1",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE files ADD COLUMN history_json TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE files ADD COLUMN is_pinned_offline INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE drives ADD COLUMN manifest_version INTEGER NOT NULL DEFAULT 1",
+            [],
+        );
+
         Ok(())
     }
 

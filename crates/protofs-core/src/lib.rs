@@ -285,6 +285,9 @@ mod tests {
         async fn delete_message(&self, _channel_id: i64, _message_id: i32) -> Result<()> {
             Ok(())
         }
+        async fn send_text_message(&self, _channel_id: i64, _text: &str) -> Result<i32> {
+            Ok(1)
+        }
         async fn scan_messages(
             &self,
             _channel_id: i64,

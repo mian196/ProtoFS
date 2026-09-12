@@ -9,6 +9,8 @@ interface DriveState {
   isLoading: boolean;
   error: string | null;
   loadDrives: () => Promise<void>;
+  deleteDrive: (driveId: string) => Promise<void>;
+  syncAndPruneDrives: () => Promise<void>;
   setActiveDrive: (drive: DriveMetadata) => void;
   loadChannels: () => Promise<void>;
 }
@@ -32,6 +34,31 @@ export const useDriveStore = create<DriveState>((set, get) => ({
       set({ drives, activeDrive, isLoading: false });
     } catch (err: any) {
       set({ error: err.message || 'Failed to load drives', isLoading: false });
+    }
+  },
+
+  deleteDrive: async (driveId: string) => {
+    try {
+      await api.deleteDrive(driveId);
+      await get().loadDrives();
+    } catch (err: any) {
+      set({ error: err.message || 'Failed to delete drive' });
+    }
+  },
+
+  syncAndPruneDrives: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const drives = await api.syncAndPruneDrives();
+      const currentActive = get().activeDrive;
+      const activeDrive = currentActive
+        ? drives.find((d: DriveMetadata) => d.id === currentActive.id) || drives[0] || null
+        : drives[0] || null;
+
+      set({ drives, activeDrive, isLoading: false });
+      await get().loadChannels();
+    } catch (err: any) {
+      set({ error: err.message || 'Failed to sync drives', isLoading: false });
     }
   },
 

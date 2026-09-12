@@ -5,6 +5,19 @@ use tauri::Manager;
 
 use super::{AppState, CommandResponse};
 
+async fn auto_flush_manifest(state: &AppState, drive_id: &str) {
+    let drives = state.drives.read().await;
+    let channel_id = drives
+        .iter()
+        .find(|d| d.id == drive_id)
+        .map(|d| d.channel_id)
+        .unwrap_or(0);
+    drop(drives);
+    if channel_id != 0 {
+        let _ = state.engine.flush_manifest(drive_id, channel_id).await;
+    }
+}
+
 #[tauri::command]
 pub async fn create_folder_command(
     app: tauri::AppHandle,
@@ -37,6 +50,8 @@ pub async fn create_folder_command(
         return Ok(CommandResponse::err(e.to_string()));
     }
 
+    auto_flush_manifest(&state, &drive_id).await;
+
     Ok(CommandResponse::ok(folder))
 }
 
@@ -55,7 +70,10 @@ pub async fn delete_node_command(
     };
 
     match res {
-        Ok(_) => Ok(CommandResponse::ok(())),
+        Ok(_) => {
+            auto_flush_manifest(&state, &drive_id).await;
+            Ok(CommandResponse::ok(()))
+        }
         Err(e) => Ok(CommandResponse::err(e.to_string())),
     }
 }
@@ -68,7 +86,10 @@ pub async fn restore_node_command(
 ) -> Result<CommandResponse<()>, String> {
     let state = app.state::<AppState>();
     match state.engine.restore_node(&drive_id, &node_id).await {
-        Ok(_) => Ok(CommandResponse::ok(())),
+        Ok(_) => {
+            auto_flush_manifest(&state, &drive_id).await;
+            Ok(CommandResponse::ok(()))
+        }
         Err(e) => Ok(CommandResponse::err(e.to_string())),
     }
 }
@@ -80,7 +101,10 @@ pub async fn empty_trash_command(
 ) -> Result<CommandResponse<usize>, String> {
     let state = app.state::<AppState>();
     match state.engine.empty_trash(&drive_id).await {
-        Ok(count) => Ok(CommandResponse::ok(count)),
+        Ok(count) => {
+            auto_flush_manifest(&state, &drive_id).await;
+            Ok(CommandResponse::ok(count))
+        }
         Err(e) => Ok(CommandResponse::err(e.to_string())),
     }
 }
@@ -130,6 +154,7 @@ pub async fn rename_node_command(
     let _ = state
         .cache
         .rename_node_in_cache(&drive_id, &node_id, trimmed);
+    auto_flush_manifest(&state, &drive_id).await;
     Ok(CommandResponse::ok(()))
 }
 
@@ -151,5 +176,6 @@ pub async fn move_node_command(
     let _ = state
         .cache
         .move_node_in_cache(&drive_id, &node_id, &new_parent_id);
+    auto_flush_manifest(&state, &drive_id).await;
     Ok(CommandResponse::ok(()))
 }
