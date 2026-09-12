@@ -378,6 +378,19 @@ export class ProtoFsApi {
     return newDrive;
   }
 
+  async checkConnection(): Promise<boolean> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<boolean>>('check_telegram_connection_command');
+        return res.success && Boolean(res.data);
+      } catch (err) {
+        console.warn('Tauri check_telegram_connection_command error:', err);
+        return false;
+      }
+    }
+    return true;
+  }
+
   async getOwnedChannels(showAll: boolean): Promise<OwnedChannel[]> {
     if (isTauri()) {
       try {
@@ -385,8 +398,10 @@ export class ProtoFsApi {
           showAll,
         });
         if (res.success && res.data) return res.data;
-      } catch (err) {
+        throw new Error(res.error || 'MTProto transport error: Not authenticated with Telegram');
+      } catch (err: any) {
         console.warn('Tauri get_owned_channels_command error:', err);
+        throw new Error(err.message || 'MTProto unreachable');
       }
     }
 

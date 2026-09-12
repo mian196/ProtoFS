@@ -53,6 +53,7 @@ pub fn run() {
             commands::login_request_qr,
             commands::login_check_qr,
             commands::get_session_status,
+            commands::check_telegram_connection_command,
             commands::list_accounts_command,
             commands::switch_account_command,
             commands::remove_account_command,

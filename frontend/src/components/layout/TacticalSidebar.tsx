@@ -13,7 +13,7 @@ import {
   Trash2,
   Plus,
   Power,
-  ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
 import { StorageGauge } from '../telemetry/StorageGauge';
 import { useAuthStore } from '../../stores/useAuthStore';
@@ -23,7 +23,7 @@ import { useNativeStore } from '../../stores/useNativeStore';
 import { useModalStore } from '../../stores/useModalStore';
 
 export const TacticalSidebar: React.FC = () => {
-  const { session, connectionStatus } = useAuthStore();
+  const { session, connectionStatus, checkConnection } = useAuthStore();
   const { drives, activeDrive, setActiveDrive } = useDriveStore();
   const { filterType, setFilterType } = useVfsStore();
   const { virtualDrive, mountVirtualDrive, unmountVirtualDrive } = useNativeStore();
@@ -193,44 +193,72 @@ export const TacticalSidebar: React.FC = () => {
         />
 
         {session && (
-          <button
-            type="button"
-            onClick={() => openModal('accountManager')}
-            className="w-full text-left flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 hover:border-sky-500 shadow-sm transition-all group"
-            title="Manage Accounts & Connection Status"
-          >
-            <div className="flex items-center gap-2.5 min-w-0 pr-1">
+          <div className="flex items-center gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 hover:border-sky-500 shadow-sm transition-all group">
+            <button
+              type="button"
+              onClick={() => openModal('accountManager')}
+              className="flex-1 text-left flex items-center gap-2.5 min-w-0"
+              title="Manage Accounts & Settings"
+            >
               <div className="relative shrink-0">
                 <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-600 dark:text-sky-300 flex items-center justify-center font-bold text-xs shadow-inner">
                   {session.first_name ? session.first_name[0].toUpperCase() : 'T'}
                 </div>
                 <span
                   className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-950 ${
-                    isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500 animate-pulse'
+                    connectionStatus === 'checking'
+                      ? 'bg-amber-500 animate-spin'
+                      : isOnline
+                      ? 'bg-emerald-500 animate-pulse'
+                      : 'bg-rose-500 animate-pulse'
                   }`}
-                  title={isOnline ? 'Online (MTProto Connected)' : 'Offline / VPN Required'}
+                  title={
+                    connectionStatus === 'checking'
+                      ? 'Checking MTProto connection...'
+                      : isOnline
+                      ? 'Online (MTProto Connected)'
+                      : 'Offline (VPN Required)'
+                  }
                 />
               </div>
 
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-slate-900 dark:text-slate-200 truncate">
                   {session.username ? `@${session.username.replace(/^@/, '')}` : (session.first_name || 'Telegram User')}
                 </p>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate flex items-center gap-1">
                   <span
                     className={`inline-block w-1.5 h-1.5 rounded-full ${
-                      isOnline ? 'bg-emerald-500' : 'bg-rose-500'
+                      connectionStatus === 'checking'
+                        ? 'bg-amber-500'
+                        : isOnline
+                        ? 'bg-emerald-500'
+                        : 'bg-rose-500'
                     }`}
                   />
-                  <span>{isOnline ? 'Online' : 'Offline (VPN)'}</span>
+                  <span>
+                    {connectionStatus === 'checking'
+                      ? 'Testing...'
+                      : isOnline
+                      ? 'Online'
+                      : 'Offline (VPN)'}
+                  </span>
                 </p>
               </div>
-            </div>
+            </button>
 
-            <div className="p-1 rounded-lg text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors shrink-0">
-              <ChevronRight className="w-4 h-4" />
-            </div>
-          </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                checkConnection();
+              }}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-sky-500 hover:bg-sky-500/10 transition-colors shrink-0"
+              title="Test / Refresh MTProto Connection"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${connectionStatus === 'checking' ? 'animate-spin text-sky-400' : ''}`} />
+            </button>
+          </div>
         )}
       </div>
     </aside>

@@ -94,9 +94,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   checkConnection: async () => {
     set({ connectionStatus: 'checking' });
     try {
-      // Test MTProto connectivity by querying owned channels or session
-      const channels = await api.getOwnedChannels(false);
-      const isOnline = Array.isArray(channels);
+      const isOnline = await api.checkConnection();
       set({ connectionStatus: isOnline ? 'connected' : 'disconnected' });
       return isOnline;
     } catch {

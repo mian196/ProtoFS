@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HardDrive, Loader2, Check, Sparkles, Link2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { HardDrive, Loader2, Check, Sparkles, Link2, AlertTriangle, ShieldCheck, RefreshCw } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -24,18 +24,28 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
   const [channelType, setChannelType] = useState<'auto_create' | 'existing'>('auto_create');
   const [channelId, setChannelId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
+      loadDrives();
       loadChannels();
       checkConnection();
+      setError(null);
     }
-  }, [isOpen, loadChannels, checkConnection]);
+  }, [isOpen, loadDrives, loadChannels, checkConnection]);
 
-  const handleSelectDrive = async (d: any) => {
-    setActiveDrive(d);
-    await loadDirectory(d.id, 'root');
+  const handleRetryConnection = async () => {
+    setIsRetrying(true);
+    await checkConnection();
+    await loadChannels();
+    setIsRetrying(false);
+  };
+
+  const handleSelectDrive = async (drive: any) => {
+    setActiveDrive(drive);
+    await loadDirectory(drive.id, 'root');
     onClose();
   };
 
@@ -43,20 +53,23 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
     e.preventDefault();
     if (!driveName.trim()) return;
 
-    // 0 tells Rust/MTProto to call state.transport.create_channel(...)
-    const targetChannelId = channelType === 'auto_create' ? 0 : Number(channelId);
-    if (channelType === 'existing' && !channelId) {
-      setError('Please select or enter an existing Telegram Channel ID');
+    if (!isOnline) {
+      setError('Telegram MTProto is unreachable. Please connect to a VPN and retry.');
       return;
     }
 
     setLoading(true);
     setError(null);
+
     try {
-      const newDrive = await api.createDrive(driveName.trim(), targetChannelId);
+      const selectedChannelId =
+        channelType === 'auto_create' ? 0 : parseInt(channelId, 10);
+
+      const newDrive = await api.createDrive(driveName.trim(), selectedChannelId);
       await loadDrives();
       setActiveDrive(newDrive);
       await loadDirectory(newDrive.id, 'root');
+      setDriveName('');
       setLoading(false);
       onClose();
     } catch (err: any) {
@@ -78,14 +91,27 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
       <div className="space-y-4">
         {/* Offline / VPN Alert */}
         {!isOnline && (
-          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-2.5 text-xs text-rose-300">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-rose-200">Telegram Network Disconnected</p>
-              <p className="text-[11px] text-rose-300/80 mt-0.5">
-                If Telegram is blocked in your country, please connect to a VPN so channel operations and encrypted file transfers can reach MTProto servers.
-              </p>
+          <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex items-start justify-between gap-3 text-xs text-rose-300">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-rose-200">Telegram MTProto Offline / Blocked</p>
+                <p className="text-[11px] text-rose-300/85 mt-0.5 leading-relaxed">
+                  Telegram servers cannot be reached. If Telegram is restricted in your region, please connect to a VPN and click Retry.
+                </p>
+              </div>
             </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={handleRetryConnection}
+              disabled={isRetrying}
+              className="shrink-0 text-[11px] py-1 px-2.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border-rose-500/30"
+              icon={<RefreshCw className={`w-3 h-3 ${isRetrying ? 'animate-spin' : ''}`} />}
+            >
+              {isRetrying ? 'Testing...' : 'Retry'}
+            </Button>
           </div>
         )}
 
@@ -233,9 +259,17 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
               <Button variant="ghost" size="sm" type="button" onClick={() => setMode('list')}>
                 Back
               </Button>
-              <Button variant="primary" size="sm" type="submit" disabled={loading}>
+              <Button
+                variant="primary"
+                size="sm"
+                type="submit"
+                disabled={loading || !isOnline}
+                title={!isOnline ? 'Telegram MTProto is unreachable. Connect to VPN to create drives.' : undefined}
+              >
                 {loading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
+                ) : !isOnline ? (
+                  'Offline (VPN Required)'
                 ) : channelType === 'auto_create' ? (
                   'Create Telegram Drive'
                 ) : (

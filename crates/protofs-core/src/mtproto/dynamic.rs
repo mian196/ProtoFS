@@ -45,6 +45,11 @@ impl DynamicTelegramTransport {
         let mut lock = self.backend.write().await;
         *lock = TransportBackend::Unauthenticated;
     }
+
+    pub async fn is_real(&self) -> bool {
+        let lock = self.backend.read().await;
+        matches!(&*lock, TransportBackend::Real(_))
+    }
 }
 
 #[async_trait]

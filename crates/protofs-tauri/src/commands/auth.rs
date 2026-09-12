@@ -2,7 +2,8 @@ use chrono::Utc;
 use tauri::Manager;
 
 use protofs_core::mtproto::{
-    QrCheckOutcome, RealTelegramTransport, TelegramAuthClient, TelegramUser, VerifyOutcome,
+    QrCheckOutcome, RealTelegramTransport, TelegramAuthClient, TelegramTransport, TelegramUser,
+    VerifyOutcome,
 };
 
 use super::drives::{get_drives_file_path, load_user_drives, save_user_drives};
@@ -648,6 +649,55 @@ pub async fn remove_account_command(
     };
 
     Ok(CommandResponse::ok(next_session))
+}
+
+#[tauri::command]
+pub async fn check_telegram_connection_command(
+    app: tauri::AppHandle,
+) -> Result<CommandResponse<bool>, String> {
+    let state = app.state::<AppState>();
+
+    // 1. If currently connected to a real MTProto transport, ping with get_me
+    if state.transport.is_real().await {
+        if state.transport.get_me().await.is_ok() {
+            return Ok(CommandResponse::ok(true));
+        }
+        // Connection lost or blocked
+        state.transport.disconnect().await;
+    }
+
+    // 2. If not connected, attempt reconnecting using saved MTProto session
+    let registry = load_account_registry(&app);
+    if let Some(active_id) = registry.active_user_id
+        && let Some(account) = registry
+            .accounts
+            .iter()
+            .find(|a| a.user_id == active_id)
+            .cloned()
+        && let Some(session_bytes) = load_real_telegram_session_for_user(&app, active_id)
+        && let Ok(api_id_int) = account.api_id.trim().parse::<i32>()
+    {
+        match TelegramAuthClient::reconnect_from_session(
+            api_id_int,
+            account.api_hash.trim(),
+            &session_bytes,
+        )
+        .await
+        {
+            Ok(real) => {
+                let is_ok = real.get_me().await.is_ok();
+                if is_ok {
+                    state.transport.switch_to_real(real).await;
+                    return Ok(CommandResponse::ok(true));
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to reconnect MTProto session: {}", e);
+            }
+        }
+    }
+
+    Ok(CommandResponse::ok(false))
 }
 
 #[tauri::command]
