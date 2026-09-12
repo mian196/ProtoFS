@@ -1,4 +1,4 @@
-use super::xml::{render_lockdiscovery, render_multistatus, WebDavProp};
+use super::xml::{WebDavProp, render_lockdiscovery, render_multistatus};
 use crate::error::{ProtoFsError, Result};
 use crate::mtproto::TelegramTransport;
 use crate::sync::SyncEngine;
@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{watch, RwLock};
+use tokio::sync::{RwLock, watch};
 
 pub const DEFAULT_WEBDAV_PORT: u16 = 28491;
 pub const VIRTUAL_QUOTA_TOTAL: u64 = 10 * 1024 * 1024 * 1024 * 1024; // 10 TB virtual capacity
@@ -101,9 +101,9 @@ impl<T: TelegramTransport + 'static> WebDavServer<T> {
             ProtoFsError::Internal(format!("Failed to bind WebDAV server on {}: {}", addr, e))
         })?;
 
-        let actual_addr = listener.local_addr().map_err(|e| {
-            ProtoFsError::Internal(format!("Failed to get local address: {}", e))
-        })?;
+        let actual_addr = listener
+            .local_addr()
+            .map_err(|e| ProtoFsError::Internal(format!("Failed to get local address: {}", e)))?;
 
         *self.bound_addr.write().await = Some(actual_addr);
 
@@ -210,13 +210,24 @@ async fn handle_webdav_connection<T: TelegramTransport + 'static>(
                 Allow: OPTIONS, GET, HEAD, PROPFIND, PROPPATCH, MKCOL, PUT, DELETE, MOVE, COPY, LOCK, UNLOCK\r\n\
                 Content-Length: 0\r\n\
                 Connection: close\r\n\r\n";
-            stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         }
         "PROPFIND" => {
             handle_propfind(&mut stream, &decoded_path, depth, &engine, &drives).await?;
         }
         "GET" | "HEAD" => {
-            handle_get_or_head(&mut stream, method == "HEAD", &decoded_path, &headers, &engine, &drives).await?;
+            handle_get_or_head(
+                &mut stream,
+                method == "HEAD",
+                &decoded_path,
+                &headers,
+                &engine,
+                &drives,
+            )
+            .await?;
         }
         "MKCOL" => {
             handle_mkcol(&mut stream, &decoded_path, &engine, &drives).await?;
@@ -241,11 +252,17 @@ async fn handle_webdav_connection<T: TelegramTransport + 'static>(
                 xml.len(),
                 xml
             );
-            stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         }
         "UNLOCK" => {
             let response = "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n";
-            stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         }
         "PROPPATCH" => {
             let xml = r#"<?xml version="1.0" encoding="utf-8" ?><D:multistatus xmlns:D="DAV:"></D:multistatus>"#;
@@ -254,11 +271,18 @@ async fn handle_webdav_connection<T: TelegramTransport + 'static>(
                 xml.len(),
                 xml
             );
-            stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         }
         _ => {
-            let response = "HTTP/1.1 501 Not Implemented\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+            let response =
+                "HTTP/1.1 501 Not Implemented\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         }
     }
 
@@ -359,8 +383,12 @@ async fn handle_propfind<T: TelegramTransport + 'static>(
                 }
             }
         } else {
-            let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+            let response =
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
             return Ok(());
         }
     }
@@ -375,7 +403,10 @@ async fn handle_propfind<T: TelegramTransport + 'static>(
         xml
     );
 
-    stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+    stream
+        .write_all(response.as_bytes())
+        .await
+        .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
     Ok(())
 }
 
@@ -391,7 +422,10 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
     let parts: Vec<&str> = clean.split('/').filter(|p| !p.is_empty()).collect();
     if parts.len() < 2 {
         let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         return Ok(());
     }
 
@@ -402,13 +436,20 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
     let file_node = match tree.find_by_path(&file_subpath) {
         Some(VfsNode::File(f)) => f.clone(),
         _ => {
-            let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+            let response =
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
             return Ok(());
         }
     };
 
-    let mime = file_node.mime_type.as_deref().unwrap_or("application/octet-stream");
+    let mime = file_node
+        .mime_type
+        .as_deref()
+        .unwrap_or("application/octet-stream");
     let total_size = file_node.size_bytes;
 
     // Handle Range Header if present
@@ -417,7 +458,9 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
             let range_parts: Vec<&str> = spec.split('-').collect();
             let start = range_parts[0].parse::<u64>().unwrap_or(0);
             let end = if range_parts.len() > 1 && !range_parts[1].is_empty() {
-                range_parts[1].parse::<u64>().unwrap_or(total_size.saturating_sub(1))
+                range_parts[1]
+                    .parse::<u64>()
+                    .unwrap_or(total_size.saturating_sub(1))
             } else {
                 total_size.saturating_sub(1)
             };
@@ -456,7 +499,10 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
         )
     };
 
-    stream.write_all(header_str.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+    stream
+        .write_all(header_str.as_bytes())
+        .await
+        .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
 
     if is_head || total_size == 0 || content_len == 0 {
         return Ok(());
@@ -464,11 +510,18 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
 
     let channel_id = {
         let drives_guard = drives.read().await;
-        drives_guard.iter().find(|d| d.id == drive_id).map(|d| d.channel_id).unwrap_or(0)
+        drives_guard
+            .iter()
+            .find(|d| d.id == drive_id)
+            .map(|d| d.channel_id)
+            .unwrap_or(0)
     };
 
     // Read and decrypt file data on-demand
-    if let Ok((_node, data)) = engine.download_file_data(drive_id, &file_node.id, None, channel_id).await {
+    if let Ok((_node, data)) = engine
+        .download_file_data(drive_id, &file_node.id, None, channel_id)
+        .await
+    {
         let start = start_byte as usize;
         let end = (end_byte as usize + 1).min(data.len());
         if start < data.len() {
@@ -490,7 +543,10 @@ async fn handle_mkcol<T: TelegramTransport + 'static>(
     let parts: Vec<&str> = clean.split('/').filter(|p| !p.is_empty()).collect();
     if parts.len() < 2 {
         let response = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         return Ok(());
     }
 
@@ -505,7 +561,10 @@ async fn handle_mkcol<T: TelegramTransport + 'static>(
         f.id.clone()
     } else {
         let response = "HTTP/1.1 409 Conflict\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         return Ok(());
     };
 
@@ -522,7 +581,10 @@ async fn handle_mkcol<T: TelegramTransport + 'static>(
     tree.insert(VfsNode::Folder(new_folder));
 
     let response = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-    stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+    stream
+        .write_all(response.as_bytes())
+        .await
+        .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
     Ok(())
 }
 
@@ -536,7 +598,10 @@ async fn handle_delete<T: TelegramTransport + 'static>(
     let parts: Vec<&str> = clean.split('/').filter(|p| !p.is_empty()).collect();
     if parts.len() < 2 {
         let response = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         return Ok(());
     }
 
@@ -547,10 +612,16 @@ async fn handle_delete<T: TelegramTransport + 'static>(
     if let Some(node) = tree.find_by_path(&subpath).cloned() {
         tree.remove_recursive(node.id());
         let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
     } else {
         let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
     }
 
     Ok(())
@@ -566,7 +637,10 @@ async fn handle_move<T: TelegramTransport + 'static>(
     let dest_url = urlencoding_decode(destination_header);
     let dest_path = if let Some(idx) = dest_url.find("://") {
         let after_scheme = &dest_url[idx + 3..];
-        after_scheme.find('/').map(|i| &after_scheme[i..]).unwrap_or("/")
+        after_scheme
+            .find('/')
+            .map(|i| &after_scheme[i..])
+            .unwrap_or("/")
     } else {
         &dest_url
     };
@@ -579,7 +653,10 @@ async fn handle_move<T: TelegramTransport + 'static>(
 
     if src_parts.len() < 2 || dest_parts.len() < 2 || src_parts[0] != dest_parts[0] {
         let response = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         return Ok(());
     }
 
@@ -591,10 +668,16 @@ async fn handle_move<T: TelegramTransport + 'static>(
     if let Some(node) = tree.find_by_path(&src_subpath).cloned() {
         let _ = tree.rename(node.id(), &dest_new_name);
         let response = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
     } else {
         let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-        stream.write_all(response.as_bytes()).await.map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
     }
 
     Ok(())
@@ -623,7 +706,10 @@ fn vfs_node_to_prop_exact(href: &str, node: &VfsNode) -> WebDavProp {
             is_dir: false,
             display_name: f.name.clone(),
             size_bytes: f.size_bytes,
-            mime_type: f.mime_type.clone().unwrap_or_else(|| "application/octet-stream".to_string()),
+            mime_type: f
+                .mime_type
+                .clone()
+                .unwrap_or_else(|| "application/octet-stream".to_string()),
             last_modified_rfc1123: f.updated_at.to_rfc2822(),
             quota_available_bytes: VIRTUAL_QUOTA_TOTAL,
             quota_used_bytes: 0,
@@ -636,7 +722,8 @@ fn urlencoding_decode(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len()
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
             && let Ok(val) =
                 u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..=i + 2]).unwrap_or(""), 16)
         {

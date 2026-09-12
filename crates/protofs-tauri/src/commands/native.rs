@@ -297,7 +297,11 @@ pub async fn configure_webdav_command(
     auto_mount: bool,
 ) -> Result<CommandResponse<super::WebDavServerStatus>, String> {
     let state = app.state::<AppState>();
-    let target_port = if port > 0 { port } else { protofs_core::webdav::DEFAULT_WEBDAV_PORT };
+    let target_port = if port > 0 {
+        port
+    } else {
+        protofs_core::webdav::DEFAULT_WEBDAV_PORT
+    };
 
     // Persist settings
     let cfg = PersistedWebDavSettings {
@@ -317,12 +321,14 @@ pub async fn configure_webdav_command(
         }
     } else {
         // Update config
-        server.set_config(protofs_core::webdav::WebDavConfig {
-            enabled: true,
-            port: target_port,
-            auto_mount,
-            auth_token: None,
-        }).await;
+        server
+            .set_config(protofs_core::webdav::WebDavConfig {
+                enabled: true,
+                port: target_port,
+                auto_mount,
+                auth_token: None,
+            })
+            .await;
 
         // Restart if running or port changed, or start if stopped
         if was_running && old_port != target_port {
@@ -490,7 +496,9 @@ pub async fn mount_virtual_drive_command(
     {
         let drive_arg = format!("{}:", target_letter);
         let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
-        let _ = silent_command("net").args(["use", &drive_arg, "/delete", "/y"]).output();
+        let _ = silent_command("net")
+            .args(["use", &drive_arg, "/delete", "/y"])
+            .output();
 
         // 1. Try WebDAV native network drive mapping via net use
         if webdav_info.0 {
@@ -527,7 +535,16 @@ pub async fn mount_virtual_drive_command(
             target_letter
         );
         let _ = silent_command("reg")
-            .args(["add", &label_reg_key, "/ve", "/t", "REG_SZ", "/d", &drive_name, "/f"])
+            .args([
+                "add",
+                &label_reg_key,
+                "/ve",
+                "/t",
+                "REG_SZ",
+                "/d",
+                &drive_name,
+                "/f",
+            ])
             .output();
     }
 
@@ -546,9 +563,7 @@ pub async fn mount_virtual_drive_command(
     {
         if webdav_info.0 {
             let dav_url = format!("dav://127.0.0.1:{}/{}", webdav_info.1, drive_id);
-            let _ = silent_command("gio")
-                .args(["mount", &dav_url])
-                .output();
+            let _ = silent_command("gio").args(["mount", &dav_url]).output();
             used_webdav_mount = true;
         }
     }
@@ -610,7 +625,9 @@ pub async fn unmount_virtual_drive_command(
     #[cfg(target_os = "windows")]
     {
         let drive_arg = format!("{}:", letter);
-        let _ = silent_command("net").args(["use", &drive_arg, "/delete", "/y"]).output();
+        let _ = silent_command("net")
+            .args(["use", &drive_arg, "/delete", "/y"])
+            .output();
         let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
 
         let icon_reg_key = format!(
@@ -624,12 +641,20 @@ pub async fn unmount_virtual_drive_command(
 
     #[cfg(target_os = "macos")]
     {
-        let _ = silent_command("diskutil").args(["unmount", &format!("/Volumes/ProtoFS - {}", drive_id)]).output();
+        let _ = silent_command("diskutil")
+            .args(["unmount", &format!("/Volumes/ProtoFS - {}", drive_id)])
+            .output();
     }
 
     #[cfg(target_os = "linux")]
     {
-        let _ = silent_command("gio").args(["mount", "-u", &format!("dav://127.0.0.1:28491/{}", drive_id)]).output();
+        let _ = silent_command("gio")
+            .args([
+                "mount",
+                "-u",
+                &format!("dav://127.0.0.1:28491/{}", drive_id),
+            ])
+            .output();
     }
 
     let state = app.state::<AppState>();
@@ -672,7 +697,9 @@ pub fn unmount_all_virtual_drives_cleanup(app: &tauri::AppHandle) {
         #[cfg(target_os = "windows")]
         {
             let drive_arg = format!("{}:", info.drive_letter);
-            let _ = silent_command("net").args(["use", &drive_arg, "/delete", "/y"]).output();
+            let _ = silent_command("net")
+                .args(["use", &drive_arg, "/delete", "/y"])
+                .output();
             let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
 
             let icon_reg_key = format!(
@@ -700,7 +727,9 @@ pub fn unmount_all_virtual_drives_cleanup(app: &tauri::AppHandle) {
                     let letter = drive_part.trim().to_uppercase();
                     if letter.len() == 1 {
                         let drive_arg = format!("{}:", letter);
-                        let _ = silent_command("net").args(["use", &drive_arg, "/delete", "/y"]).output();
+                        let _ = silent_command("net")
+                            .args(["use", &drive_arg, "/delete", "/y"])
+                            .output();
                         let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
                         let icon_reg_key = format!(
                             r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\DriveIcons\{}",

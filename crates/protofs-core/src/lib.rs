@@ -13,7 +13,7 @@ pub use manifest::ManifestSnapshot;
 pub use mtproto::{DynamicTelegramTransport, ParsedCaption, TelegramTransport};
 pub use sync::SyncEngine;
 pub use vfs::{FileNode, FolderNode, ROOT_PARENT_ID, VfsNode, VfsTree};
-pub use webdav::{WebDavConfig, WebDavServer, DEFAULT_WEBDAV_PORT};
+pub use webdav::{DEFAULT_WEBDAV_PORT, WebDavConfig, WebDavServer};
 
 #[cfg(test)]
 mod tests {
@@ -416,7 +416,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_webdav_multistatus_xml_and_path_resolution() {
-        use crate::webdav::xml::{render_multistatus, WebDavProp};
+        use crate::webdav::xml::{WebDavProp, render_multistatus};
 
         let props = vec![
             WebDavProp {

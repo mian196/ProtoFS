@@ -20,22 +20,41 @@ pub struct WebDavProp {
 }
 
 pub fn render_multistatus(props: &[WebDavProp]) -> String {
-    let mut xml = String::from(r#"<?xml version="1.0" encoding="utf-8" ?><D:multistatus xmlns:D="DAV:">"#);
+    let mut xml =
+        String::from(r#"<?xml version="1.0" encoding="utf-8" ?><D:multistatus xmlns:D="DAV:">"#);
     for p in props {
         xml.push_str("<D:response>");
         xml.push_str(&format!("<D:href>{}</D:href>", escape_xml(&p.href)));
         xml.push_str("<D:propstat><D:prop>");
-        xml.push_str(&format!("<D:displayname>{}</D:displayname>", escape_xml(&p.display_name)));
+        xml.push_str(&format!(
+            "<D:displayname>{}</D:displayname>",
+            escape_xml(&p.display_name)
+        ));
         if p.is_dir {
             xml.push_str("<D:resourcetype><D:collection/></D:resourcetype>");
         } else {
             xml.push_str("<D:resourcetype/>");
-            xml.push_str(&format!("<D:getcontentlength>{}</D:getcontentlength>", p.size_bytes));
-            xml.push_str(&format!("<D:getcontenttype>{}</D:getcontenttype>", escape_xml(&p.mime_type)));
+            xml.push_str(&format!(
+                "<D:getcontentlength>{}</D:getcontentlength>",
+                p.size_bytes
+            ));
+            xml.push_str(&format!(
+                "<D:getcontenttype>{}</D:getcontenttype>",
+                escape_xml(&p.mime_type)
+            ));
         }
-        xml.push_str(&format!("<D:getlastmodified>{}</D:getlastmodified>", p.last_modified_rfc1123));
-        xml.push_str(&format!("<D:quota-available-bytes>{}</D:quota-available-bytes>", p.quota_available_bytes));
-        xml.push_str(&format!("<D:quota-used-bytes>{}</D:quota-used-bytes>", p.quota_used_bytes));
+        xml.push_str(&format!(
+            "<D:getlastmodified>{}</D:getlastmodified>",
+            p.last_modified_rfc1123
+        ));
+        xml.push_str(&format!(
+            "<D:quota-available-bytes>{}</D:quota-available-bytes>",
+            p.quota_available_bytes
+        ));
+        xml.push_str(&format!(
+            "<D:quota-used-bytes>{}</D:quota-used-bytes>",
+            p.quota_used_bytes
+        ));
         xml.push_str("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>");
         xml.push_str("</D:response>");
     }
