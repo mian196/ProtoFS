@@ -25,12 +25,18 @@ pub async fn upload_file_command(
     size_bytes: u64,
     is_encrypted: bool,
     file_bytes: Option<Vec<u8>>,
+    file_base64: Option<String>,
     file_path: Option<String>,
 ) -> Result<CommandResponse<FileNode>, String> {
     let state = app.state::<AppState>();
 
-    // 1. Resolve raw bytes if provided directly or via local file path
-    let payload_bytes = if let Some(bytes) = file_bytes {
+    // 1. Resolve raw bytes from base64, raw bytes vector, or file path
+    let payload_bytes = if let Some(b64) = file_base64 {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD
+            .decode(b64.trim())
+            .map_err(|e| format!("Invalid base64 payload: {}", e))?
+    } else if let Some(bytes) = file_bytes {
         bytes
     } else if let Some(ref path_str) = file_path {
         std::fs::read(path_str).unwrap_or_default()
@@ -47,7 +53,7 @@ pub async fn upload_file_command(
 
     // 3. Perform real MTProto upload via SyncEngine if channel and data are present
     if channel_id != 0 && !payload_bytes.is_empty() {
-        let key = [0x5Au8; 32]; // Standard master encryption key for personal drive
+        let key = [0x5Au8; 32];
         match state
             .engine
             .upload_file_data(
@@ -74,10 +80,15 @@ pub async fn upload_file_command(
                 return Ok(CommandResponse::ok(file_node));
             }
             Err(e) => {
-                tracing::warn!(
-                    "Direct MTProto upload failed, recording in local VFS: {}",
+                tracing::error!(
+                    "Direct MTProto upload to channel {} failed: {}",
+                    channel_id,
                     e
                 );
+                return Ok(CommandResponse::err(format!(
+                    "Telegram upload failed: {}",
+                    e
+                )));
             }
         }
     }

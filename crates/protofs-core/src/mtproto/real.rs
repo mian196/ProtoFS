@@ -1165,7 +1165,9 @@ mod tests {
     #[ignore]
     async fn test_request_qr_code_live() {
         let auth = TelegramAuthClient::new();
-        let res = auth.request_qr_code(2040, "b18441a1ff607e10a989891a5462e627").await;
+        let res = auth
+            .request_qr_code(2040, "b18441a1ff607e10a989891a5462e627")
+            .await;
         println!("QR code export result: {:?}", res);
     }
 }

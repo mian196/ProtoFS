@@ -543,9 +543,15 @@ pub async fn mount_virtual_drive_command(
         // 4. Override network UNC share label in Windows Explorer MountPoints2 so it displays "ProtoFS" instead of "DavWWWRoot (\\127.0.0.1@port)"
         let port = webdav_info.1;
         let mountpoints_keys = [
-            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot"),
-            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#"),
-            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot#"),
+            format!(
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot"
+            ),
+            format!(
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#"
+            ),
+            format!(
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot#"
+            ),
         ];
         for mp_key in &mountpoints_keys {
             let _ = silent_command("reg")
@@ -666,12 +672,20 @@ pub async fn unmount_virtual_drive_command(
         let server = state.webdav_server.read().await;
         let port = server.port().await;
         let mountpoints_keys = [
-            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot"),
-            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#"),
-            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot#"),
+            format!(
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot"
+            ),
+            format!(
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#"
+            ),
+            format!(
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot#"
+            ),
         ];
         for mp_key in &mountpoints_keys {
-            let _ = silent_command("reg").args(["delete", mp_key, "/f"]).output();
+            let _ = silent_command("reg")
+                .args(["delete", mp_key, "/f"])
+                .output();
         }
     }
 

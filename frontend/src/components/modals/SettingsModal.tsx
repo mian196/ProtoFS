@@ -151,8 +151,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   // Encryption Key Configuration State
+  const [encryptionEnabled, setEncryptionEnabled] = useState(
+    () => localStorage.getItem('protofs_encryption_enabled') === 'true'
+  );
   const [masterPassphrase, setMasterPassphrase] = useState(
-    () => localStorage.getItem('protofs_master_passphrase') || 'protofs-master-zero-knowledge-key'
+    () => localStorage.getItem('protofs_master_passphrase') || ''
   );
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [keySaved, setKeySaved] = useState(false);
@@ -255,6 +258,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   };
 
   const handleSaveMasterKey = () => {
+    localStorage.setItem('protofs_encryption_enabled', String(encryptionEnabled));
     localStorage.setItem('protofs_master_passphrase', masterPassphrase);
     setKeySaved(true);
     setTimeout(() => setKeySaved(false), 2500);
@@ -907,50 +911,86 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             <div className="space-y-4">
               <div>
                 <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  Zero-Knowledge Master Key & Passphrase
+                  Zero-Knowledge End-to-End Encryption
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Master encryption key used for Argon2id key derivation and AES-256-GCM chunks.
+                  Encrypt uploaded files client-side with Argon2id and AES-256-GCM before transmitting to Telegram.
                 </p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
-                    Master Passphrase
-                  </p>
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-2 rounded-xl ${encryptionEnabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-400'}`}>
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                        Zero-Knowledge Encryption Mode
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {encryptionEnabled
+                          ? 'Enabled: All files are encrypted before sending to Telegram'
+                          : 'Disabled (Default): Files are stored in their original format on Telegram'}
+                      </p>
+                    </div>
+                  </div>
+
                   <Button
-                    variant="primary"
+                    variant={encryptionEnabled ? 'primary' : 'outline'}
                     size="sm"
-                    onClick={handleSaveMasterKey}
-                    icon={keySaved ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                    onClick={() => {
+                      const next = !encryptionEnabled;
+                      setEncryptionEnabled(next);
+                      localStorage.setItem('protofs_encryption_enabled', String(next));
+                      setKeySaved(true);
+                      setTimeout(() => setKeySaved(false), 2000);
+                    }}
                   >
-                    {keySaved ? 'Saved!' : 'Save Key'}
+                    {encryptionEnabled ? 'Enabled' : 'Disabled'}
                   </Button>
                 </div>
 
-                <div className="relative">
-                  <Input
-                    type={showPassphrase ? 'text' : 'password'}
-                    value={masterPassphrase}
-                    onChange={(e) => setMasterPassphrase(e.target.value)}
-                    placeholder="Enter master passphrase"
-                    className="pr-10 font-mono text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassphrase(!showPassphrase)}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-white"
-                  >
-                    {showPassphrase ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+                {encryptionEnabled && (
+                  <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                        Custom Master Passphrase
+                      </label>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={handleSaveMasterKey}
+                        icon={keySaved ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                      >
+                        {keySaved ? 'Saved!' : 'Save Key'}
+                      </Button>
+                    </div>
+
+                    <div className="relative">
+                      <Input
+                        type={showPassphrase ? 'text' : 'password'}
+                        value={masterPassphrase}
+                        onChange={(e) => setMasterPassphrase(e.target.value)}
+                        placeholder="Enter your private master passphrase..."
+                        className="pr-10 font-mono text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassphrase(!showPassphrase)}
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                      >
+                        {showPassphrase ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300 flex items-start gap-2.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+              <div className="p-3.5 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-xs text-sky-700 dark:text-sky-300 flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
                 <span>
-                  ProtoFS uses Argon2id key derivation (64MB memory cost, 3 iterations) with authenticated AES-256-GCM 64 KB chunks. Keys never leave your machine in plaintext.
+                  When enabled, ProtoFS uses Argon2id key derivation with authenticated AES-256-GCM 64 KB chunks. Telegram will only see random encrypted binary blocks.
                 </span>
               </div>
             </div>

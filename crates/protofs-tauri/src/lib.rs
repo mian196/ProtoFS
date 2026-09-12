@@ -10,12 +10,43 @@ use tokio::sync::RwLock;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    let appdata_dir = std::env::var("APPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("ProtoFS");
+    let logs_dir = appdata_dir.join("logs");
+    let _ = std::fs::create_dir_all(&logs_dir);
+    let log_file_path = logs_dir.join("protofs.log");
+
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        tracing_subscriber::EnvFilter::new("protofs_core=debug,protofs_tauri=debug,info")
+    });
+
+    if let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file_path)
+    {
+        let file_layer = tracing_subscriber::fmt::layer()
+            .with_ansi(false)
+            .with_writer(std::sync::Arc::new(file));
+        let stdout_layer = tracing_subscriber::fmt::layer();
+        let _ = tracing_subscriber::registry()
+            .with(filter)
+            .with(stdout_layer)
+            .with(file_layer)
+            .try_init();
+    } else {
+        let _ = tracing_subscriber::registry()
+            .with(filter)
+            .with(tracing_subscriber::fmt::layer())
+            .try_init();
+    }
+
+    tracing::info!("ProtoFS starting up. Log file: {}", log_file_path.display());
 
     tauri::Builder::default()
         .setup(|app| {

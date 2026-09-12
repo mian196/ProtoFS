@@ -29,7 +29,11 @@ pub async fn login_send_code(
     }
 
     let api_id_int = if let Ok(val) = api_id.trim().parse::<i32>() {
-        if val > 0 && val != 12345 { val } else { DEFAULT_TG_API_ID }
+        if val > 0 && val != 12345 {
+            val
+        } else {
+            DEFAULT_TG_API_ID
+        }
     } else {
         DEFAULT_TG_API_ID
     };
@@ -198,7 +202,11 @@ pub async fn login_request_qr(
     let state = app.state::<AppState>();
 
     let api_id_int = if let Ok(val) = api_id.trim().parse::<i32>() {
-        if val > 0 && val != 12345 { val } else { DEFAULT_TG_API_ID }
+        if val > 0 && val != 12345 {
+            val
+        } else {
+            DEFAULT_TG_API_ID
+        }
     } else {
         DEFAULT_TG_API_ID
     };

@@ -540,7 +540,8 @@ export class ProtoFsApi {
     sizeBytes: number,
     isEncrypted: boolean,
     fileBytes?: number[],
-    filePath?: string
+    filePath?: string,
+    fileBase64?: string
   ): Promise<FileNode> {
     if (isTauri()) {
       try {
@@ -551,6 +552,7 @@ export class ProtoFsApi {
           sizeBytes,
           isEncrypted,
           fileBytes: fileBytes || null,
+          fileBase64: fileBase64 || null,
           filePath: filePath || null,
         });
         if (res.success && res.data) {

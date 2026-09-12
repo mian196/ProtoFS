@@ -79,6 +79,45 @@ export const App: React.FC = () => {
     }
   }, [activeDrive, currentParentId, filterType, loadDirectory]);
 
+  // Helper to read File as Base64 efficiently without huge memory overhead
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = reader.result as string;
+        const commaIdx = res.indexOf(',');
+        resolve(commaIdx !== -1 ? res.substring(commaIdx + 1) : res);
+      };
+      reader.onerror = (e) => reject(e);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Sequential Upload Queue
+  const uploadQueueRef = useRef<File[]>([]);
+  const isUploadingRef = useRef(false);
+
+  const processUploadQueue = async () => {
+    if (isUploadingRef.current || uploadQueueRef.current.length === 0) return;
+    isUploadingRef.current = true;
+
+    while (uploadQueueRef.current.length > 0) {
+      const file = uploadQueueRef.current.shift();
+      if (file) {
+        await handleUploadFile(file);
+      }
+    }
+
+    isUploadingRef.current = false;
+  };
+
+  const enqueueFiles = (files: FileList | File[]) => {
+    for (let i = 0; i < files.length; i++) {
+      uploadQueueRef.current.push(files[i]);
+    }
+    processUploadQueue();
+  };
+
   // Global Drag and Drop handlers
   useEffect(() => {
     const handleDragOver = (e: DragEvent) => {
@@ -94,11 +133,7 @@ export const App: React.FC = () => {
       e.preventDefault();
       setIsDragging(false);
       if (!e.dataTransfer?.files || !activeDrive) return;
-
-      for (let i = 0; i < e.dataTransfer.files.length; i++) {
-        const file = e.dataTransfer.files[i];
-        handleUploadFile(file);
-      }
+      enqueueFiles(e.dataTransfer.files);
     };
 
     window.addEventListener('dragover', handleDragOver);
@@ -129,42 +164,42 @@ export const App: React.FC = () => {
       name: file.name,
       size: formatBytes(file.size),
       progress: 0,
-      speed: 'Starting...',
+      speed: 'Reading...',
       status: 'uploading',
     });
 
     try {
       let progress = 15;
       const progressTimer = setInterval(() => {
-        progress = Math.min(95, progress + 20);
+        progress = Math.min(92, progress + 15);
         updateTransfer(transferId, progress, '4.2 MB/s', 'uploading');
-      }, 300);
+      }, 350);
 
-      const buffer = await file.arrayBuffer();
-      const bytesArray = Array.from(new Uint8Array(buffer));
+      const base64Data = await readFileAsBase64(file);
+      const isEncrypted = localStorage.getItem('protofs_encryption_enabled') === 'true';
 
       await api.uploadFile(
         activeDrive.id,
         currentParentId,
         file.name,
         file.size,
-        true, // Encrypted with AES-256-GCM
-        bytesArray
+        isEncrypted,
+        undefined,
+        undefined,
+        base64Data
       );
 
       clearInterval(progressTimer);
       updateTransfer(transferId, 100, '0 MB/s', 'completed');
       await loadDirectory(activeDrive.id, currentParentId);
-    } catch {
-      updateTransfer(transferId, 0, 'Failed', 'paused');
+    } catch (err: any) {
+      updateTransfer(transferId, 0, err.message || 'Upload failed', 'paused');
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      for (let i = 0; i < e.target.files.length; i++) {
-        handleUploadFile(e.target.files[i]);
-      }
+      enqueueFiles(e.target.files);
       e.target.value = '';
     }
   };
