@@ -6,8 +6,10 @@ use tauri::Manager;
 
 use super::{
     AppState, CommandResponse, DocumentsProviderStatus, P2P_TRANSFER_HISTORY_LIMIT,
-    SafTestQueryResult, VirtualDriveStatus, ensure_dir, silent_command,
+    SafTestQueryResult, VirtualDriveStatus, ensure_dir,
 };
+#[cfg(target_os = "windows")]
+use super::silent_command;
 
 // ---------------------------------------------------------------------------
 // Native Virtual Drive Mount
