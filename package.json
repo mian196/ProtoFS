@@ -3,8 +3,8 @@
   "version": "0.3.0",
   "private": true,
   "scripts": {
-    "dev": "npx --prefix frontend tauri dev --config crates/protofs-tauri/tauri.conf.json",
-    "start": "npx --prefix frontend tauri dev --config crates/protofs-tauri/tauri.conf.json",
+    "dev": "cd frontend && npx tauri dev --config ../crates/protofs-tauri/tauri.conf.json",
+    "start": "cd frontend && npx tauri dev --config ../crates/protofs-tauri/tauri.conf.json",
     "build": "npm --prefix frontend run build && cargo build --release",
     "test": "cargo test --workspace && npm --prefix frontend run lint"
   }

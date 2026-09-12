@@ -18,4 +18,9 @@ if (-not (Test-Path "frontend/node_modules")) {
 }
 
 Write-Host "[*] Launching Tauri Live Dev..." -ForegroundColor Green
-npx --prefix frontend tauri dev --config crates/protofs-tauri/tauri.conf.json $args
+Push-Location frontend
+try {
+    npx tauri dev --config ../crates/protofs-tauri/tauri.conf.json $args
+} finally {
+    Pop-Location
+}
