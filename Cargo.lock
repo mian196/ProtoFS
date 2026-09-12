@@ -3146,6 +3146,7 @@ dependencies = [
  "chrono",
  "protofs-core",
  "rand",
+ "ring",
  "serde",
  "serde_json",
  "tauri",

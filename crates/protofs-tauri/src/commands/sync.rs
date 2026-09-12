@@ -58,9 +58,106 @@ pub async fn trigger_sync_command(
     id: String,
 ) -> Result<CommandResponse<()>, String> {
     let state = app.state::<AppState>();
+
+    // 1. Find the sync pair across drives
+    let drives = state.drives.read().await;
+    let drive_list = drives.clone();
+    drop(drives);
+
+    let mut found_pair = None;
+    for d in &drive_list {
+        if let Ok(pairs) = state.cache.list_sync_pairs(&d.id)
+            && let Some(pair) = pairs.into_iter().find(|p| p.id == id)
+        {
+            found_pair = Some((d.clone(), pair));
+            break;
+        }
+    }
+
+    let (drive, pair) = match found_pair {
+        Some(res) => res,
+        None => {
+            // Update timestamp directly if pair metadata is only in cache
+            let _ = state.cache.update_sync_pair_last_synced(&id);
+            return Ok(CommandResponse::ok(()));
+        }
+    };
+
+    let local_dir = std::path::PathBuf::from(&pair.local_path);
+    if local_dir.is_dir()
+        && let Ok(entries) = std::fs::read_dir(&local_dir)
+    {
+        let tree = state.engine.get_or_create_tree(&drive.id).await;
+        let existing_files: std::collections::HashMap<String, String> = tree
+            .list_children(&pair.remote_folder_id)
+            .into_iter()
+            .filter_map(|node| {
+                if let protofs_core::vfs::VfsNode::File(f) = node {
+                    Some((f.name.clone(), f.sha256_hash.clone().unwrap_or_default()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let key = [0x5Au8; 32];
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let file_name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                if file_name.is_empty() {
+                    continue;
+                }
+
+                if let Ok(bytes) = std::fs::read(&path) {
+                    let digest = ring::digest::digest(&ring::digest::SHA256, &bytes);
+                    let sha256: String = digest
+                        .as_ref()
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect();
+
+                    // If already exists with matching SHA256, skip re-upload
+                    if let Some(existing_sha) = existing_files.get(&file_name)
+                        && existing_sha == &sha256
+                    {
+                        continue;
+                    }
+
+                    // Upload new / modified file
+                    if let Err(e) = state
+                        .engine
+                        .upload_file_data(
+                            &drive.id,
+                            &pair.remote_folder_id,
+                            &file_name,
+                            &bytes,
+                            true,
+                            Some(&key),
+                            drive.channel_id,
+                        )
+                        .await
+                    {
+                        tracing::warn!(
+                            "Failed to sync file '{}' to drive '{}': {}",
+                            file_name,
+                            drive.id,
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     if let Err(e) = state.cache.update_sync_pair_last_synced(&id) {
         return Ok(CommandResponse::err(e.to_string()));
     }
+
     Ok(CommandResponse::ok(()))
 }
 

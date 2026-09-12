@@ -27,6 +27,7 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 rand = { workspace = true }
 base64 = { workspace = true }
+ring = { workspace = true }
 
 
 [features]
