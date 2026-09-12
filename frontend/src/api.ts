@@ -522,7 +522,9 @@ export class ProtoFsApi {
     parentId: string,
     name: string,
     sizeBytes: number,
-    isEncrypted: boolean
+    isEncrypted: boolean,
+    fileBytes?: number[],
+    filePath?: string
   ): Promise<FileNode> {
     if (isTauri()) {
       try {
@@ -532,6 +534,8 @@ export class ProtoFsApi {
           name,
           sizeBytes,
           isEncrypted,
+          fileBytes: fileBytes || null,
+          filePath: filePath || null,
         });
         if (res.success && res.data) {
           const item = res.data;
@@ -573,6 +577,35 @@ export class ProtoFsApi {
     files.push(file);
     localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(files));
     return file;
+  }
+
+  async downloadFile(
+    driveId: string,
+    fileId: string,
+    destinationPath?: string
+  ): Promise<{ file_id: string; name: string; size_bytes: number; destination_path?: string; data_base64?: string }> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<any>>('download_file_command', {
+          driveId,
+          fileId,
+          destinationPath: destinationPath || null,
+        });
+        if (res.success && res.data) {
+          return res.data;
+        }
+        throw new Error(res.error || 'Failed to download file');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    return {
+      file_id: fileId,
+      name: 'downloaded_file',
+      size_bytes: 0,
+      destination_path: destinationPath,
+    };
   }
 
   async getFileVersions(driveId: string, fileId: string): Promise<FileVersion[]> {

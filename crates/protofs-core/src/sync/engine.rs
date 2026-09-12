@@ -321,4 +321,190 @@ impl<T: TelegramTransport> SyncEngine<T> {
         dirty.insert(drive_id.to_string(), true);
         Ok(())
     }
+
+    pub fn transport(&self) -> &Arc<T> {
+        &self.transport
+    }
+
+    /// Uploads a file to Telegram with optional STREAM AEAD AES-256-GCM encryption,
+    /// Uploads and optionally encrypts file content, dispatches MTProto upload_document,
+    /// constructs the self-describing caption, and updates the local in-memory tree & cache.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upload_file_data(
+        &self,
+        drive_id: &str,
+        parent_id: &str,
+        name: &str,
+        raw_data: &[u8],
+        is_encrypted: bool,
+        encryption_key: Option<&[u8; 32]>,
+        channel_id: i64,
+    ) -> Result<FileNode> {
+        let (final_data, iv_hex) = if is_encrypted {
+            let key = encryption_key.ok_or_else(|| {
+                ProtoFsError::Crypto(
+                    "Encryption key is required when is_encrypted is true".to_string(),
+                )
+            })?;
+            let base_iv = crate::crypto::aead::generate_base_iv();
+            let encryptor = crate::crypto::aead::StreamEncryptor::new(key, base_iv)?;
+
+            let mut encrypted_buf = Vec::new();
+            let chunk_size = crate::crypto::aead::CHUNK_PLAINTEXT_SIZE;
+            let total_chunks = if raw_data.is_empty() {
+                1
+            } else {
+                raw_data.len().div_ceil(chunk_size)
+            };
+
+            for i in 0..total_chunks {
+                let start = i * chunk_size;
+                let end = (start + chunk_size).min(raw_data.len());
+                let slice = if raw_data.is_empty() {
+                    &[]
+                } else {
+                    &raw_data[start..end]
+                };
+                let is_final = i + 1 == total_chunks;
+                let sealed = encryptor.encrypt_chunk(i as u32, is_final, slice)?;
+                encrypted_buf.extend_from_slice(&sealed);
+            }
+
+            let iv_string = hex_encode(&base_iv);
+            (encrypted_buf, Some(iv_string))
+        } else {
+            (raw_data.to_vec(), None)
+        };
+
+        let sha256 = hex_encode(ring::digest::digest(&ring::digest::SHA256, raw_data).as_ref());
+        let caption = ParsedCaption::new(
+            parent_id,
+            name,
+            is_encrypted,
+            iv_hex.as_deref(),
+            Some(&sha256),
+        );
+        let caption_str = caption.serialize();
+
+        let tg_msg = if channel_id != 0 {
+            self.transport
+                .upload_document(channel_id, name, &caption_str, &final_data)
+                .await?
+        } else {
+            crate::mtproto::TelegramMessage {
+                id: (chrono::Utc::now().timestamp_subsec_millis() as i32) + 1000,
+                channel_id,
+                caption: Some(caption_str),
+                document_size: Some(final_data.len() as u64),
+                document_name: Some(name.to_string()),
+                is_pinned: false,
+                date: chrono::Utc::now(),
+            }
+        };
+
+        let file_id = format!("file_{}", tg_msg.id);
+        let file_node = FileNode {
+            id: file_id.clone(),
+            drive_id: drive_id.to_string(),
+            parent_id: parent_id.to_string(),
+            name: name.to_string(),
+            size_bytes: raw_data.len() as u64,
+            mime_type: None,
+            telegram_message_id: tg_msg.id,
+            is_encrypted,
+            encryption_iv: iv_hex,
+            sha256_hash: Some(sha256),
+            is_pinned_offline: false,
+            is_trashed: false,
+            version: 1,
+            history: Vec::new(),
+            created_at: tg_msg.date,
+            updated_at: tg_msg.date,
+        };
+
+        self.add_node(drive_id, VfsNode::File(file_node.clone()))
+            .await?;
+        Ok(file_node)
+    }
+
+    /// Downloads and optionally decrypts file content from Telegram
+    pub async fn download_file_data(
+        &self,
+        drive_id: &str,
+        file_id: &str,
+        encryption_key: Option<&[u8; 32]>,
+        channel_id: i64,
+    ) -> Result<(FileNode, Vec<u8>)> {
+        let tree = self.get_or_create_tree(drive_id).await;
+        let file = tree
+            .get_file(file_id)
+            .ok_or_else(|| ProtoFsError::NodeNotFound(file_id.to_string()))?
+            .clone();
+
+        let downloaded_bytes = if channel_id != 0 && file.telegram_message_id > 0 {
+            self.transport
+                .download_range(
+                    channel_id,
+                    file.telegram_message_id,
+                    0,
+                    (file.size_bytes + 1024 * 1024) as u32,
+                )
+                .await?
+        } else {
+            Vec::new()
+        };
+
+        let final_data = if file.is_encrypted {
+            if downloaded_bytes.is_empty() {
+                Vec::new()
+            } else {
+                let key = encryption_key.ok_or_else(|| {
+                    ProtoFsError::Crypto(
+                        "Decryption key is required for encrypted file".to_string(),
+                    )
+                })?;
+                let iv_str = file.encryption_iv.as_deref().ok_or_else(|| {
+                    ProtoFsError::Crypto("Missing encryption IV on encrypted file node".to_string())
+                })?;
+                let iv_bytes = hex_decode_7bytes(iv_str)?;
+                let decryptor = crate::crypto::aead::StreamDecryptor::new(key, iv_bytes)?;
+
+                let chunk_enc_size = crate::crypto::aead::CHUNK_ENCRYPTED_SIZE;
+                let mut plaintext_buf = Vec::new();
+                let total_chunks = downloaded_bytes.len().div_ceil(chunk_enc_size);
+
+                for i in 0..total_chunks {
+                    let start = i * chunk_enc_size;
+                    let end = (start + chunk_enc_size).min(downloaded_bytes.len());
+                    let slice = &downloaded_bytes[start..end];
+                    let is_final = i + 1 == total_chunks;
+                    let opened = decryptor.decrypt_chunk(i as u32, is_final, slice)?;
+                    plaintext_buf.extend_from_slice(&opened);
+                }
+                plaintext_buf
+            }
+        } else {
+            downloaded_bytes
+        };
+
+        Ok((file, final_data))
+    }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+fn hex_decode_7bytes(s: &str) -> Result<[u8; 7]> {
+    if s.len() != 14 {
+        return Err(ProtoFsError::Crypto(
+            "Invalid IV hex length (expected 14 hex chars for 7 bytes)".to_string(),
+        ));
+    }
+    let mut bytes = [0u8; 7];
+    for i in 0..7 {
+        bytes[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16)
+            .map_err(|e| ProtoFsError::Crypto(format!("Invalid IV hex character: {}", e)))?;
+    }
+    Ok(bytes)
 }

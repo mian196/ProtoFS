@@ -190,6 +190,7 @@ mod tests {
     struct MockTestTransport {
         pinned_manifest: std::sync::Mutex<Option<(i32, Vec<u8>)>>,
         messages: std::sync::Mutex<Vec<TelegramMessage>>,
+        payloads: std::sync::Mutex<std::collections::HashMap<i32, Vec<u8>>>,
     }
 
     #[async_trait::async_trait]
@@ -252,16 +253,24 @@ mod tests {
                 date: Utc::now(),
             };
             msgs.push(msg.clone());
+            self.payloads.lock().unwrap().insert(id, data.to_vec());
             Ok(msg)
         }
         async fn download_range(
             &self,
             _channel_id: i64,
-            _message_id: i32,
-            _offset: u64,
-            _limit: u32,
+            message_id: i32,
+            offset: u64,
+            limit: u32,
         ) -> Result<Vec<u8>> {
-            Ok(vec![])
+            let payloads = self.payloads.lock().unwrap();
+            if let Some(data) = payloads.get(&message_id) {
+                let start = (offset as usize).min(data.len());
+                let end = ((offset as usize) + (limit as usize)).min(data.len());
+                Ok(data[start..end].to_vec())
+            } else {
+                Ok(vec![])
+            }
         }
         async fn edit_caption(
             &self,
@@ -328,5 +337,44 @@ mod tests {
 
         // 5. Test flush manifest
         engine.flush_manifest("personal", channel.id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_upload_and_download_file_data_encrypted_roundtrip() {
+        use std::sync::Arc;
+
+        let transport = Arc::new(MockTestTransport::default());
+        let db = CacheDatabase::open_in_memory().unwrap();
+        let engine = SyncEngine::new(transport.clone(), db);
+
+        let key = [0x42u8; 32];
+        let original_data = b"Hello, secure protofs cloud with real MTProto transfer pipeline!";
+
+        // Upload encrypted file
+        let uploaded_node = engine
+            .upload_file_data(
+                "drive_test",
+                "root",
+                "secret_notes.txt",
+                original_data,
+                true,
+                Some(&key),
+                9999,
+            )
+            .await
+            .unwrap();
+
+        assert!(uploaded_node.is_encrypted);
+        assert!(uploaded_node.encryption_iv.is_some());
+        assert_eq!(uploaded_node.name, "secret_notes.txt");
+
+        // Download and decrypt file
+        let (node, decrypted_data) = engine
+            .download_file_data("drive_test", &uploaded_node.id, Some(&key), 9999)
+            .await
+            .unwrap();
+
+        assert_eq!(node.id, uploaded_node.id);
+        assert_eq!(decrypted_data, original_data);
     }
 }

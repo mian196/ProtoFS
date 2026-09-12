@@ -140,12 +140,16 @@ export const App: React.FC = () => {
         updateTransfer(transferId, progress, '4.2 MB/s', 'uploading');
       }, 300);
 
+      const buffer = await file.arrayBuffer();
+      const bytesArray = Array.from(new Uint8Array(buffer));
+
       await api.uploadFile(
         activeDrive.id,
         currentParentId,
         file.name,
         file.size,
-        true // Encrypted with AES-256-GCM
+        true, // Encrypted with AES-256-GCM
+        bytesArray
       );
 
       clearInterval(progressTimer);
@@ -187,6 +191,7 @@ export const App: React.FC = () => {
 
   // Actions from Context Menu
   const handleDownloadFile = async (file: FileNode) => {
+    if (!activeDrive) return;
     const transferId = `dl_${Date.now()}`;
     addTransfer({
       id: transferId,
@@ -204,11 +209,18 @@ export const App: React.FC = () => {
         updateTransfer(transferId, progress, '5.8 MB/s', 'downloading');
       }, 300);
 
-      // Trigger download
-      setTimeout(() => {
-        clearInterval(progressTimer);
-        updateTransfer(transferId, 100, '0 MB/s', 'completed');
-      }, 1200);
+      const res = await api.downloadFile(activeDrive.id, file.id);
+      clearInterval(progressTimer);
+      updateTransfer(transferId, 100, '0 MB/s', 'completed');
+
+      if (res && res.data_base64) {
+        const link = document.createElement('a');
+        link.href = `data:application/octet-stream;base64,${res.data_base64}`;
+        link.download = file.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
     } catch {
       updateTransfer(transferId, 0, 'Failed', 'paused');
     }
