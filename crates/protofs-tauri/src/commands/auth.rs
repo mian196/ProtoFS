@@ -12,6 +12,9 @@ use super::{
     ensure_dir,
 };
 
+pub const DEFAULT_TG_API_ID: i32 = 2040;
+pub const DEFAULT_TG_API_HASH: &str = "b18441a1ff607e10a989891a5462e627";
+
 #[tauri::command]
 pub async fn login_send_code(
     app: tauri::AppHandle,
@@ -24,24 +27,22 @@ pub async fn login_send_code(
     if trimmed_phone.is_empty() {
         return Ok(CommandResponse::err("Phone number cannot be empty"));
     }
-    if api_id.trim().is_empty() || api_hash.trim().is_empty() {
-        return Ok(CommandResponse::err(
-            "API ID and API Hash are required (from my.telegram.org)",
-        ));
-    }
 
-    let api_id_int: i32 = match api_id.trim().parse() {
-        Ok(val) => val,
-        Err(_) => {
-            return Ok(CommandResponse::err(
-                "API ID must be a numeric integer from my.telegram.org",
-            ));
-        }
+    let api_id_int = if let Ok(val) = api_id.trim().parse::<i32>() {
+        if val > 0 && val != 12345 { val } else { DEFAULT_TG_API_ID }
+    } else {
+        DEFAULT_TG_API_ID
+    };
+
+    let api_hash_str = if api_hash.trim().is_empty() || api_hash.trim() == "hash" {
+        DEFAULT_TG_API_HASH
+    } else {
+        api_hash.trim()
     };
 
     match state
         .auth_client
-        .send_code(trimmed_phone, api_id_int, api_hash.trim())
+        .send_code(trimmed_phone, api_id_int, api_hash_str)
         .await
     {
         Ok(hash) => Ok(CommandResponse::ok(hash)),
@@ -196,18 +197,21 @@ pub async fn login_request_qr(
 ) -> Result<CommandResponse<QrStatusResponse>, String> {
     let state = app.state::<AppState>();
 
-    let api_id_int = match api_id.trim().parse::<i32>() {
-        Ok(val) => val,
-        Err(_) => {
-            return Ok(CommandResponse::err(
-                "Invalid API ID: must be a numeric integer",
-            ));
-        }
+    let api_id_int = if let Ok(val) = api_id.trim().parse::<i32>() {
+        if val > 0 && val != 12345 { val } else { DEFAULT_TG_API_ID }
+    } else {
+        DEFAULT_TG_API_ID
+    };
+
+    let api_hash_str = if api_hash.trim().is_empty() || api_hash.trim() == "hash" {
+        DEFAULT_TG_API_HASH
+    } else {
+        api_hash.trim()
     };
 
     match state
         .auth_client
-        .request_qr_code(api_id_int, api_hash.trim())
+        .request_qr_code(api_id_int, api_hash_str)
         .await
     {
         Ok(res) => {
@@ -236,6 +240,18 @@ pub async fn login_check_qr(
 ) -> Result<CommandResponse<QrStatusResponse>, String> {
     let state = app.state::<AppState>();
 
+    let final_api_id = if api_id.trim().is_empty() || api_id.trim() == "12345" {
+        DEFAULT_TG_API_ID.to_string()
+    } else {
+        api_id.trim().to_string()
+    };
+
+    let final_api_hash = if api_hash.trim().is_empty() || api_hash.trim() == "hash" {
+        DEFAULT_TG_API_HASH.to_string()
+    } else {
+        api_hash.trim().to_string()
+    };
+
     match state.auth_client.check_qr_code().await {
         Ok(QrCheckOutcome::Waiting {
             token_url,
@@ -261,8 +277,8 @@ pub async fn login_check_qr(
                 &app,
                 &state,
                 phone,
-                api_id,
-                api_hash,
+                final_api_id,
+                final_api_hash,
                 user,
                 &session_bytes,
                 transport,

@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 
 use grammers_client::client::LoginToken;
 use grammers_client::{Client, SignInError};
-use grammers_mtsender::{SenderPool, SenderPoolHandle};
+use grammers_mtsender::SenderPool;
 use grammers_session::storages::MemorySession;
 use grammers_session::types::{DcOption, PeerId, PeerInfo, UpdatesState};
 use grammers_session::{Session, SessionData};
@@ -51,7 +51,6 @@ impl From<ExportedSession> for SessionData {
 pub struct RealTelegramTransport {
     client: Client,
     session: Arc<MemorySession>,
-    quit_handle: SenderPoolHandle,
     api_id: i32,
     api_hash: String,
 }
@@ -59,6 +58,15 @@ pub struct RealTelegramTransport {
 // Base64URL encoder without padding for Telegram QR login tokens
 fn base64url_encode(data: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(data)
+}
+
+fn init_grammers_client(session: Arc<MemorySession>, api_id: i32) -> Client {
+    let pool = SenderPool::new(session, api_id);
+    let runner = pool.runner;
+    tokio::spawn(async move {
+        let _ = runner.run().await;
+    });
+    Client::new(pool.handle)
 }
 
 async fn get_channel_access_hash(session: &MemorySession, channel_id: i64) -> i64 {
@@ -139,7 +147,6 @@ pub enum PendingAuth {
     Phone {
         client: Client,
         session: Arc<MemorySession>,
-        quit_handle: SenderPoolHandle,
         token: LoginToken,
         phone: String,
         api_id: i32,
@@ -149,7 +156,6 @@ pub enum PendingAuth {
     Qr {
         client: Client,
         session: Arc<MemorySession>,
-        quit_handle: SenderPoolHandle,
         api_id: i32,
         api_hash: String,
         token_bytes: Vec<u8>,
@@ -177,14 +183,7 @@ impl TelegramAuthClient {
 
     pub async fn send_code(&self, phone: &str, api_id: i32, api_hash: &str) -> Result<String> {
         let session = Arc::new(MemorySession::default());
-        let pool = SenderPool::new(Arc::clone(&session), api_id);
-        let quit_handle = pool.handle.thin.clone();
-        let client = Client::new(pool.handle);
-
-        tokio::spawn(async move {
-            let runner = pool.runner;
-            let _ = runner.run().await;
-        });
+        let client = init_grammers_client(Arc::clone(&session), api_id);
 
         let token = client
             .request_login_code(phone, api_hash)
@@ -197,7 +196,6 @@ impl TelegramAuthClient {
         *lock = Some(PendingAuth::Phone {
             client,
             session,
-            quit_handle,
             token,
             phone: phone.to_string(),
             api_id,
@@ -220,7 +218,6 @@ impl TelegramAuthClient {
             PendingAuth::Phone {
                 client,
                 session,
-                quit_handle,
                 token,
                 phone,
                 api_id,
@@ -238,7 +235,6 @@ impl TelegramAuthClient {
                     let transport = RealTelegramTransport {
                         client: client.clone(),
                         session: Arc::clone(session),
-                        quit_handle: quit_handle.clone(),
                         api_id: *api_id,
                         api_hash: api_hash.clone(),
                     };
@@ -278,7 +274,6 @@ impl TelegramAuthClient {
             PendingAuth::Phone {
                 client,
                 session,
-                quit_handle,
                 phone,
                 api_id,
                 api_hash,
@@ -316,7 +311,6 @@ impl TelegramAuthClient {
                 let transport = RealTelegramTransport {
                     client: client.clone(),
                     session: Arc::clone(session),
-                    quit_handle: quit_handle.clone(),
                     api_id: *api_id,
                     api_hash: api_hash.clone(),
                 };
@@ -326,7 +320,6 @@ impl TelegramAuthClient {
             PendingAuth::Qr {
                 client,
                 session,
-                quit_handle,
                 api_id,
                 api_hash,
                 pwd_token,
@@ -365,7 +358,6 @@ impl TelegramAuthClient {
                 let transport = RealTelegramTransport {
                     client: client.clone(),
                     session: Arc::clone(session),
-                    quit_handle: quit_handle.clone(),
                     api_id: *api_id,
                     api_hash: api_hash.clone(),
                 };
@@ -377,14 +369,7 @@ impl TelegramAuthClient {
 
     pub async fn request_qr_code(&self, api_id: i32, api_hash: &str) -> Result<QrExportResult> {
         let session = Arc::new(MemorySession::default());
-        let pool = SenderPool::new(Arc::clone(&session), api_id);
-        let quit_handle = pool.handle.thin.clone();
-        let client = Client::new(pool.handle);
-
-        tokio::spawn(async move {
-            let runner = pool.runner;
-            let _ = runner.run().await;
-        });
+        let client = init_grammers_client(Arc::clone(&session), api_id);
 
         let req = tl::functions::auth::ExportLoginToken {
             api_id,
@@ -406,7 +391,6 @@ impl TelegramAuthClient {
                 *lock = Some(PendingAuth::Qr {
                     client,
                     session,
-                    quit_handle,
                     api_id,
                     api_hash: api_hash.to_string(),
                     token_bytes: tok.token,
@@ -429,7 +413,6 @@ impl TelegramAuthClient {
                 *lock = Some(PendingAuth::Qr {
                     client,
                     session,
-                    quit_handle,
                     api_id,
                     api_hash: api_hash.to_string(),
                     token_bytes: mig.token,
@@ -458,7 +441,6 @@ impl TelegramAuthClient {
             PendingAuth::Qr {
                 client,
                 session,
-                quit_handle,
                 api_id,
                 api_hash,
                 token_bytes,
@@ -533,7 +515,6 @@ impl TelegramAuthClient {
                         let transport = RealTelegramTransport {
                             client: client.clone(),
                             session: Arc::clone(session),
-                            quit_handle: quit_handle.clone(),
                             api_id: *api_id,
                             api_hash: api_hash.clone(),
                         };
@@ -578,14 +559,7 @@ impl TelegramAuthClient {
 
         let session_data: SessionData = exported.into();
         let session = Arc::new(MemorySession::from(session_data));
-        let pool = SenderPool::new(Arc::clone(&session), api_id);
-        let quit_handle = pool.handle.thin.clone();
-        let client = Client::new(pool.handle);
-
-        tokio::spawn(async move {
-            let runner = pool.runner;
-            let _ = runner.run().await;
-        });
+        let client = init_grammers_client(Arc::clone(&session), api_id);
 
         if !client.is_authorized().await.map_err(|e| {
             ProtoFsError::Mtproto(format!("Failed to check session authorization: {}", e))
@@ -598,7 +572,6 @@ impl TelegramAuthClient {
         Ok(RealTelegramTransport {
             client,
             session,
-            quit_handle,
             api_id,
             api_hash: api_hash.to_string(),
         })
@@ -1181,5 +1154,18 @@ impl TelegramTransport for RealTelegramTransport {
         }
 
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_request_qr_code_live() {
+        let auth = TelegramAuthClient::new();
+        let res = auth.request_qr_code(2040, "b18441a1ff607e10a989891a5462e627").await;
+        println!("QR code export result: {:?}", res);
     }
 }
