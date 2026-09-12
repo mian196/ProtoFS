@@ -15,6 +15,4 @@ if not exist frontend\node_modules (
 )
 
 echo [*] Launching Tauri Live Dev...
-cd frontend
-call npx tauri dev --config ../crates/protofs-tauri/tauri.conf.json %*
-cd ..
+call npx --prefix frontend tauri dev %*

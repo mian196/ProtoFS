@@ -16,5 +16,4 @@ if [ ! -d "frontend/node_modules" ]; then
 fi
 
 echo "[*] Launching Tauri Live Dev..."
-cd frontend
-npx tauri dev --config ../crates/protofs-tauri/tauri.conf.json "$@"
+npx --prefix frontend tauri dev "$@"
