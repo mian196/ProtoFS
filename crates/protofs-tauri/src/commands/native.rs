@@ -481,14 +481,7 @@ pub async fn mount_virtual_drive_command(
             }
         });
 
-    let drive_name = {
-        let drives = state.drives.read().await;
-        drives
-            .iter()
-            .find(|d| d.id == drive_id)
-            .map(|d| format!("ProtoFS - {}", d.name))
-            .unwrap_or_else(|| "ProtoFS Cloud Drive".to_string())
-    };
+    let drive_name = "ProtoFS".to_string();
 
     let mut used_webdav_mount = false;
 
@@ -529,7 +522,7 @@ pub async fn mount_virtual_drive_command(
             }
         }
 
-        // Set custom volume label in Windows Explorer so it displays as "ProtoFS - <Name>"
+        // 3. Set custom volume label in Windows Explorer DriveIcons so drive letter displays as "ProtoFS"
         let label_reg_key = format!(
             r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\DriveIcons\{}\DefaultLabel",
             target_letter
@@ -545,6 +538,37 @@ pub async fn mount_virtual_drive_command(
                 &drive_name,
                 "/f",
             ])
+            .output();
+
+        // 4. Override network UNC share label in Windows Explorer MountPoints2 so it displays "ProtoFS" instead of "DavWWWRoot (\\127.0.0.1@port)"
+        let port = webdav_info.1;
+        let mountpoints_keys = [
+            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot"),
+            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#"),
+            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot#"),
+        ];
+        for mp_key in &mountpoints_keys {
+            let _ = silent_command("reg")
+                .args([
+                    "add",
+                    mp_key,
+                    "/v",
+                    "_LabelFromReg",
+                    "/t",
+                    "REG_SZ",
+                    "/d",
+                    &drive_name,
+                    "/f",
+                ])
+                .output();
+        }
+
+        // 5. Update Windows Explorer Shell namespace dynamically via Shell.Application COM
+        let ps_cmd = format!(
+            r#"$s = New-Object -ComObject Shell.Application; $d = $s.NameSpace("{target_letter}:\"); if ($d) {{ $d.Self.Name = "{drive_name}" }}"#
+        );
+        let _ = silent_command("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &ps_cmd])
             .output();
     }
 
@@ -637,6 +661,18 @@ pub async fn unmount_virtual_drive_command(
         let _ = silent_command("reg")
             .args(["delete", &icon_reg_key, "/f"])
             .output();
+
+        let state = app.state::<AppState>();
+        let server = state.webdav_server.read().await;
+        let port = server.port().await;
+        let mountpoints_keys = [
+            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot"),
+            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#"),
+            format!(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2\##127.0.0.1@{port}#DavWWWRoot#"),
+        ];
+        for mp_key in &mountpoints_keys {
+            let _ = silent_command("reg").args(["delete", mp_key, "/f"]).output();
+        }
     }
 
     #[cfg(target_os = "macos")]

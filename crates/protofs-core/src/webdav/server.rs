@@ -189,6 +189,15 @@ async fn handle_webdav_connection<T: TelegramTransport + 'static>(
     let method = parts[0];
     let raw_path = parts[1];
     let decoded_path = urlencoding_decode(raw_path);
+    let path = if let Some(stripped) = decoded_path.strip_prefix("/DavWWWRoot") {
+        if stripped.is_empty() {
+            "/".to_string()
+        } else {
+            stripped.to_string()
+        }
+    } else {
+        decoded_path
+    };
 
     let mut headers = HashMap::new();
     for line in lines {
@@ -216,13 +225,13 @@ async fn handle_webdav_connection<T: TelegramTransport + 'static>(
                 .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
         }
         "PROPFIND" => {
-            handle_propfind(&mut stream, &decoded_path, depth, &engine, &drives).await?;
+            handle_propfind(&mut stream, &path, depth, &engine, &drives).await?;
         }
         "GET" | "HEAD" => {
             handle_get_or_head(
                 &mut stream,
                 method == "HEAD",
-                &decoded_path,
+                &path,
                 &headers,
                 &engine,
                 &drives,
@@ -230,18 +239,18 @@ async fn handle_webdav_connection<T: TelegramTransport + 'static>(
             .await?;
         }
         "MKCOL" => {
-            handle_mkcol(&mut stream, &decoded_path, &engine, &drives).await?;
+            handle_mkcol(&mut stream, &path, &engine, &drives).await?;
         }
         "DELETE" => {
-            handle_delete(&mut stream, &decoded_path, &engine, &drives).await?;
+            handle_delete(&mut stream, &path, &engine, &drives).await?;
         }
         "MOVE" => {
             let destination = headers.get("destination").cloned().unwrap_or_default();
-            handle_move(&mut stream, &decoded_path, &destination, &engine, &drives).await?;
+            handle_move(&mut stream, &path, &destination, &engine, &drives).await?;
         }
         "LOCK" => {
             let token = uuid::Uuid::new_v4().to_string();
-            let xml = render_lockdiscovery(&decoded_path, &token);
+            let xml = render_lockdiscovery(&path, &token);
             let response = format!(
                 "HTTP/1.1 200 OK\r\n\
                 Content-Type: application/xml; charset=utf-8\r\n\
@@ -307,7 +316,7 @@ async fn handle_propfind<T: TelegramTransport + 'static>(
         props.push(WebDavProp {
             href: "/".to_string(),
             is_dir: true,
-            display_name: "ProtoFS Cloud Storage".to_string(),
+            display_name: "ProtoFS".to_string(),
             size_bytes: 0,
             mime_type: "httpd/unix-directory".to_string(),
             last_modified_rfc1123: now_rfc1123.clone(),
