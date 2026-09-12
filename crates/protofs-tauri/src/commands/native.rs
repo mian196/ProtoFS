@@ -351,6 +351,23 @@ pub async fn mount_virtual_drive_command(
                 e
             )));
         }
+
+        // Set custom volume label in Windows Explorer so it doesn't show "Windows - OS"
+        let drive_name = {
+            let drives = state.drives.read().await;
+            drives
+                .iter()
+                .find(|d| d.id == drive_id)
+                .map(|d| format!("ProtoFS - {}", d.name))
+                .unwrap_or_else(|| "ProtoFS Cloud Drive".to_string())
+        };
+        let label_reg_key = format!(
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\DriveIcons\{}\DefaultLabel",
+            target_letter
+        );
+        let _ = silent_command("reg")
+            .args(["add", &label_reg_key, "/ve", "/t", "REG_SZ", "/d", &drive_name, "/f"])
+            .output();
     }
 
     let now_str = Utc::now().to_rfc3339();
@@ -407,6 +424,14 @@ pub async fn unmount_virtual_drive_command(
     {
         let drive_arg = format!("{}:", letter);
         let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
+
+        let icon_reg_key = format!(
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\DriveIcons\{}",
+            letter
+        );
+        let _ = silent_command("reg")
+            .args(["delete", &icon_reg_key, "/f"])
+            .output();
     }
 
     let mount_dir = get_protofs_mount_dir(&app, &drive_id);
@@ -431,6 +456,27 @@ pub async fn unmount_virtual_drive_command(
         cached_bytes,
         last_mounted_at: None,
     }))
+}
+
+/// Automatically unmounts all active virtual drives and cleans up registry entries when the application exits.
+pub fn unmount_all_virtual_drives_cleanup(app: &tauri::AppHandle) {
+    let mount_state = load_mount_state(app);
+    for (_drive_id, info) in mount_state.mounts {
+        #[cfg(target_os = "windows")]
+        {
+            let drive_arg = format!("{}:", info.drive_letter);
+            let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
+
+            let icon_reg_key = format!(
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\DriveIcons\{}",
+                info.drive_letter
+            );
+            let _ = silent_command("reg")
+                .args(["delete", &icon_reg_key, "/f"])
+                .output();
+        }
+    }
+    save_mount_state(app, &PersistedMountState::default());
 }
 
 #[tauri::command]
