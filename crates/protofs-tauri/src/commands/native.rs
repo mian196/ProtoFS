@@ -458,7 +458,7 @@ pub async fn unmount_virtual_drive_command(
     }))
 }
 
-/// Automatically unmounts all active virtual drives and cleans up registry entries when the application exits.
+/// Automatically unmounts all active virtual drives and cleans up registry entries when the application exits or starts up.
 pub fn unmount_all_virtual_drives_cleanup(app: &tauri::AppHandle) {
     let mount_state = load_mount_state(app);
     for (_drive_id, info) in mount_state.mounts {
@@ -476,6 +476,36 @@ pub fn unmount_all_virtual_drives_cleanup(app: &tauri::AppHandle) {
                 .output();
         }
     }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Also scan subst output directly for any orphaned ProtoFS mount mappings left after a hard crash or Task Manager termination
+        if let Ok(out) = silent_command("subst").output()
+            && let Ok(text) = String::from_utf8(out.stdout)
+        {
+            for line in text.lines() {
+                // Format is: `X:\: => C:\Users\...\ProtoFS\mount\...`
+                let line_lower = line.to_lowercase();
+                if (line_lower.contains("protofs") || line_lower.contains("com.protofs.app"))
+                    && let Some(drive_part) = line.split(':').next()
+                {
+                    let letter = drive_part.trim().to_uppercase();
+                    if letter.len() == 1 {
+                        let drive_arg = format!("{}:", letter);
+                        let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
+                        let icon_reg_key = format!(
+                            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\DriveIcons\{}",
+                            letter
+                        );
+                        let _ = silent_command("reg")
+                            .args(["delete", &icon_reg_key, "/f"])
+                            .output();
+                    }
+                }
+            }
+        }
+    }
+
     save_mount_state(app, &PersistedMountState::default());
 }
 
