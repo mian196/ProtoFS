@@ -69,13 +69,64 @@ fn init_grammers_client(session: Arc<MemorySession>, api_id: i32) -> Client {
     Client::new(pool.handle)
 }
 
-async fn get_channel_access_hash(session: &MemorySession, channel_id: i64) -> i64 {
-    match session.peer(PeerId::channel_unchecked(channel_id)).await {
-        Ok(Some(PeerInfo::Channel {
-            auth: Some(auth), ..
-        })) => auth.hash(),
-        _ => 0,
+fn normalize_channel_id(channel_id: i64) -> i64 {
+    let id_str = channel_id.abs().to_string();
+    if id_str.len() > 10
+        && id_str.starts_with("100")
+        && let Ok(parsed) = id_str[3..].parse::<i64>()
+    {
+        return parsed;
     }
+    channel_id.abs()
+}
+
+async fn get_channel_access_hash(client: &Client, session: &MemorySession, channel_id: i64) -> i64 {
+    // 1. Try memory session cache
+    if let Ok(Some(PeerInfo::Channel {
+        auth: Some(auth), ..
+    })) = session.peer(PeerId::channel_unchecked(channel_id)).await
+    {
+        let h = auth.hash();
+        if h != 0 {
+            return h;
+        }
+    }
+
+    // 2. Query GetDialogs to warm up the session peer cache with access_hash
+    let req = tl::functions::messages::GetDialogs {
+        exclude_pinned: false,
+        folder_id: None,
+        offset_date: 0,
+        offset_id: 0,
+        offset_peer: tl::enums::InputPeer::Empty,
+        limit: 100,
+        hash: 0,
+    };
+    if let Ok(dialogs) = client.invoke(&req).await {
+        let chats = match dialogs {
+            tl::enums::messages::Dialogs::Dialogs(d) => d.chats,
+            tl::enums::messages::Dialogs::Slice(s) => s.chats,
+            tl::enums::messages::Dialogs::NotModified(_) => Vec::new(),
+        };
+        for chat in chats {
+            if let tl::enums::Chat::Channel(c) = chat
+                && (normalize_channel_id(c.id) == channel_id || c.id == channel_id)
+                && let Some(hash) = c.access_hash
+            {
+                return hash;
+            }
+        }
+    }
+
+    // 3. Fallback: check session again after GetDialogs
+    if let Ok(Some(PeerInfo::Channel {
+        auth: Some(auth), ..
+    })) = session.peer(PeerId::channel_unchecked(channel_id)).await
+    {
+        return auth.hash();
+    }
+
+    0
 }
 
 async fn export_session_bytes(session: &Arc<MemorySession>) -> Result<Vec<u8>> {
@@ -579,6 +630,12 @@ impl TelegramAuthClient {
 }
 
 impl RealTelegramTransport {
+    async fn resolve_channel_peer(&self, raw_channel_id: i64) -> (i64, i64) {
+        let channel_id = normalize_channel_id(raw_channel_id);
+        let hash = get_channel_access_hash(&self.client, &self.session, channel_id).await;
+        (channel_id, hash)
+    }
+
     async fn upload_bytes_to_telegram(
         &self,
         filename: &str,
@@ -709,7 +766,7 @@ impl TelegramTransport for RealTelegramTransport {
     }
 
     async fn get_pinned_manifest(&self, channel_id: i64) -> Result<Option<(i32, Vec<u8>)>> {
-        let access_hash = get_channel_access_hash(&self.session, channel_id).await;
+        let (channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
         let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
             channel_id,
             access_hash,
@@ -780,13 +837,14 @@ impl TelegramTransport for RealTelegramTransport {
     }
 
     async fn update_pinned_manifest(&self, channel_id: i64, manifest_bytes: &[u8]) -> Result<i32> {
+        let (channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
         let input_file = self
             .upload_bytes_to_telegram("manifest.json.zst", manifest_bytes)
             .await?;
 
         let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
             channel_id,
-            access_hash: 0,
+            access_hash,
         });
 
         let media =
@@ -884,11 +942,12 @@ impl TelegramTransport for RealTelegramTransport {
         caption: &str,
         data: &[u8],
     ) -> Result<TelegramMessage> {
+        let (channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
         let input_file = self.upload_bytes_to_telegram(filename, data).await?;
 
         let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
             channel_id,
-            access_hash: 0,
+            access_hash,
         });
 
         let media =
@@ -974,17 +1033,15 @@ impl TelegramTransport for RealTelegramTransport {
         offset: u64,
         limit: u32,
     ) -> Result<Vec<u8>> {
-        let get_msg_req = {
-            let access_hash = get_channel_access_hash(&self.session, channel_id).await;
-            tl::functions::channels::GetMessages {
-                channel: tl::enums::InputChannel::Channel(tl::types::InputChannel {
-                    channel_id,
-                    access_hash,
-                }),
-                id: vec![tl::enums::InputMessage::Id(tl::types::InputMessageId {
-                    id: message_id,
-                })],
-            }
+        let (channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
+        let get_msg_req = tl::functions::channels::GetMessages {
+            channel: tl::enums::InputChannel::Channel(tl::types::InputChannel {
+                channel_id,
+                access_hash,
+            }),
+            id: vec![tl::enums::InputMessage::Id(tl::types::InputMessageId {
+                id: message_id,
+            })],
         };
 
         let res = self.client.invoke(&get_msg_req).await.map_err(|e| {
@@ -1037,7 +1094,7 @@ impl TelegramTransport for RealTelegramTransport {
         message_id: i32,
         new_caption: &str,
     ) -> Result<()> {
-        let access_hash = get_channel_access_hash(&self.session, channel_id).await;
+        let (channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
         let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
             channel_id,
             access_hash,
@@ -1069,7 +1126,7 @@ impl TelegramTransport for RealTelegramTransport {
     }
 
     async fn delete_message(&self, channel_id: i64, message_id: i32) -> Result<()> {
-        let access_hash = get_channel_access_hash(&self.session, channel_id).await;
+        let (channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
         let input_channel = tl::enums::InputChannel::Channel(tl::types::InputChannel {
             channel_id,
             access_hash,
@@ -1093,7 +1150,7 @@ impl TelegramTransport for RealTelegramTransport {
         min_id: i32,
         limit: usize,
     ) -> Result<Vec<TelegramMessage>> {
-        let access_hash = get_channel_access_hash(&self.session, channel_id).await;
+        let (channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
         let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
             channel_id,
             access_hash,
