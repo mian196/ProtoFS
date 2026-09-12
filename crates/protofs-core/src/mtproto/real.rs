@@ -837,13 +837,13 @@ impl TelegramTransport for RealTelegramTransport {
     }
 
     async fn update_pinned_manifest(&self, channel_id: i64, manifest_bytes: &[u8]) -> Result<i32> {
-        let (channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
+        let (resolved_channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
         let input_file = self
             .upload_bytes_to_telegram("manifest.json.zst", manifest_bytes)
             .await?;
 
         let input_peer = tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
-            channel_id,
+            channel_id: resolved_channel_id,
             access_hash,
         });
 
@@ -866,6 +866,78 @@ impl TelegramTransport for RealTelegramTransport {
                 video_timestamp: None,
             });
 
+        // 1. Search for existing manifest message in the channel
+        let search_req = tl::functions::messages::Search {
+            peer: input_peer.clone(),
+            q: "#protofs_manifest_v1".to_string(),
+            from_id: None,
+            saved_peer_id: None,
+            top_msg_id: None,
+            filter: tl::enums::MessagesFilter::InputMessagesFilterDocument,
+            min_date: 0,
+            max_date: 0,
+            offset_id: 0,
+            add_offset: 0,
+            limit: 10,
+            max_id: 0,
+            min_id: 0,
+            hash: 0,
+            saved_reaction: None,
+        };
+
+        let mut existing_manifest_ids = Vec::new();
+        if let Ok(res) = self.client.invoke(&search_req).await {
+            let messages = match res {
+                tl::enums::messages::Messages::Messages(m) => m.messages,
+                tl::enums::messages::Messages::Slice(s) => s.messages,
+                tl::enums::messages::Messages::ChannelMessages(c) => c.messages,
+                tl::enums::messages::Messages::NotModified(_) => Vec::new(),
+            };
+            for msg in messages {
+                if let tl::enums::Message::Message(m) = msg {
+                    existing_manifest_ids.push(m.id);
+                }
+            }
+        }
+
+        // If an existing manifest message exists, edit it in-place!
+        if let Some(&primary_msg_id) = existing_manifest_ids.first() {
+            let edit_req = tl::functions::messages::EditMessage {
+                no_webpage: true,
+                invert_media: false,
+                peer: input_peer.clone(),
+                id: primary_msg_id,
+                message: Some("#protofs_manifest_v1".to_string()),
+                media: Some(media.clone()),
+                reply_markup: None,
+                entities: None,
+                schedule_date: None,
+                quick_reply_shortcut_id: None,
+                rich_message: None,
+                schedule_repeat_period: None,
+            };
+
+            if self.client.invoke(&edit_req).await.is_ok() {
+                // Ensure it remains pinned
+                let pin_req = tl::functions::messages::UpdatePinnedMessage {
+                    silent: true,
+                    unpin: false,
+                    pm_oneside: false,
+                    peer: input_peer.clone(),
+                    id: primary_msg_id,
+                };
+                let _ = self.client.invoke(&pin_req).await;
+
+                // Clean up any duplicate manifest messages from earlier runs
+                for &dup_id in existing_manifest_ids.iter().skip(1) {
+                    let _ = self.delete_message(channel_id, dup_id).await;
+                }
+
+                return Ok(primary_msg_id);
+            }
+        }
+
+        // 2. If no existing manifest exists (or edit failed), send a new initial manifest message and pin it
         let send_req = tl::functions::messages::SendMedia {
             silent: true,
             background: false,
@@ -931,6 +1003,13 @@ impl TelegramTransport for RealTelegramTransport {
         let _ = self.client.invoke(&pin_req).await.map_err(|e| {
             tracing::warn!("Failed to pin manifest message #{}: {}", msg_id, e);
         });
+
+        // Clean up duplicate old manifest messages
+        for &dup_id in &existing_manifest_ids {
+            if dup_id != msg_id {
+                let _ = self.delete_message(channel_id, dup_id).await;
+            }
+        }
 
         Ok(msg_id)
     }
