@@ -338,6 +338,43 @@ impl VfsTree {
         parts.join("/")
     }
 
+    pub fn find_child_by_name(&self, parent_id: &str, name: &str) -> Option<&VfsNode> {
+        if let Some(children) = self.children_by_parent.get(parent_id) {
+            for id in children {
+                if let Some(node) = self.nodes.get(id)
+                    && !node.is_trashed()
+                    && node.name().eq_ignore_ascii_case(name)
+                {
+                    return Some(node);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn find_by_path(&self, relative_path: &str) -> Option<&VfsNode> {
+        let clean = relative_path.trim_matches('/');
+        if clean.is_empty() {
+            return None;
+        }
+        let parts: Vec<&str> = clean.split('/').filter(|p| !p.is_empty()).collect();
+        let mut current_parent = ROOT_PARENT_ID.to_string();
+        let mut last_node = None;
+
+        for (idx, part) in parts.iter().enumerate() {
+            let node = self.find_child_by_name(&current_parent, part)?;
+            last_node = Some(node);
+            if idx + 1 < parts.len() {
+                if let VfsNode::Folder(f) = node {
+                    current_parent = f.id.clone();
+                } else {
+                    return None;
+                }
+            }
+        }
+        last_node
+    }
+
     pub fn all_nodes(&self) -> impl Iterator<Item = &VfsNode> {
         self.nodes.values()
     }

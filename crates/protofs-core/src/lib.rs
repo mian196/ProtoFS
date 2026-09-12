@@ -5,6 +5,7 @@ pub mod manifest;
 pub mod mtproto;
 pub mod sync;
 pub mod vfs;
+pub mod webdav;
 
 pub use cache::{CacheDatabase, SearchResult, SyncPairEntry};
 pub use error::{ProtoFsError, Result};
@@ -12,6 +13,7 @@ pub use manifest::ManifestSnapshot;
 pub use mtproto::{DynamicTelegramTransport, ParsedCaption, TelegramTransport};
 pub use sync::SyncEngine;
 pub use vfs::{FileNode, FolderNode, ROOT_PARENT_ID, VfsNode, VfsTree};
+pub use webdav::{WebDavConfig, WebDavServer, DEFAULT_WEBDAV_PORT};
 
 #[cfg(test)]
 mod tests {
@@ -410,5 +412,75 @@ mod tests {
         let file = tree.get_file("file_1");
         assert!(file.is_some());
         assert_eq!(file.unwrap().parent_id, "folder_Documents");
+    }
+
+    #[tokio::test]
+    async fn test_webdav_multistatus_xml_and_path_resolution() {
+        use crate::webdav::xml::{render_multistatus, WebDavProp};
+
+        let props = vec![
+            WebDavProp {
+                href: "/".to_string(),
+                is_dir: true,
+                display_name: "ProtoFS Root".to_string(),
+                size_bytes: 0,
+                mime_type: "httpd/unix-directory".to_string(),
+                last_modified_rfc1123: "Sat, 12 Sep 2026 12:00:00 GMT".to_string(),
+                quota_available_bytes: 10 * 1024 * 1024 * 1024 * 1024,
+                quota_used_bytes: 0,
+            },
+            WebDavProp {
+                href: "/drive_1/file.txt".to_string(),
+                is_dir: false,
+                display_name: "file.txt".to_string(),
+                size_bytes: 42,
+                mime_type: "text/plain".to_string(),
+                last_modified_rfc1123: "Sat, 12 Sep 2026 12:00:00 GMT".to_string(),
+                quota_available_bytes: 10 * 1024 * 1024 * 1024 * 1024,
+                quota_used_bytes: 42,
+            },
+        ];
+
+        let xml = render_multistatus(&props);
+        assert!(xml.contains("<D:multistatus"));
+        assert!(xml.contains("<D:href>/</D:href>"));
+        assert!(xml.contains("<D:collection/>"));
+        assert!(xml.contains("<D:getcontentlength>42</D:getcontentlength>"));
+        assert!(xml.contains("<D:getcontenttype>text/plain</D:getcontenttype>"));
+
+        let mut tree = VfsTree::new();
+        let folder = FolderNode {
+            id: "f_photos".to_string(),
+            drive_id: "d1".to_string(),
+            parent_id: ROOT_PARENT_ID.to_string(),
+            name: "Photos".to_string(),
+            is_trashed: false,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let file = FileNode {
+            id: "pic_1".to_string(),
+            drive_id: "d1".to_string(),
+            parent_id: "f_photos".to_string(),
+            name: "sunset.jpg".to_string(),
+            size_bytes: 2048,
+            mime_type: Some("image/jpeg".to_string()),
+            telegram_message_id: 1,
+            is_encrypted: false,
+            encryption_iv: None,
+            sha256_hash: None,
+            is_pinned_offline: false,
+            is_trashed: false,
+            version: 1,
+            history: Vec::new(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        tree.insert(VfsNode::Folder(folder));
+        tree.insert(VfsNode::File(file));
+
+        let found = tree.find_by_path("Photos/sunset.jpg");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name(), "sunset.jpg");
     }
 }

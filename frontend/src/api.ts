@@ -17,6 +17,7 @@ import type {
   ShareLinkInfo,
   ParsedShareLink,
   VirtualDriveStatus,
+  WebDavServerStatus,
   DocumentsProviderStatus,
   SafTestQueryResult,
   WorkManagerSyncConfig,
@@ -1441,8 +1442,48 @@ export class ProtoFsApi {
   }
 
   // -------------------------------------------------------------------------
-  // Native Virtual Drive Mount
+  // WebDAV Server & Native Virtual Drive Mount
   // -------------------------------------------------------------------------
+
+  async getWebDavConfig(): Promise<WebDavServerStatus> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<WebDavServerStatus>>('get_webdav_config_command');
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err) {
+        console.warn('Tauri get_webdav_config_command error:', err);
+      }
+    }
+    return {
+      is_running: true,
+      port: 28491,
+      url: 'http://127.0.0.1:28491/',
+      auto_mount: false,
+    };
+  }
+
+  async configureWebDav(enabled: boolean, port: number, autoMount: boolean): Promise<WebDavServerStatus> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<WebDavServerStatus>>('configure_webdav_command', {
+          enabled,
+          port,
+          autoMount,
+        });
+        if (res.success && res.data) return res.data;
+        if (res.error) throw new Error(res.error);
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+    return {
+      is_running: enabled,
+      port: port || 28491,
+      url: `http://127.0.0.1:${port || 28491}/`,
+      auto_mount: autoMount,
+    };
+  }
 
   async getVirtualDriveStatus(driveId: string): Promise<VirtualDriveStatus | null> {
     if (!driveId) return null;

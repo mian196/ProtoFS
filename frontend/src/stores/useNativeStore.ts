@@ -5,11 +5,13 @@ import type {
   P2pStatus,
   SyncPair,
   VirtualDriveStatus,
+  WebDavServerStatus,
   WorkManagerSyncStatus,
 } from '../types';
 
 interface NativeState {
   virtualDrive: VirtualDriveStatus | null;
+  webdavServer: WebDavServerStatus | null;
   documentsProvider: DocumentsProviderStatus | null;
   workManagerSync: WorkManagerSyncStatus | null;
   syncPairs: SyncPair[];
@@ -23,11 +25,17 @@ interface NativeState {
     onDemandStream?: boolean
   ) => Promise<VirtualDriveStatus | null>;
   unmountVirtualDrive: (driveId: string) => Promise<VirtualDriveStatus | null>;
+  configureWebDav: (
+    enabled: boolean,
+    port: number,
+    autoMount: boolean
+  ) => Promise<WebDavServerStatus>;
   loadSyncPairs: (driveId?: string) => Promise<void>;
 }
 
 export const useNativeStore = create<NativeState>((set) => ({
   virtualDrive: null,
+  webdavServer: null,
   documentsProvider: null,
   workManagerSync: null,
   syncPairs: [],
@@ -37,8 +45,9 @@ export const useNativeStore = create<NativeState>((set) => ({
   loadNativeStatus: async (driveId = 'personal') => {
     set({ isLoading: true });
     try {
-      const [vDrive, docProv, wmSync, p2p, pairs] = await Promise.all([
+      const [vDrive, webdav, docProv, wmSync, p2p, pairs] = await Promise.all([
         api.getVirtualDriveStatus(driveId),
+        api.getWebDavConfig(),
         api.getDocumentsProviderStatus(driveId),
         api.getWorkManagerSyncStatus(),
         api.getP2pStatus(),
@@ -47,6 +56,7 @@ export const useNativeStore = create<NativeState>((set) => ({
 
       set({
         virtualDrive: vDrive,
+        webdavServer: webdav,
         documentsProvider: docProv,
         workManagerSync: wmSync,
         p2pStatus: p2p,
@@ -68,6 +78,12 @@ export const useNativeStore = create<NativeState>((set) => ({
   unmountVirtualDrive: async (driveId: string) => {
     const res = await api.unmountVirtualDrive(driveId);
     set({ virtualDrive: res });
+    return res;
+  },
+
+  configureWebDav: async (enabled: boolean, port: number, autoMount: boolean) => {
+    const res = await api.configureWebDav(enabled, port, autoMount);
+    set({ webdavServer: res });
     return res;
   },
 

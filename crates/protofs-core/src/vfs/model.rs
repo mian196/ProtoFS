@@ -98,4 +98,11 @@ impl VfsNode {
             VfsNode::File(f) => &f.drive_id,
         }
     }
+
+    pub fn is_trashed(&self) -> bool {
+        match self {
+            VfsNode::Folder(f) => f.is_trashed,
+            VfsNode::File(f) => f.is_trashed,
+        }
+    }
 }

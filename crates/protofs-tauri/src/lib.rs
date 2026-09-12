@@ -34,17 +34,43 @@ pub fn run() {
             let engine = Arc::new(SyncEngine::new(Arc::new(transport.clone()), cache.clone()));
             let auth_client = Arc::new(TelegramAuthClient::new());
 
+            let drives_state = Arc::new(RwLock::new(Vec::new()));
+            let webdav_settings = commands::load_webdav_settings(&cache);
+            let webdav_config = protofs_core::webdav::WebDavConfig {
+                enabled: webdav_settings.enabled,
+                port: webdav_settings.port,
+                auto_mount: webdav_settings.auto_mount,
+                auth_token: None,
+            };
+            let webdav_server = Arc::new(RwLock::new(protofs_core::webdav::WebDavServer::new(
+                engine.clone(),
+                drives_state.clone(),
+                webdav_config.clone(),
+            )));
+
             let app_state = AppState {
                 engine,
                 cache,
                 session: Arc::new(RwLock::new(None)),
-                drives: Arc::new(RwLock::new(Vec::new())),
+                drives: drives_state,
                 auth_client,
                 transport,
+                webdav_server: webdav_server.clone(),
             };
 
             // Cleanup any stale virtual drive mounts left from a previous unclean exit
             commands::unmount_all_virtual_drives_cleanup(app.handle());
+
+            // Start WebDAV server in background if enabled
+            if webdav_config.enabled {
+                let s_clone = webdav_server.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut s = s_clone.write().await;
+                    if let Err(e) = s.start().await {
+                        tracing::warn!("Failed to start WebDAV background server: {}", e);
+                    }
+                });
+            }
 
             app.manage(app_state);
             Ok(())
@@ -105,6 +131,8 @@ pub fn run() {
             commands::generate_share_link_command,
             commands::parse_share_link_command,
             commands::import_shared_link_command,
+            commands::get_webdav_config_command,
+            commands::configure_webdav_command,
             commands::get_virtual_drive_status_command,
             commands::mount_virtual_drive_command,
             commands::unmount_virtual_drive_command,

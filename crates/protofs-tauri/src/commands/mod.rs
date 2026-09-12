@@ -98,10 +98,20 @@ pub struct VirtualDriveStatus {
     pub mount_path: String,
     pub driver_mode: String,
     pub winfsp_available: bool,
+    pub webdav_available: bool,
+    pub webdav_url: String,
     pub available_letters: Vec<String>,
     pub cached_files_count: usize,
     pub cached_bytes: u64,
     pub last_mounted_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebDavServerStatus {
+    pub is_running: bool,
+    pub port: u16,
+    pub url: String,
+    pub auto_mount: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +191,7 @@ pub struct AppState {
     pub drives: Arc<RwLock<Vec<DriveMetadata>>>,
     pub auth_client: Arc<TelegramAuthClient>,
     pub transport: DynamicTelegramTransport,
+    pub webdav_server: Arc<RwLock<protofs_core::webdav::WebDavServer<DynamicTelegramTransport>>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

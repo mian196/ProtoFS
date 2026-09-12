@@ -37,6 +37,9 @@ pub enum ProtoFsError {
 
     #[error("Caption parse error: {0}")]
     CaptionParse(String),
+
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 pub type Result<T> = std::result::Result<T, ProtoFsError>;

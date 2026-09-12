@@ -23,6 +23,8 @@ import {
   Power,
   Clock,
   CheckCircle2,
+  Globe,
+  Copy,
 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -97,7 +99,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const { theme, setTheme } = useThemeStore();
   const { drives, activeDrive, loadDrives } = useDriveStore();
   const { session, accounts, loadAccounts } = useAuthStore();
-  const { virtualDrive, mountVirtualDrive, unmountVirtualDrive, loadNativeStatus } = useNativeStore();
+  const {
+    virtualDrive,
+    webdavServer,
+    mountVirtualDrive,
+    unmountVirtualDrive,
+    configureWebDav,
+    loadNativeStatus,
+  } = useNativeStore();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
 
@@ -108,6 +117,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   // Virtual drive state
   const [selectedDriveLetter, setSelectedDriveLetter] = useState('X');
   const [onDemandStreaming, setOnDemandStreaming] = useState(true);
+
+  // WebDAV Server Configuration state
+  const [webdavEnabled, setWebdavEnabled] = useState(true);
+  const [webdavPort, setWebdavPort] = useState(28491);
+  const [webdavAutoMount, setWebdavAutoMount] = useState(false);
+  const [webdavSaving, setWebdavSaving] = useState(false);
+  const [copiedWebdavUrl, setCopiedWebdavUrl] = useState(false);
+
+  useEffect(() => {
+    if (webdavServer) {
+      setWebdavEnabled(webdavServer.is_running);
+      setWebdavPort(webdavServer.port || 28491);
+      setWebdavAutoMount(webdavServer.auto_mount || false);
+    }
+  }, [webdavServer]);
 
   // Camera backup state
   const [cameraConfig, setCameraConfig] = useState<CameraBackupConfig | null>(null);
@@ -519,18 +543,149 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           )}
 
-          {/* 3. Virtual Drive Mount */}
+          {/* 3. WebDAV & Virtual Drive Mount */}
           {activeTab === 'mount' && (
             <div className="space-y-4">
               <div>
                 <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  Virtual Drive & Explorer Mapping
+                  WebDAV Server & Native OS Mount
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Map your Telegram Zero-Knowledge cloud drive directly as a native Windows drive letter.
+                  Access your Zero-Knowledge Telegram cloud drives natively in Windows Explorer, macOS Finder, or Linux file managers.
                 </p>
               </div>
 
+              {/* WebDAV Server Settings Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-2 rounded-xl ${webdavServer?.is_running ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-400'}`}>
+                      <Globe className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-200 flex items-center gap-2">
+                        Embedded WebDAV Server
+                        <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
+                          webdavServer?.is_running
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                            : 'bg-slate-500/15 text-slate-500 border border-slate-500/30'
+                        }`}>
+                          {webdavServer?.is_running ? `Active on Port ${webdavServer.port}` : 'Disabled'}
+                        </span>
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        RFC 4918 standard server with live AES-256-GCM chunk streaming & byte-range seeking.
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    variant={webdavEnabled ? 'danger' : 'primary'}
+                    size="sm"
+                    disabled={webdavSaving}
+                    onClick={async () => {
+                      setWebdavSaving(true);
+                      try {
+                        const newEnabled = !webdavEnabled;
+                        setWebdavEnabled(newEnabled);
+                        await configureWebDav(newEnabled, webdavPort, webdavAutoMount);
+                      } catch (e) {
+                        console.error('Failed to toggle WebDAV:', e);
+                      } finally {
+                        setWebdavSaving(false);
+                      }
+                    }}
+                  >
+                    {webdavEnabled ? 'Stop Server' : 'Start Server'}
+                  </Button>
+                </div>
+
+                {/* WebDAV URL & Port Row */}
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800/80 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Local WebDAV Endpoint
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        readOnly
+                        value={webdavServer?.url || `http://127.0.0.1:${webdavPort}/`}
+                        className="w-full bg-white dark:bg-slate-900 text-xs font-mono text-slate-800 dark:text-slate-200 rounded-xl px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 focus:outline-none select-all"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 px-2.5 py-1.5"
+                        onClick={() => {
+                          const url = webdavServer?.url || `http://127.0.0.1:${webdavPort}/`;
+                          navigator.clipboard.writeText(url);
+                          setCopiedWebdavUrl(true);
+                          setTimeout(() => setCopiedWebdavUrl(false), 2000);
+                        }}
+                      >
+                        {copiedWebdavUrl ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Server Port
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        value={webdavPort}
+                        onChange={(e) => setWebdavPort(parseInt(e.target.value) || 28491)}
+                        className="text-xs font-mono py-1.5"
+                        min={1024}
+                        max={65535}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={webdavSaving}
+                        onClick={async () => {
+                          setWebdavSaving(true);
+                          try {
+                            await configureWebDav(webdavEnabled, webdavPort, webdavAutoMount);
+                          } catch (e) {
+                            console.error('Failed to update WebDAV port:', e);
+                          } finally {
+                            setWebdavSaving(false);
+                          }
+                        }}
+                      >
+                        Apply
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="webdavAutoMount"
+                    checked={webdavAutoMount}
+                    onChange={async (e) => {
+                      const checked = e.target.checked;
+                      setWebdavAutoMount(checked);
+                      try {
+                        await configureWebDav(webdavEnabled, webdavPort, checked);
+                      } catch (err) {
+                        console.error('Failed to update auto mount:', err);
+                      }
+                    }}
+                    className="rounded text-sky-500 focus:ring-sky-500"
+                  />
+                  <label htmlFor="webdavAutoMount" className="text-xs text-slate-700 dark:text-slate-300">
+                    Auto-mount active cloud drive on application launch
+                  </label>
+                </div>
+              </div>
+
+              {/* OS Drive Mount Controls Card */}
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -546,9 +701,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                           : 'Drive Currently Unmounted'}
                       </p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {virtualDrive?.is_mounted
-                          ? `${virtualDrive.cached_files_count} files cached in SQLite WAL`
-                          : 'Select target drive letter and mount'}
+                        {virtualDrive?.driver_mode || 'WebDAV Zero-Install Streaming Server'}
                       </p>
                     </div>
                   </div>
@@ -600,6 +753,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                     </label>
                   </div>
                 </div>
+
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 italic pt-1">
+                  💡 Zero local disk duplication: Files stream directly through encrypted MTProto chunks and instantly disconnect when ProtoFS is closed.
+                </p>
               </div>
             </div>
           )}

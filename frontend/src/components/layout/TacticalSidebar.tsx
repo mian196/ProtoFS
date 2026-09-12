@@ -118,7 +118,7 @@ export const TacticalSidebar: React.FC = () => {
                   : 'Mount Virtual Drive'}
               </p>
               <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                {virtualDrive?.is_mounted ? 'WinFsp Native I/O' : 'Windows Explorer X:'}
+                {virtualDrive?.is_mounted ? (virtualDrive.driver_mode || 'WebDAV Network Drive') : 'Cross-Platform WebDAV'}
               </p>
             </div>
           </div>

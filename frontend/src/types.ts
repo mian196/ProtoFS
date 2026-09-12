@@ -191,10 +191,19 @@ export interface VirtualDriveStatus {
   mount_path: string;
   driver_mode: string;
   winfsp_available: boolean;
+  webdav_available?: boolean;
+  webdav_url?: string;
   available_letters: string[];
   cached_files_count: number;
   cached_bytes: number;
   last_mounted_at?: string;
+}
+
+export interface WebDavServerStatus {
+  is_running: boolean;
+  port: number;
+  url: string;
+  auto_mount: boolean;
 }
 
 export interface DocumentsProviderStatus {

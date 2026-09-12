@@ -235,11 +235,131 @@ async fn project_vfs_to_disk(
     Ok(())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedWebDavSettings {
+    pub enabled: bool,
+    pub port: u16,
+    pub auto_mount: bool,
+}
+
+impl Default for PersistedWebDavSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            port: protofs_core::webdav::DEFAULT_WEBDAV_PORT,
+            auto_mount: false,
+        }
+    }
+}
+
+pub fn load_webdav_settings(cache: &protofs_core::cache::CacheDatabase) -> PersistedWebDavSettings {
+    if let Ok(Some(bytes)) = cache.get_secure_secret("webdav_settings")
+        && let Ok(cfg) = serde_json::from_slice::<PersistedWebDavSettings>(&bytes)
+    {
+        return cfg;
+    }
+    PersistedWebDavSettings::default()
+}
+
+pub fn save_webdav_settings(
+    cache: &protofs_core::cache::CacheDatabase,
+    cfg: &PersistedWebDavSettings,
+) {
+    if let Ok(bytes) = serde_json::to_vec(cfg) {
+        let _ = cache.set_secure_secret("webdav_settings", &bytes);
+    }
+}
+
+#[tauri::command]
+pub async fn get_webdav_config_command(
+    app: tauri::AppHandle,
+) -> Result<CommandResponse<super::WebDavServerStatus>, String> {
+    let state = app.state::<AppState>();
+    let server = state.webdav_server.read().await;
+    let is_running = server.is_running().await;
+    let port = server.port().await;
+    let auto_mount = server.auto_mount().await;
+    let url = format!("http://127.0.0.1:{}/", port);
+
+    Ok(CommandResponse::ok(super::WebDavServerStatus {
+        is_running,
+        port,
+        url,
+        auto_mount,
+    }))
+}
+
+#[tauri::command]
+pub async fn configure_webdav_command(
+    app: tauri::AppHandle,
+    enabled: bool,
+    port: u16,
+    auto_mount: bool,
+) -> Result<CommandResponse<super::WebDavServerStatus>, String> {
+    let state = app.state::<AppState>();
+    let target_port = if port > 0 { port } else { protofs_core::webdav::DEFAULT_WEBDAV_PORT };
+
+    // Persist settings
+    let cfg = PersistedWebDavSettings {
+        enabled,
+        port: target_port,
+        auto_mount,
+    };
+    save_webdav_settings(&state.cache, &cfg);
+
+    let mut server = state.webdav_server.write().await;
+    let was_running = server.is_running().await;
+    let old_port = server.port().await;
+
+    if !enabled {
+        if was_running {
+            server.stop().await;
+        }
+    } else {
+        // Update config
+        server.set_config(protofs_core::webdav::WebDavConfig {
+            enabled: true,
+            port: target_port,
+            auto_mount,
+            auth_token: None,
+        }).await;
+
+        // Restart if running or port changed, or start if stopped
+        if was_running && old_port != target_port {
+            server.stop().await;
+            let _ = server.start().await;
+        } else if !was_running {
+            let _ = server.start().await;
+        }
+    }
+
+    let is_running = server.is_running().await;
+    let final_port = server.port().await;
+    let url = format!("http://127.0.0.1:{}/", final_port);
+
+    Ok(CommandResponse::ok(super::WebDavServerStatus {
+        is_running,
+        port: final_port,
+        url,
+        auto_mount,
+    }))
+}
+
 #[tauri::command]
 pub async fn get_virtual_drive_status_command(
     app: tauri::AppHandle,
     drive_id: String,
 ) -> Result<CommandResponse<VirtualDriveStatus>, String> {
+    let state = app.state::<AppState>();
+    let server = state.webdav_server.read().await;
+    let webdav_running = server.is_running().await;
+    let webdav_port = server.port().await;
+    let webdav_url = if drive_id.is_empty() {
+        format!("http://127.0.0.1:{}/", webdav_port)
+    } else {
+        format!("http://127.0.0.1:{}/{}/", webdav_port, drive_id)
+    };
+
     if drive_id.is_empty() {
         let winfsp_available = is_winfsp_installed();
         return Ok(CommandResponse::ok(VirtualDriveStatus {
@@ -247,12 +367,16 @@ pub async fn get_virtual_drive_status_command(
             drive_id: String::new(),
             drive_letter: "P".to_string(),
             mount_path: "P:\\".to_string(),
-            driver_mode: if winfsp_available {
+            driver_mode: if webdav_running {
+                "WebDAV Streaming Network Drive (Zero-Install)".to_string()
+            } else if winfsp_available {
                 "WinFsp FUSE (Native Kernel Driver)".to_string()
             } else {
                 "Windows Native Drive Mapping (Zero-Install)".to_string()
             },
             winfsp_available,
+            webdav_available: webdav_running,
+            webdav_url,
             available_letters: get_available_drive_letters(),
             cached_files_count: 0,
             cached_bytes: 0,
@@ -280,7 +404,9 @@ pub async fn get_virtual_drive_status_command(
             (false, "P".to_string(), "P:\\".to_string(), None)
         };
 
-    let driver_mode = if winfsp_available {
+    let driver_mode = if webdav_running {
+        "WebDAV Streaming Network Drive (Zero-Install)".to_string()
+    } else if winfsp_available {
         "WinFsp FUSE (Native Kernel Driver)".to_string()
     } else {
         "Windows Native Drive Mapping (Zero-Install)".to_string()
@@ -293,6 +419,8 @@ pub async fn get_virtual_drive_status_command(
         mount_path,
         driver_mode,
         winfsp_available,
+        webdav_available: webdav_running,
+        webdav_url,
         available_letters,
         cached_files_count,
         cached_bytes,
@@ -309,6 +437,19 @@ pub async fn mount_virtual_drive_command(
 ) -> Result<CommandResponse<VirtualDriveStatus>, String> {
     let state = app.state::<AppState>();
     let mount_dir = get_protofs_mount_dir(&app, &drive_id);
+
+    // Ensure WebDAV server is active if enabled
+    {
+        let mut server = state.webdav_server.write().await;
+        if !server.is_running().await {
+            let _ = server.start().await;
+        }
+    }
+
+    let webdav_info = {
+        let server = state.webdav_server.read().await;
+        (server.is_running().await, server.port().await)
+    };
 
     let _ = project_vfs_to_disk(&state, &drive_id, &mount_dir).await;
 
@@ -334,33 +475,53 @@ pub async fn mount_virtual_drive_command(
             }
         });
 
+    let drive_name = {
+        let drives = state.drives.read().await;
+        drives
+            .iter()
+            .find(|d| d.id == drive_id)
+            .map(|d| format!("ProtoFS - {}", d.name))
+            .unwrap_or_else(|| "ProtoFS Cloud Drive".to_string())
+    };
+
+    let mut used_webdav_mount = false;
+
     #[cfg(target_os = "windows")]
     {
         let drive_arg = format!("{}:", target_letter);
-        let dir_str = mount_dir.to_string_lossy().to_string();
-
         let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
+        let _ = silent_command("net").args(["use", &drive_arg, "/delete", "/y"]).output();
 
-        let res = silent_command("subst")
-            .args([&drive_arg, &dir_str])
-            .output();
+        // 1. Try WebDAV native network drive mapping via net use
+        if webdav_info.0 {
+            let webdav_target = format!("http://127.0.0.1:{}/", webdav_info.1);
+            let net_res = silent_command("net")
+                .args(["use", &drive_arg, &webdav_target, "/persistent:no"])
+                .output();
 
-        if let Err(e) = res {
-            return Ok(CommandResponse::err(format!(
-                "Failed to execute subst: {}",
-                e
-            )));
+            if let Ok(out) = net_res
+                && out.status.success()
+            {
+                used_webdav_mount = true;
+            }
         }
 
-        // Set custom volume label in Windows Explorer so it doesn't show "Windows - OS"
-        let drive_name = {
-            let drives = state.drives.read().await;
-            drives
-                .iter()
-                .find(|d| d.id == drive_id)
-                .map(|d| format!("ProtoFS - {}", d.name))
-                .unwrap_or_else(|| "ProtoFS Cloud Drive".to_string())
-        };
+        // 2. If WebDAV net use was not available or failed (e.g. WebClient service stopped), fall back to subst projection
+        if !used_webdav_mount {
+            let dir_str = mount_dir.to_string_lossy().to_string();
+            let res = silent_command("subst")
+                .args([&drive_arg, &dir_str])
+                .output();
+
+            if let Err(e) = res {
+                return Ok(CommandResponse::err(format!(
+                    "Failed to mount virtual drive: {}",
+                    e
+                )));
+            }
+        }
+
+        // Set custom volume label in Windows Explorer so it displays as "ProtoFS - <Name>"
         let label_reg_key = format!(
             r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\DriveIcons\{}\DefaultLabel",
             target_letter
@@ -368,6 +529,28 @@ pub async fn mount_virtual_drive_command(
         let _ = silent_command("reg")
             .args(["add", &label_reg_key, "/ve", "/t", "REG_SZ", "/d", &drive_name, "/f"])
             .output();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if webdav_info.0 {
+            let mac_url = format!("http://127.0.0.1:{}/{}", webdav_info.1, drive_id);
+            let _ = silent_command("osascript")
+                .args(["-e", &format!("mount volume \"{}\"", mac_url)])
+                .output();
+            used_webdav_mount = true;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if webdav_info.0 {
+            let dav_url = format!("dav://127.0.0.1:{}/{}", webdav_info.1, drive_id);
+            let _ = silent_command("gio")
+                .args(["mount", &dav_url])
+                .output();
+            used_webdav_mount = true;
+        }
     }
 
     let now_str = Utc::now().to_rfc3339();
@@ -387,7 +570,9 @@ pub async fn mount_virtual_drive_command(
     let (cached_files_count, cached_bytes) =
         count_dir_files_and_bytes_async(mount_dir.clone()).await;
     let winfsp_available = is_winfsp_installed();
-    let driver_mode = if winfsp_available {
+    let driver_mode = if used_webdav_mount || webdav_info.0 {
+        "WebDAV Streaming Network Drive (Zero-Install)".to_string()
+    } else if winfsp_available {
         "WinFsp FUSE (Native Kernel Driver)".to_string()
     } else {
         "Windows Native Drive Mapping (Zero-Install)".to_string()
@@ -395,11 +580,13 @@ pub async fn mount_virtual_drive_command(
 
     Ok(CommandResponse::ok(VirtualDriveStatus {
         is_mounted: true,
-        drive_id,
+        drive_id: drive_id.clone(),
         drive_letter: target_letter.clone(),
         mount_path: format!("{}:\\", target_letter),
         driver_mode,
         winfsp_available,
+        webdav_available: webdav_info.0,
+        webdav_url: format!("http://127.0.0.1:{}/{}/", webdav_info.1, drive_id),
         available_letters: get_available_drive_letters(),
         cached_files_count,
         cached_bytes,
@@ -423,6 +610,7 @@ pub async fn unmount_virtual_drive_command(
     #[cfg(target_os = "windows")]
     {
         let drive_arg = format!("{}:", letter);
+        let _ = silent_command("net").args(["use", &drive_arg, "/delete", "/y"]).output();
         let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
 
         let icon_reg_key = format!(
@@ -434,11 +622,28 @@ pub async fn unmount_virtual_drive_command(
             .output();
     }
 
+    #[cfg(target_os = "macos")]
+    {
+        let _ = silent_command("diskutil").args(["unmount", &format!("/Volumes/ProtoFS - {}", drive_id)]).output();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = silent_command("gio").args(["mount", "-u", &format!("dav://127.0.0.1:28491/{}", drive_id)]).output();
+    }
+
+    let state = app.state::<AppState>();
+    let server = state.webdav_server.read().await;
+    let webdav_running = server.is_running().await;
+    let webdav_port = server.port().await;
+
     let mount_dir = get_protofs_mount_dir(&app, &drive_id);
     let (cached_files_count, cached_bytes) =
         count_dir_files_and_bytes_async(mount_dir.clone()).await;
     let winfsp_available = is_winfsp_installed();
-    let driver_mode = if winfsp_available {
+    let driver_mode = if webdav_running {
+        "WebDAV Streaming Network Drive (Zero-Install)".to_string()
+    } else if winfsp_available {
         "WinFsp FUSE (Native Kernel Driver)".to_string()
     } else {
         "Windows Native Drive Mapping (Zero-Install)".to_string()
@@ -446,11 +651,13 @@ pub async fn unmount_virtual_drive_command(
 
     Ok(CommandResponse::ok(VirtualDriveStatus {
         is_mounted: false,
-        drive_id,
+        drive_id: drive_id.clone(),
         drive_letter: letter.clone(),
         mount_path: format!("{}:\\", letter),
         driver_mode,
         winfsp_available,
+        webdav_available: webdav_running,
+        webdav_url: format!("http://127.0.0.1:{}/{}/", webdav_port, drive_id),
         available_letters: get_available_drive_letters(),
         cached_files_count,
         cached_bytes,
@@ -465,6 +672,7 @@ pub fn unmount_all_virtual_drives_cleanup(app: &tauri::AppHandle) {
         #[cfg(target_os = "windows")]
         {
             let drive_arg = format!("{}:", info.drive_letter);
+            let _ = silent_command("net").args(["use", &drive_arg, "/delete", "/y"]).output();
             let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
 
             let icon_reg_key = format!(
@@ -492,6 +700,7 @@ pub fn unmount_all_virtual_drives_cleanup(app: &tauri::AppHandle) {
                     let letter = drive_part.trim().to_uppercase();
                     if letter.len() == 1 {
                         let drive_arg = format!("{}:", letter);
+                        let _ = silent_command("net").args(["use", &drive_arg, "/delete", "/y"]).output();
                         let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
                         let icon_reg_key = format!(
                             r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\DriveIcons\{}",
