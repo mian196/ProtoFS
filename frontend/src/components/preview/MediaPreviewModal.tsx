@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Download, Lock, ExternalLink, Loader2 } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { api } from '../../api';
 import type { FileNode } from '../../types';
 
 interface MediaPreviewModalProps {
@@ -34,23 +35,24 @@ export const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
 
     const loadPreview = async () => {
       try {
-        if (file.type === 'video' || file.type === 'audio' || file.type === 'image') {
-          const url = `http://127.0.0.1:5173/api/stream/${file.drive_id}/${file.id}`;
-          if (isMounted) {
-            setStreamUrl(url);
-            setLoading(false);
-          }
+        const preview = await api.getFilePreview(file.drive_id, file.id);
+        if (!isMounted) return;
+
+        if (preview.is_text && preview.text_content) {
+          setTextContent(preview.text_content);
+          setLoading(false);
+        } else if (preview.data_base64) {
+          const mime = preview.mime_type || 'application/octet-stream';
+          const dataUrl = `data:${mime};base64,${preview.data_base64}`;
+          setStreamUrl(dataUrl);
+          setLoading(false);
         } else if (file.type === 'doc') {
-          if (isMounted) {
-            setTextContent(
-              `// ProtoFS Zero-Knowledge Stream Preview\n// File: ${file.name}\n// Hash: ${file.sha256_hash || 'SHA256-VERIFIED'}\n// Size: ${file.size}\n\n[End-to-End Encrypted Document. Download to open in native desktop viewer.]`
-            );
-            setLoading(false);
-          }
+          setTextContent(
+            `// ProtoFS Zero-Knowledge Stream Preview\n// File: ${file.name}\n// Hash: ${file.sha256_hash || 'SHA256-VERIFIED'}\n// Size: ${file.size}\n\n[End-to-End Encrypted Document. Click Download below to save and open locally.]`
+          );
+          setLoading(false);
         } else {
-          if (isMounted) {
-            setLoading(false);
-          }
+          setLoading(false);
         }
       } catch (err: any) {
         if (isMounted) {

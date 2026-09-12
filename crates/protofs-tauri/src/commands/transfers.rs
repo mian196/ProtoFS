@@ -244,6 +244,80 @@ pub async fn download_file_command(
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct FilePreviewResult {
+    pub file_id: String,
+    pub name: String,
+    pub mime_type: String,
+    pub size_bytes: u64,
+    pub is_text: bool,
+    pub text_content: Option<String>,
+    pub data_base64: Option<String>,
+}
+
+#[tauri::command]
+pub async fn get_file_preview_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+    file_id: String,
+) -> Result<CommandResponse<FilePreviewResult>, String> {
+    let state = app.state::<AppState>();
+
+    let drives = state.drives.read().await;
+    let drive_meta = drives.iter().find(|d| d.id == drive_id).cloned();
+    drop(drives);
+
+    let channel_id = drive_meta.as_ref().map(|d| d.channel_id).unwrap_or(0);
+    let key = [0x5Au8; 32];
+
+    match state
+        .engine
+        .download_file_data(&drive_id, &file_id, Some(&key), channel_id)
+        .await
+    {
+        Ok((file_node, data)) => {
+            let mime = file_node
+                .mime_type
+                .clone()
+                .unwrap_or_else(|| guess_mime(&file_node.name));
+
+            let is_text_mime = mime.starts_with("text/")
+                || mime == "application/json"
+                || mime == "application/javascript"
+                || mime == "application/typescript"
+                || mime == "application/xml";
+
+            let (is_text, text_content) = if is_text_mime || data.len() < 256 * 1024 {
+                if let Ok(text) = std::str::from_utf8(&data) {
+                    (true, Some(text.to_string()))
+                } else {
+                    (false, None)
+                }
+            } else {
+                (false, None)
+            };
+
+            use base64::Engine;
+            let b64 = if !is_text && data.len() < 50 * 1024 * 1024 {
+                Some(base64::engine::general_purpose::STANDARD.encode(&data))
+            } else {
+                None
+            };
+
+            Ok(CommandResponse::ok(FilePreviewResult {
+                file_id: file_node.id,
+                name: file_node.name,
+                mime_type: mime,
+                size_bytes: data.len() as u64,
+                is_text,
+                text_content,
+                data_base64: b64,
+            }))
+        }
+        Err(e) => Ok(CommandResponse::err(e.to_string())),
+    }
+}
+
 #[tauri::command]
 pub async fn get_file_versions_command(
     app: tauri::AppHandle,

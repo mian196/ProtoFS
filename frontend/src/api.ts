@@ -608,6 +608,42 @@ export class ProtoFsApi {
     };
   }
 
+  async getFilePreview(
+    driveId: string,
+    fileId: string
+  ): Promise<{
+    file_id: string;
+    name: string;
+    mime_type: string;
+    size_bytes: number;
+    is_text: boolean;
+    text_content?: string;
+    data_base64?: string;
+  }> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<any>>('get_file_preview_command', {
+          driveId,
+          fileId,
+        });
+        if (res.success && res.data) {
+          return res.data;
+        }
+        throw new Error(res.error || 'Failed to fetch preview');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+
+    return {
+      file_id: fileId,
+      name: 'preview',
+      mime_type: 'application/octet-stream',
+      size_bytes: 0,
+      is_text: false,
+    };
+  }
+
   async getFileVersions(driveId: string, fileId: string): Promise<FileVersion[]> {
     if (isTauri()) {
       try {

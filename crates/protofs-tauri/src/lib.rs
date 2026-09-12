@@ -67,6 +67,7 @@ pub fn run() {
             commands::create_folder_command,
             commands::upload_file_command,
             commands::download_file_command,
+            commands::get_file_preview_command,
             commands::get_file_versions_command,
             commands::restore_file_version_command,
             commands::export_drive_command,
