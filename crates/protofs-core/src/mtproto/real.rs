@@ -706,6 +706,51 @@ impl TelegramAuthClient {
     }
 }
 
+fn extract_message_id_from_updates(updates: &tl::enums::Updates) -> Option<i32> {
+    match updates {
+        tl::enums::Updates::Updates(u) => {
+            for upd in &u.updates {
+                match upd {
+                    tl::enums::Update::NewMessage(nm) => {
+                        if let tl::enums::Message::Message(m) = &nm.message {
+                            return Some(m.id);
+                        }
+                    }
+                    tl::enums::Update::NewChannelMessage(ncm) => {
+                        if let tl::enums::Message::Message(m) = &ncm.message {
+                            return Some(m.id);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+        tl::enums::Updates::Combined(uc) => {
+            for upd in &uc.updates {
+                match upd {
+                    tl::enums::Update::NewMessage(nm) => {
+                        if let tl::enums::Message::Message(m) = &nm.message {
+                            return Some(m.id);
+                        }
+                    }
+                    tl::enums::Update::NewChannelMessage(ncm) => {
+                        if let tl::enums::Message::Message(m) = &ncm.message {
+                            return Some(m.id);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+        tl::enums::Updates::UpdateShortSentMessage(ussm) => Some(ussm.id),
+        tl::enums::Updates::UpdateShortMessage(usm) => Some(usm.id),
+        tl::enums::Updates::UpdateShortChatMessage(uscm) => Some(uscm.id),
+        _ => None,
+    }
+}
+
 impl RealTelegramTransport {
     async fn resolve_channel_peer(&self, raw_channel_id: i64) -> (i64, i64) {
         let channel_id = normalize_channel_id(raw_channel_id);
@@ -874,63 +919,97 @@ impl TelegramTransport for RealTelegramTransport {
             access_hash,
         });
 
-        let req = tl::functions::messages::Search {
-            peer: input_peer,
-            q: "#protofs_manifest_v1".to_string(),
-            from_id: None,
-            saved_peer_id: None,
-            top_msg_id: None,
-            filter: tl::enums::MessagesFilter::InputMessagesFilterDocument,
-            min_date: 0,
-            max_date: 0,
+        // 1. Check real-time channel history first (zero indexing latency)
+        let history_req = tl::functions::messages::GetHistory {
+            peer: input_peer.clone(),
             offset_id: 0,
+            offset_date: 0,
             add_offset: 0,
-            limit: 10,
+            limit: 20,
             max_id: 0,
             min_id: 0,
             hash: 0,
-            saved_reaction: None,
         };
 
-        let res = match self.client.invoke(&req).await {
-            Ok(m) => m,
-            Err(_) => return Ok(None),
-        };
+        let mut candidate_messages = Vec::new();
+        if let Ok(res) = self.client.invoke(&history_req).await {
+            let messages = match res {
+                tl::enums::messages::Messages::Messages(m) => m.messages,
+                tl::enums::messages::Messages::Slice(s) => s.messages,
+                tl::enums::messages::Messages::ChannelMessages(c) => c.messages,
+                tl::enums::messages::Messages::NotModified(_) => Vec::new(),
+            };
+            candidate_messages = messages;
+        }
 
-        let messages = match res {
-            tl::enums::messages::Messages::Messages(m) => m.messages,
-            tl::enums::messages::Messages::Slice(s) => s.messages,
-            tl::enums::messages::Messages::ChannelMessages(c) => c.messages,
-            tl::enums::messages::Messages::NotModified(_) => Vec::new(),
-        };
+        // 2. Fallback to search if not found in top history
+        if candidate_messages.is_empty() {
+            let req = tl::functions::messages::Search {
+                peer: input_peer,
+                q: "#protofs_manifest_v1".to_string(),
+                from_id: None,
+                saved_peer_id: None,
+                top_msg_id: None,
+                filter: tl::enums::MessagesFilter::InputMessagesFilterDocument,
+                min_date: 0,
+                max_date: 0,
+                offset_id: 0,
+                add_offset: 0,
+                limit: 10,
+                max_id: 0,
+                min_id: 0,
+                hash: 0,
+                saved_reaction: None,
+            };
 
-        for msg in messages {
+            if let Ok(res) = self.client.invoke(&req).await {
+                candidate_messages = match res {
+                    tl::enums::messages::Messages::Messages(m) => m.messages,
+                    tl::enums::messages::Messages::Slice(s) => s.messages,
+                    tl::enums::messages::Messages::ChannelMessages(c) => c.messages,
+                    tl::enums::messages::Messages::NotModified(_) => Vec::new(),
+                };
+            }
+        }
+
+        for msg in candidate_messages {
             if let tl::enums::Message::Message(m) = msg
                 && let Some(tl::enums::MessageMedia::Document(doc_media)) = m.media
                 && let Some(tl::enums::Document::Document(doc)) = doc_media.document
             {
-                let location = tl::enums::InputFileLocation::InputDocumentFileLocation(
-                    tl::types::InputDocumentFileLocation {
-                        id: doc.id,
-                        access_hash: doc.access_hash,
-                        file_reference: doc.file_reference,
-                        thumb_size: String::new(),
-                    },
-                );
-                let download_req = tl::functions::upload::GetFile {
-                    precise: true,
-                    cdn_supported: false,
-                    location,
-                    offset: 0,
-                    limit: 1048576 * 4,
-                };
-                if let Ok(file_res) = self.client.invoke(&download_req).await {
-                    let bytes = match file_res {
-                        tl::enums::upload::File::File(f) => f.bytes,
-                        tl::enums::upload::File::CdnRedirect(_) => Vec::new(),
+                let is_manifest = m.message.contains("#protofs_manifest_v1")
+                    || doc.attributes.iter().any(|attr| {
+                        if let tl::enums::DocumentAttribute::Filename(f) = attr {
+                            f.file_name == "manifest.json.zst"
+                        } else {
+                            false
+                        }
+                    });
+
+                if is_manifest {
+                    let location = tl::enums::InputFileLocation::InputDocumentFileLocation(
+                        tl::types::InputDocumentFileLocation {
+                            id: doc.id,
+                            access_hash: doc.access_hash,
+                            file_reference: doc.file_reference,
+                            thumb_size: String::new(),
+                        },
+                    );
+                    let download_req = tl::functions::upload::GetFile {
+                        precise: true,
+                        cdn_supported: false,
+                        location,
+                        offset: 0,
+                        limit: 1048576 * 4,
                     };
-                    if !bytes.is_empty() {
-                        return Ok(Some((m.id, bytes)));
+                    if let Ok(file_res) = self.client.invoke(&download_req).await {
+                        let bytes = match file_res {
+                            tl::enums::upload::File::File(f) => f.bytes,
+                            tl::enums::upload::File::CdnRedirect(_) => Vec::new(),
+                        };
+                        if !bytes.is_empty() {
+                            return Ok(Some((m.id, bytes)));
+                        }
                     }
                 }
             }
@@ -968,27 +1047,21 @@ impl TelegramTransport for RealTelegramTransport {
                 video_timestamp: None,
             });
 
-        // 1. Search for existing manifest message in the channel
-        let search_req = tl::functions::messages::Search {
+        // 1. Search for existing manifest messages in the channel (check history + search)
+        let mut existing_manifest_ids = Vec::new();
+
+        let history_req = tl::functions::messages::GetHistory {
             peer: input_peer.clone(),
-            q: "#protofs_manifest_v1".to_string(),
-            from_id: None,
-            saved_peer_id: None,
-            top_msg_id: None,
-            filter: tl::enums::MessagesFilter::InputMessagesFilterDocument,
-            min_date: 0,
-            max_date: 0,
             offset_id: 0,
+            offset_date: 0,
             add_offset: 0,
-            limit: 10,
+            limit: 20,
             max_id: 0,
             min_id: 0,
             hash: 0,
-            saved_reaction: None,
         };
 
-        let mut existing_manifest_ids = Vec::new();
-        if let Ok(res) = self.client.invoke(&search_req).await {
+        if let Ok(res) = self.client.invoke(&history_req).await {
             let messages = match res {
                 tl::enums::messages::Messages::Messages(m) => m.messages,
                 tl::enums::messages::Messages::Slice(s) => s.messages,
@@ -997,7 +1070,62 @@ impl TelegramTransport for RealTelegramTransport {
             };
             for msg in messages {
                 if let tl::enums::Message::Message(m) = msg {
-                    existing_manifest_ids.push(m.id);
+                    let is_manifest = m.message.contains("#protofs_manifest_v1")
+                        || (m.media.as_ref().is_some_and(|med| match med {
+                            tl::enums::MessageMedia::Document(d) => {
+                                if let Some(tl::enums::Document::Document(doc)) = &d.document {
+                                    doc.attributes.iter().any(|attr| {
+                                        if let tl::enums::DocumentAttribute::Filename(f) = attr {
+                                            f.file_name == "manifest.json.zst"
+                                        } else {
+                                            false
+                                        }
+                                    })
+                                } else {
+                                    false
+                                }
+                            }
+                            _ => false,
+                        }));
+                    if is_manifest && !existing_manifest_ids.contains(&m.id) {
+                        existing_manifest_ids.push(m.id);
+                    }
+                }
+            }
+        }
+
+        if existing_manifest_ids.is_empty() {
+            let search_req = tl::functions::messages::Search {
+                peer: input_peer.clone(),
+                q: "#protofs_manifest_v1".to_string(),
+                from_id: None,
+                saved_peer_id: None,
+                top_msg_id: None,
+                filter: tl::enums::MessagesFilter::InputMessagesFilterDocument,
+                min_date: 0,
+                max_date: 0,
+                offset_id: 0,
+                add_offset: 0,
+                limit: 10,
+                max_id: 0,
+                min_id: 0,
+                hash: 0,
+                saved_reaction: None,
+            };
+
+            if let Ok(res) = self.client.invoke(&search_req).await {
+                let messages = match res {
+                    tl::enums::messages::Messages::Messages(m) => m.messages,
+                    tl::enums::messages::Messages::Slice(s) => s.messages,
+                    tl::enums::messages::Messages::ChannelMessages(c) => c.messages,
+                    tl::enums::messages::Messages::NotModified(_) => Vec::new(),
+                };
+                for msg in messages {
+                    if let tl::enums::Message::Message(m) = msg
+                        && !existing_manifest_ids.contains(&m.id)
+                    {
+                        existing_manifest_ids.push(m.id);
+                    }
                 }
             }
         }
@@ -1068,32 +1196,9 @@ impl TelegramTransport for RealTelegramTransport {
             ProtoFsError::Mtproto(format!("Failed to send pinned manifest message: {}", e))
         })?;
 
-        let msg_id = match updates {
-            tl::enums::Updates::Updates(u) => u
-                .updates
-                .into_iter()
-                .find_map(|upd| match upd {
-                    tl::enums::Update::NewMessage(nm) => {
-                        if let tl::enums::Message::Message(m) = nm.message {
-                            Some(m.id)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                })
-                .ok_or_else(|| {
-                    ProtoFsError::Mtproto(
-                        "Failed to extract message ID from send response".to_string(),
-                    )
-                })?,
-            other => {
-                return Err(ProtoFsError::Mtproto(format!(
-                    "Unexpected response type when sending manifest: {:?}",
-                    other
-                )));
-            }
-        };
+        let msg_id = extract_message_id_from_updates(&updates).ok_or_else(|| {
+            ProtoFsError::Mtproto("Failed to extract message ID from send response".to_string())
+        })?;
 
         let pin_req = tl::functions::messages::UpdatePinnedMessage {
             silent: true,
@@ -1178,23 +1283,7 @@ impl TelegramTransport for RealTelegramTransport {
             ProtoFsError::Mtproto(format!("Failed to send document message: {}", e))
         })?;
 
-        let msg_id = match updates {
-            tl::enums::Updates::Updates(u) => u
-                .updates
-                .into_iter()
-                .find_map(|upd| match upd {
-                    tl::enums::Update::NewMessage(nm) => {
-                        if let tl::enums::Message::Message(m) = nm.message {
-                            Some(m.id)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                })
-                .unwrap_or(1),
-            _ => 1,
-        };
+        let msg_id = extract_message_id_from_updates(&updates).unwrap_or(1);
 
         Ok(TelegramMessage {
             id: msg_id,
@@ -1362,23 +1451,7 @@ impl TelegramTransport for RealTelegramTransport {
                 ProtoFsError::Mtproto(format!("Failed to send text message: {}", e))
             })?;
 
-        let msg_id = match updates {
-            tl::enums::Updates::Updates(u) => u
-                .updates
-                .into_iter()
-                .find_map(|upd| match upd {
-                    tl::enums::Update::NewMessage(nm) => {
-                        if let tl::enums::Message::Message(m) = nm.message {
-                            Some(m.id)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                })
-                .unwrap_or(1),
-            _ => 1,
-        };
+        let msg_id = extract_message_id_from_updates(&updates).unwrap_or(1);
 
         Ok(msg_id)
     }
