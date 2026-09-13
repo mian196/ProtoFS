@@ -1,5 +1,7 @@
 pub mod caption;
 pub mod dynamic;
+#[cfg(test)]
+pub mod mock;
 pub mod real;
 pub mod transport;
 

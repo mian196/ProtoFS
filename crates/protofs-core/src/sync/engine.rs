@@ -605,6 +605,15 @@ impl<T: TelegramTransport> SyncEngine<T> {
 
         Ok((file, final_data))
     }
+
+    /// Releases the in-memory tree, version counter, and dirty flags for a deleted drive.
+    pub async fn unload_drive(&self, drive_id: &str) {
+        self.trees_by_drive.write().await.remove(drive_id);
+        self.versions_by_drive.write().await.remove(drive_id);
+        self.is_dirty_by_drive.write().await.remove(drive_id);
+        self.uncommitted_counts_by_drive.write().await.remove(drive_id);
+        self.last_flush_by_drive.write().await.remove(drive_id);
+    }
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
@@ -623,4 +632,30 @@ fn hex_decode_7bytes(s: &str) -> Result<[u8; 7]> {
             .map_err(|e| ProtoFsError::Crypto(format!("Invalid IV hex character: {}", e)))?;
     }
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mtproto::mock::MockTelegramTransport;
+
+    #[tokio::test]
+    async fn test_unload_drive() {
+        let transport = Arc::new(MockTelegramTransport::new());
+        let db = CacheDatabase::open_in_memory().unwrap();
+        let engine = SyncEngine::new(transport, db);
+
+        // Pre-populate tree
+        let _ = engine.get_or_create_tree("drive_to_unload").await;
+        {
+            let trees = engine.trees_by_drive.read().await;
+            assert!(trees.contains_key("drive_to_unload"));
+        }
+
+        engine.unload_drive("drive_to_unload").await;
+        {
+            let trees = engine.trees_by_drive.read().await;
+            assert!(!trees.contains_key("drive_to_unload"));
+        }
+    }
 }

@@ -537,4 +537,70 @@ impl CacheDatabase {
         conn.execute("DELETE FROM secure_secrets WHERE key = ?1", params![key])?;
         Ok(())
     }
+
+    /// Atomically deletes all cached folders, files, FTS5 index records, sync pairs, and drive records for a drive.
+    pub fn delete_drive_cache(&self, drive_id: &str) -> Result<()> {
+        let mut conn = self.lock_conn()?;
+        let tx = conn.transaction()?;
+
+        tx.execute("DELETE FROM folders WHERE drive_id = ?1", params![drive_id])?;
+        tx.execute("DELETE FROM files WHERE drive_id = ?1", params![drive_id])?;
+        tx.execute("DELETE FROM fts_nodes WHERE drive_id = ?1", params![drive_id])?;
+        tx.execute("DELETE FROM sync_pairs WHERE drive_id = ?1", params![drive_id])?;
+        tx.execute("DELETE FROM drives WHERE id = ?1", params![drive_id])?;
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Truncates the SQLite WAL file smoothly without blocking IPC threads.
+    #[allow(dead_code)]
+    pub fn wal_checkpoint_passive(&self) -> Result<()> {
+        let conn = self.lock_conn()?;
+        let _ = conn.pragma_update(None, "wal_checkpoint", "PASSIVE");
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_delete_drive_cache_atomic() {
+        let db = CacheDatabase::open_in_memory().expect("open in memory db");
+        {
+            let conn = db.lock_conn().expect("lock conn");
+            conn.execute(
+                "INSERT INTO drives (id, name, channel_id, pinned_manifest_msg_id, manifest_version, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params!["test_drive_purge", "Test Drive", 123456, 1, 1, "2026-01-01T00:00:00Z"],
+            ).expect("insert drive");
+            conn.execute(
+                "INSERT INTO folders (id, drive_id, parent_id, name, is_trashed, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 0, ?5, ?5)",
+                params!["f1", "test_drive_purge", "root", "Folder 1", "2026-01-01T00:00:00Z"],
+            ).expect("insert folder");
+            conn.execute(
+                "INSERT INTO files (id, drive_id, parent_id, name, size_bytes, telegram_message_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 100, 10, ?5, ?5)",
+                params!["file1", "test_drive_purge", "root", "file.txt", "2026-01-01T00:00:00Z"],
+            ).expect("insert file");
+            conn.execute(
+                "INSERT INTO fts_nodes (id, drive_id, name, kind, parent_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params!["f1", "test_drive_purge", "Folder 1", "folder", "root"],
+            ).expect("insert fts");
+        }
+
+        db.delete_drive_cache("test_drive_purge").expect("delete drive cache");
+        db.wal_checkpoint_passive().expect("wal checkpoint passive");
+
+        let conn = db.lock_conn().expect("lock conn");
+        let drive_count: i64 = conn.query_row("SELECT COUNT(*) FROM drives WHERE id = ?1", params!["test_drive_purge"], |r| r.get(0)).unwrap();
+        let folder_count: i64 = conn.query_row("SELECT COUNT(*) FROM folders WHERE drive_id = ?1", params!["test_drive_purge"], |r| r.get(0)).unwrap();
+        let file_count: i64 = conn.query_row("SELECT COUNT(*) FROM files WHERE drive_id = ?1", params!["test_drive_purge"], |r| r.get(0)).unwrap();
+        let fts_count: i64 = conn.query_row("SELECT COUNT(*) FROM fts_nodes WHERE drive_id = ?1", params!["test_drive_purge"], |r| r.get(0)).unwrap();
+
+        assert_eq!(drive_count, 0);
+        assert_eq!(folder_count, 0);
+        assert_eq!(file_count, 0);
+        assert_eq!(fts_count, 0);
+    }
 }

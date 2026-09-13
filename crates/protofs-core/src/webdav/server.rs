@@ -92,13 +92,25 @@ impl<T: TelegramTransport + 'static> WebDavServer<T> {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         self.shutdown_tx = Some(shutdown_tx);
 
-        let port = self.config.read().await.port;
-        let addr: SocketAddr = format!("127.0.0.1:{}", port)
-            .parse()
-            .map_err(|e| ProtoFsError::Internal(format!("Invalid socket address: {}", e)))?;
+        let start_port = self.config.read().await.port;
+        let mut listener = None;
 
-        let listener = TcpListener::bind(addr).await.map_err(|e| {
-            ProtoFsError::Internal(format!("Failed to bind WebDAV server on {}: {}", addr, e))
+        for p in start_port..=(start_port + 10) {
+            let addr_str = format!("127.0.0.1:{}", p);
+            if let Ok(addr) = addr_str.parse::<SocketAddr>() {
+                if let Ok(l) = TcpListener::bind(addr).await {
+                    listener = Some(l);
+                    break;
+                }
+            }
+        }
+
+        let listener = listener.ok_or_else(|| {
+            ProtoFsError::Internal(format!(
+                "Failed to bind WebDAV server on ports {}..={}",
+                start_port,
+                start_port + 10
+            ))
         })?;
 
         let actual_addr = listener
