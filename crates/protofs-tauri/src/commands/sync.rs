@@ -100,7 +100,7 @@ pub async fn trigger_sync_command(
             })
             .collect();
 
-        let key = [0x5Au8; 32];
+        let master_key = *state.master_key.read().await;
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
@@ -129,6 +129,7 @@ pub async fn trigger_sync_command(
                     }
 
                     // Upload new / modified file
+                    let is_enc = master_key.is_some();
                     if let Err(e) = state
                         .engine
                         .upload_file_data(
@@ -136,8 +137,8 @@ pub async fn trigger_sync_command(
                             &pair.remote_folder_id,
                             &file_name,
                             &bytes,
-                            true,
-                            Some(&key),
+                            is_enc,
+                            master_key.as_ref(),
                             drive.channel_id,
                         )
                         .await

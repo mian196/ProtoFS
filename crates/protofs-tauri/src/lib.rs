@@ -87,6 +87,8 @@ pub fn run() {
                 auth_client,
                 transport,
                 webdav_server: webdav_server.clone(),
+                master_key: Arc::new(RwLock::new(None)),
+                active_transfers: Arc::new(RwLock::new(std::collections::HashMap::new())),
             };
 
             // Cleanup any stale virtual drive mounts left from a previous unclean exit
@@ -185,6 +187,9 @@ pub fn run() {
             commands::start_p2p_session_command,
             commands::connect_p2p_peer_command,
             commands::cancel_p2p_session_command,
+            commands::cancel_transfer_command,
+            commands::pause_transfer_command,
+            commands::resume_transfer_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs application");

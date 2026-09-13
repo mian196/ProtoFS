@@ -4,7 +4,9 @@ pub mod native;
 pub mod settings;
 pub mod sharing;
 pub mod sync;
+pub mod transfer_controls;
 pub mod transfers;
+pub mod versions;
 pub mod vfs;
 
 pub use auth::*;
@@ -13,7 +15,9 @@ pub use native::*;
 pub use settings::*;
 pub use sharing::*;
 pub use sync::*;
+pub use transfer_controls::*;
 pub use transfers::*;
+pub use versions::*;
 pub use vfs::*;
 
 use serde::{Deserialize, Serialize};
@@ -183,6 +187,13 @@ pub struct AccountRegistry {
     pub accounts: Vec<AuthSession>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransferSignal {
+    Running,
+    Paused,
+    Cancelled,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub engine: Arc<SyncEngine<DynamicTelegramTransport>>,
@@ -192,6 +203,8 @@ pub struct AppState {
     pub auth_client: Arc<TelegramAuthClient>,
     pub transport: DynamicTelegramTransport,
     pub webdav_server: Arc<RwLock<protofs_core::webdav::WebDavServer<DynamicTelegramTransport>>>,
+    pub master_key: Arc<RwLock<Option<[u8; 32]>>>,
+    pub active_transfers: Arc<RwLock<std::collections::HashMap<String, tokio::sync::watch::Sender<TransferSignal>>>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
