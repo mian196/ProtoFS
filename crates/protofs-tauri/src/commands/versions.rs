@@ -195,7 +195,9 @@ pub async fn get_file_preview_command(
             match *guard {
                 Some(k) => Some(k),
                 None => {
-                    return Ok(CommandResponse::err("File is encrypted but master key is not unlocked"));
+                    return Ok(CommandResponse::err(
+                        "File is encrypted but master key is not unlocked",
+                    ));
                 }
             }
         } else {
@@ -211,7 +213,10 @@ pub async fn get_file_preview_command(
         .await
     {
         Ok((file_node, data)) => {
-            let mime = file_node.mime_type.clone().unwrap_or_else(|| super::guess_mime(&file_node.name));
+            let mime = file_node
+                .mime_type
+                .clone()
+                .unwrap_or_else(|| super::guess_mime(&file_node.name));
             let is_text_mime = mime.starts_with("text/") || mime == "application/json";
             let (is_text, text_content) = if is_text_mime || data.len() < 256 * 1024 {
                 if let Ok(text) = std::str::from_utf8(&data) {
@@ -243,4 +248,3 @@ pub async fn get_file_preview_command(
         Err(e) => Ok(CommandResponse::err(e.to_string())),
     }
 }
-

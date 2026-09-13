@@ -4,8 +4,8 @@ use tauri::Manager;
 use tokio::io::AsyncReadExt;
 
 use super::{
-    check_transfer_gate, ensure_dir, fnv1a_hash_filename, guess_mime, register_transfer,
-    unregister_transfer, AppState, CommandResponse, DownloadFileResult, ThrottledProgressEmitter,
+    AppState, CommandResponse, DownloadFileResult, ThrottledProgressEmitter, check_transfer_gate,
+    ensure_dir, fnv1a_hash_filename, guess_mime, register_transfer, unregister_transfer,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -22,11 +22,13 @@ pub async fn upload_file_command(
     file_path: Option<String>,
 ) -> Result<CommandResponse<FileNode>, String> {
     let state = app.state::<AppState>();
-    let transfer_id = format!("upload_{}_{}", Utc::now().timestamp_millis(), &name);
+    let transfer_id = format!("upload_{}_{}", Utc::now().timestamp_millis(), name);
     let mut rx = register_transfer(&state, &transfer_id).await;
 
     let total_upload_size = if let Some(ref path_str) = file_path {
-        std::fs::metadata(path_str).map(|m| m.len()).unwrap_or(size_bytes)
+        std::fs::metadata(path_str)
+            .map(|m| m.len())
+            .unwrap_or(size_bytes)
     } else {
         size_bytes
     };
@@ -35,7 +37,7 @@ pub async fn upload_file_command(
         app.clone(),
         "upload-progress",
         transfer_id.clone(),
-        format!("temp_{}", &name),
+        format!("temp_{}", name),
         name.clone(),
         total_upload_size,
     );
@@ -68,7 +70,10 @@ pub async fn upload_file_command(
         if !path.exists() {
             emitter.fail(&format!("File does not exist: {}", path_str));
             unregister_transfer(&state, &transfer_id).await;
-            return Ok(CommandResponse::err(format!("File does not exist: {}", path_str)));
+            return Ok(CommandResponse::err(format!(
+                "File does not exist: {}",
+                path_str
+            )));
         }
 
         let mut file = match tokio::fs::File::open(&path).await {
@@ -113,7 +118,10 @@ pub async fn upload_file_command(
             Err(e) => {
                 emitter.fail(&format!("Invalid base64 payload: {}", e));
                 unregister_transfer(&state, &transfer_id).await;
-                return Ok(CommandResponse::err(format!("Invalid base64 payload: {}", e)));
+                return Ok(CommandResponse::err(format!(
+                    "Invalid base64 payload: {}",
+                    e
+                )));
             }
         }
     } else {
@@ -136,7 +144,11 @@ pub async fn upload_file_command(
             .await
         {
             Ok(file_node) => {
-                if let Err(e) = state.engine.debounced_flush_manifest(&drive_id, channel_id).await {
+                if let Err(e) = state
+                    .engine
+                    .debounced_flush_manifest(&drive_id, channel_id)
+                    .await
+                {
                     tracing::warn!("Debounced manifest flush failed: {}", e);
                 }
 
@@ -157,14 +169,23 @@ pub async fn upload_file_command(
     // 3. Mock fallback for local browser testing
     let new_msg_id = (Utc::now().timestamp_subsec_millis() as i32) + 1000;
     let iv = if is_encrypted {
-        Some(format!("{:016x}", Utc::now().timestamp_nanos_opt().unwrap_or(0)))
+        Some(format!(
+            "{:016x}",
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ))
     } else {
         None
     };
 
     let sha256_hash = if !payload_bytes.is_empty() {
         let digest = ring::digest::digest(&ring::digest::SHA256, &payload_bytes);
-        Some(digest.as_ref().iter().map(|b| format!("{:02x}", b)).collect())
+        Some(
+            digest
+                .as_ref()
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect(),
+        )
     } else {
         Some("mock_hash".to_string())
     };
@@ -201,7 +222,7 @@ pub async fn download_file_command(
     destination_path: Option<String>,
 ) -> Result<CommandResponse<DownloadFileResult>, String> {
     let state = app.state::<AppState>();
-    let transfer_id = format!("download_{}_{}", Utc::now().timestamp_millis(), &file_id);
+    let transfer_id = format!("download_{}_{}", Utc::now().timestamp_millis(), file_id);
     let mut rx = register_transfer(&state, &transfer_id).await;
 
     let drives = state.drives.read().await;
@@ -262,10 +283,15 @@ pub async fn download_file_command(
             // Stream directly to destination file on disk (D-08)
             if let Some(dest) = destination_path.as_ref() {
                 let dest_path = std::path::PathBuf::from(dest);
-                if dest_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+                if dest_path
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir))
+                {
                     emitter.fail("Path traversal detected in destination_path");
                     unregister_transfer(&state, &transfer_id).await;
-                    return Ok(CommandResponse::err("Path traversal detected in destination_path"));
+                    return Ok(CommandResponse::err(
+                        "Path traversal detected in destination_path",
+                    ));
                 }
                 if let Some(parent) = dest_path.parent() {
                     ensure_dir(parent);
@@ -345,4 +371,3 @@ mod tests {
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 }
-

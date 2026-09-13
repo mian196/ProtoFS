@@ -2,7 +2,7 @@ use protofs_core::vfs::VfsNode;
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
-use super::{AppState, CommandResponse, PurgeCacheResult, UpdateInfo, LOCAL_CACHE_BYTES};
+use super::{AppState, CommandResponse, LOCAL_CACHE_BYTES, PurgeCacheResult, UpdateInfo};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageUsage {
@@ -181,24 +181,24 @@ pub async fn purge_local_cache_command(
     let mut freed_bytes = 0u64;
     let mut files_deleted = 0usize;
 
-    if cache_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&cache_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    if let Ok(meta) = path.metadata() {
-                        freed_bytes += meta.len();
-                    }
-                    if std::fs::remove_file(&path).is_ok() {
-                        files_deleted += 1;
-                    }
-                } else if path.is_dir() {
-                    if let Ok(meta) = path.metadata() {
-                        freed_bytes += meta.len();
-                    }
-                    if std::fs::remove_dir_all(&path).is_ok() {
-                        files_deleted += 1;
-                    }
+    if cache_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&cache_dir)
+    {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Ok(meta) = path.metadata() {
+                    freed_bytes += meta.len();
+                }
+                if std::fs::remove_file(&path).is_ok() {
+                    files_deleted += 1;
+                }
+            } else if path.is_dir() {
+                if let Ok(meta) = path.metadata() {
+                    freed_bytes += meta.len();
+                }
+                if std::fs::remove_dir_all(&path).is_ok() {
+                    files_deleted += 1;
                 }
             }
         }

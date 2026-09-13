@@ -221,7 +221,8 @@ pub struct AppState {
     pub transport: DynamicTelegramTransport,
     pub webdav_server: Arc<RwLock<protofs_core::webdav::WebDavServer<DynamicTelegramTransport>>>,
     pub master_key: Arc<RwLock<Option<[u8; 32]>>>,
-    pub active_transfers: Arc<RwLock<std::collections::HashMap<String, tokio::sync::watch::Sender<TransferSignal>>>>,
+    pub active_transfers:
+        Arc<RwLock<std::collections::HashMap<String, tokio::sync::watch::Sender<TransferSignal>>>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -1,5 +1,5 @@
+use super::{CommandResponse, ensure_dir, silent_command};
 use serde::{Deserialize, Serialize};
-use super::{ensure_dir, silent_command, CommandResponse};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShellIntegrationStatus {

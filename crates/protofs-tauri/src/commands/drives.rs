@@ -473,8 +473,14 @@ pub async fn check_drive_health_command(
         Ok(owned) => {
             let exists = owned.into_iter().any(|c| {
                 c.channel_id.abs() == target_channel_id.abs()
-                    || c.channel_id.abs().to_string().ends_with(&target_channel_id.abs().to_string())
-                    || target_channel_id.abs().to_string().ends_with(&c.channel_id.abs().to_string())
+                    || c.channel_id
+                        .abs()
+                        .to_string()
+                        .ends_with(&target_channel_id.abs().to_string())
+                    || target_channel_id
+                        .abs()
+                        .to_string()
+                        .ends_with(&c.channel_id.abs().to_string())
             });
 
             if exists {
@@ -489,7 +495,10 @@ pub async fn check_drive_health_command(
                     drive_id,
                     channel_id: target_channel_id,
                     is_accessible: false,
-                    error: Some("Channel not found in your Telegram account (deleted or unlinked)".to_string()),
+                    error: Some(
+                        "Channel not found in your Telegram account (deleted or unlinked)"
+                            .to_string(),
+                    ),
                 }))
             }
         }
@@ -520,7 +529,9 @@ pub async fn export_drive_manifest_command(
     }
 
     if format.eq_ignore_ascii_case("csv") {
-        let mut csv = String::from("id,name,type,parent_id,size_bytes,mime_type,telegram_message_id,is_encrypted,sha256_hash,created_at,updated_at\n");
+        let mut csv = String::from(
+            "id,name,type,parent_id,size_bytes,mime_type,telegram_message_id,is_encrypted,sha256_hash,created_at,updated_at\n",
+        );
         for node in &nodes {
             match node {
                 VfsNode::File(f) => {

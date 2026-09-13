@@ -41,10 +41,10 @@ impl<T: TelegramTransport> SyncEngine<T> {
         // 1. Check in-memory tree cache
         {
             let trees = self.trees_by_drive.read().await;
-            if let Some(tree) = trees.get(drive_id) {
-                if !tree.is_empty() {
-                    return Ok(tree.clone());
-                }
+            if let Some(tree) = trees.get(drive_id)
+                && !tree.is_empty()
+            {
+                return Ok(tree.clone());
             }
         }
 

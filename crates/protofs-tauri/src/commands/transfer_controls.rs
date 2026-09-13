@@ -69,11 +69,7 @@ impl ThrottledProgressEmitter {
             let elapsed_secs = elapsed.as_secs_f64().max(0.001);
             let speed = (delta_bytes as f64 / elapsed_secs) as u64;
             let remaining = self.total_bytes.saturating_sub(self.bytes_transferred);
-            let eta = if speed > 0 {
-                Some(remaining / speed)
-            } else {
-                None
-            };
+            let eta = remaining.checked_div(speed);
             let progress = if self.total_bytes > 0 {
                 ((self.bytes_transferred as f64 / self.total_bytes as f64) * 100.0).min(100.0)
                     as u32
@@ -166,9 +162,7 @@ pub async fn unregister_transfer(state: &AppState, transfer_id: &str) {
 
 /// Checks the transfer signal gate between chunk processing loops.
 /// Returns Ok(true) to proceed, or Err(msg) if cancelled. Suspends execution if paused.
-pub async fn check_transfer_gate(
-    rx: &mut watch::Receiver<TransferSignal>,
-) -> Result<bool, String> {
+pub async fn check_transfer_gate(rx: &mut watch::Receiver<TransferSignal>) -> Result<bool, String> {
     let current = *rx.borrow();
     match current {
         TransferSignal::Cancelled => Err("Transfer cancelled by user".to_string()),
