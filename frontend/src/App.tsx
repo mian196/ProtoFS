@@ -8,6 +8,7 @@ import { FileTable } from './components/explorer/FileTable';
 import { EmptyFolderState } from './components/explorer/EmptyFolderState';
 import { DropZoneOverlay } from './components/explorer/DropZoneOverlay';
 import { CustomContextMenu } from './components/explorer/CustomContextMenu';
+import { DisasterRecoveryBanner } from './components/explorer/DisasterRecoveryBanner';
 import { FloatingTransferHUD } from './components/telemetry/FloatingTransferHUD';
 import { MediaPreviewModal } from './components/preview/MediaPreviewModal';
 import { AuthModal } from './components/modals/AuthModal';
@@ -34,7 +35,7 @@ import { Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { session, isLoading: isAuthLoading, initSession } = useAuthStore();
-  const { activeDrive, loadDrives } = useDriveStore();
+  const { activeDrive, isDriveAccessible, loadDrives } = useDriveStore();
   const {
     currentParentId,
     folders,
@@ -311,6 +312,10 @@ export const App: React.FC = () => {
 
         {/* Content View Area */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 mb-16 md:mb-0">
+          {activeDrive && !isDriveAccessible && (
+            <DisasterRecoveryBanner drive={activeDrive} />
+          )}
+
           {isLoading ? (
             <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-400">
               <Loader2 className="w-8 h-8 animate-spin text-sky-400" />

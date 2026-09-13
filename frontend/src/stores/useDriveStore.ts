@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { api } from '../api';
-import type { DriveMetadata, OwnedChannel } from '../types';
+import type { DriveMetadata, OwnedChannel, DriveHealthStatus } from '../types';
 
 interface DriveState {
   drives: DriveMetadata[];
   activeDrive: DriveMetadata | null;
   channels: OwnedChannel[];
+  isDriveAccessible: boolean;
+  driveAccessibility: Record<string, boolean>;
   isLoading: boolean;
   error: string | null;
   loadDrives: () => Promise<void>;
@@ -13,12 +15,16 @@ interface DriveState {
   syncAndPruneDrives: () => Promise<void>;
   setActiveDrive: (drive: DriveMetadata) => void;
   loadChannels: () => Promise<void>;
+  checkDriveHealth: (drive: DriveMetadata) => Promise<DriveHealthStatus>;
+  exportManifest: (driveId: string, format?: 'json' | 'csv') => Promise<string>;
 }
 
 export const useDriveStore = create<DriveState>((set, get) => ({
   drives: [],
   activeDrive: null,
   channels: [],
+  isDriveAccessible: true,
+  driveAccessibility: {},
   isLoading: false,
   error: null,
 
@@ -32,6 +38,9 @@ export const useDriveStore = create<DriveState>((set, get) => ({
         : drives[0] || null;
 
       set({ drives, activeDrive, isLoading: false });
+      if (activeDrive) {
+        get().checkDriveHealth(activeDrive);
+      }
     } catch (err: any) {
       set({ error: err.message || 'Failed to load drives', isLoading: false });
     }
@@ -57,6 +66,9 @@ export const useDriveStore = create<DriveState>((set, get) => ({
 
       set({ drives, activeDrive, isLoading: false });
       await get().loadChannels();
+      if (activeDrive) {
+        get().checkDriveHealth(activeDrive);
+      }
     } catch (err: any) {
       set({ error: err.message || 'Failed to sync drives', isLoading: false });
     }
@@ -64,6 +76,7 @@ export const useDriveStore = create<DriveState>((set, get) => ({
 
   setActiveDrive: (drive: DriveMetadata) => {
     set({ activeDrive: drive });
+    get().checkDriveHealth(drive);
   },
 
   loadChannels: async () => {
@@ -74,4 +87,31 @@ export const useDriveStore = create<DriveState>((set, get) => ({
       console.warn('Failed to load owned channels:', err);
     }
   },
+
+  checkDriveHealth: async (drive: DriveMetadata) => {
+    try {
+      const health = await api.checkDriveHealth(drive.id, drive.channel_id);
+      const isAccessible = health.is_accessible;
+      set((state) => ({
+        isDriveAccessible: isAccessible,
+        driveAccessibility: {
+          ...state.driveAccessibility,
+          [drive.id]: isAccessible,
+        },
+      }));
+      return health;
+    } catch (err) {
+      console.warn('Failed to check drive health:', err);
+      return {
+        drive_id: drive.id,
+        channel_id: drive.channel_id,
+        is_accessible: true,
+      };
+    }
+  },
+
+  exportManifest: async (driveId: string, format: 'json' | 'csv' = 'json') => {
+    return await api.exportDriveManifest(driveId, format);
+  },
 }));
+

@@ -26,6 +26,14 @@ impl VfsTree {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
     pub fn insert(&mut self, node: VfsNode) {
         let id = node.id().to_string();
         let parent_id = node.parent_id().to_string();

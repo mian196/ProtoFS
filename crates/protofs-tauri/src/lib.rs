@@ -130,6 +130,8 @@ pub fn run() {
             commands::sync_chat_folder_command,
             commands::get_owned_channels_command,
             commands::adopt_channel_as_drive_command,
+            commands::check_drive_health_command,
+            commands::export_drive_manifest_command,
             commands::load_drive_command,
             commands::flush_manifest_command,
             commands::create_folder_command,

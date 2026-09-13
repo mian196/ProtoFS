@@ -298,6 +298,10 @@ export interface P2pStatus {
   recent_transfers: P2pTransferProgress[];
 }
 
-
-
+export interface DriveHealthStatus {
+  drive_id: string;
+  channel_id: number;
+  is_accessible: boolean;
+  error?: string;
+}
 

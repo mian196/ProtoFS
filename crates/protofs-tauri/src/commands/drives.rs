@@ -433,6 +433,131 @@ pub async fn flush_manifest_command(
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DriveHealthStatus {
+    pub drive_id: String,
+    pub channel_id: i64,
+    pub is_accessible: bool,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn check_drive_health_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+    channel_id: i64,
+) -> Result<CommandResponse<DriveHealthStatus>, String> {
+    let state = app.state::<AppState>();
+
+    let target_channel_id = if channel_id != 0 {
+        channel_id
+    } else {
+        let drives = state.drives.read().await;
+        drives
+            .iter()
+            .find(|d| d.id == drive_id)
+            .map(|d| d.channel_id)
+            .unwrap_or(0)
+    };
+
+    if target_channel_id == 0 {
+        return Ok(CommandResponse::ok(DriveHealthStatus {
+            drive_id,
+            channel_id: 0,
+            is_accessible: true,
+            error: None,
+        }));
+    }
+
+    match state.transport.list_owned_channels().await {
+        Ok(owned) => {
+            let exists = owned.into_iter().any(|c| {
+                c.channel_id.abs() == target_channel_id.abs()
+                    || c.channel_id.abs().to_string().ends_with(&target_channel_id.abs().to_string())
+                    || target_channel_id.abs().to_string().ends_with(&c.channel_id.abs().to_string())
+            });
+
+            if exists {
+                Ok(CommandResponse::ok(DriveHealthStatus {
+                    drive_id,
+                    channel_id: target_channel_id,
+                    is_accessible: true,
+                    error: None,
+                }))
+            } else {
+                Ok(CommandResponse::ok(DriveHealthStatus {
+                    drive_id,
+                    channel_id: target_channel_id,
+                    is_accessible: false,
+                    error: Some("Channel not found in your Telegram account (deleted or unlinked)".to_string()),
+                }))
+            }
+        }
+        Err(e) => Ok(CommandResponse::ok(DriveHealthStatus {
+            drive_id,
+            channel_id: target_channel_id,
+            is_accessible: false,
+            error: Some(e.to_string()),
+        })),
+    }
+}
+
+#[tauri::command]
+pub async fn export_drive_manifest_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+    format: String,
+) -> Result<CommandResponse<String>, String> {
+    let state = app.state::<AppState>();
+
+    // Load tree from memory or local cache
+    let tree = state.engine.get_or_create_tree(&drive_id).await;
+    let mut nodes: Vec<VfsNode> = tree.all_nodes().cloned().collect();
+    if nodes.is_empty()
+        && let Ok(cached_tree) = state.cache.load_tree(&drive_id)
+    {
+        nodes = cached_tree.all_nodes().cloned().collect();
+    }
+
+    if format.eq_ignore_ascii_case("csv") {
+        let mut csv = String::from("id,name,type,parent_id,size_bytes,mime_type,telegram_message_id,is_encrypted,sha256_hash,created_at,updated_at\n");
+        for node in &nodes {
+            match node {
+                VfsNode::File(f) => {
+                    csv.push_str(&format!(
+                        "\"{}\",\"{}\",file,\"{}\",{},\"{}\",{},{},\"{}\",\"{}\",\"{}\"\n",
+                        f.id,
+                        f.name.replace('"', "\"\""),
+                        f.parent_id,
+                        f.size_bytes,
+                        f.mime_type.as_deref().unwrap_or(""),
+                        f.telegram_message_id,
+                        f.is_encrypted,
+                        f.sha256_hash.as_deref().unwrap_or(""),
+                        f.created_at.to_rfc3339(),
+                        f.updated_at.to_rfc3339(),
+                    ));
+                }
+                VfsNode::Folder(d) => {
+                    csv.push_str(&format!(
+                        "\"{}\",\"{}\",folder,\"{}\",0,\"\",0,false,\"\",\"{}\",\"{}\"\n",
+                        d.id,
+                        d.name.replace('"', "\"\""),
+                        d.parent_id,
+                        d.created_at.to_rfc3339(),
+                        d.updated_at.to_rfc3339(),
+                    ));
+                }
+            }
+        }
+        Ok(CommandResponse::ok(csv))
+    } else {
+        let json = serde_json::to_string_pretty(&nodes)
+            .map_err(|e| format!("Failed to serialize manifest to JSON: {}", e))?;
+        Ok(CommandResponse::ok(json))
+    }
+}
+
 #[tauri::command]
 pub async fn sync_chat_folder_command(
     app: tauri::AppHandle,

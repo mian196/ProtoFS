@@ -26,7 +26,7 @@ export const FluidHeader: React.FC<FluidHeaderProps> = ({ onUploadClick }) => {
     useVfsStore();
   const { theme, toggleTheme } = useThemeStore();
   const { openModal } = useModalStore();
-  const { activeDrive } = useDriveStore();
+  const { activeDrive, isDriveAccessible } = useDriveStore();
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -108,9 +108,14 @@ export const FluidHeader: React.FC<FluidHeaderProps> = ({ onUploadClick }) => {
 
         {/* New Folder Modal */}
         <button
-          onClick={() => openModal('createFolder')}
-          title="New Folder"
-          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shadow-sm"
+          onClick={() => isDriveAccessible && openModal('createFolder')}
+          disabled={!isDriveAccessible}
+          title={!isDriveAccessible ? 'Disabled: Drive is read-only (channel inaccessible)' : 'New Folder'}
+          className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors shadow-sm ${
+            !isDriveAccessible
+              ? 'opacity-40 cursor-not-allowed bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400'
+              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+          }`}
         >
           <FolderPlus className="w-3.5 h-3.5 text-sky-500" />
           <span>New Folder</span>
@@ -120,9 +125,11 @@ export const FluidHeader: React.FC<FluidHeaderProps> = ({ onUploadClick }) => {
         <Button
           variant="primary"
           size="sm"
-          onClick={onUploadClick}
+          disabled={!isDriveAccessible}
+          onClick={isDriveAccessible ? onUploadClick : undefined}
           icon={<Upload className="w-3.5 h-3.5" />}
           trailingIcon={<Shield className="w-3 h-3" />}
+          title={!isDriveAccessible ? 'Disabled: Drive is read-only (channel inaccessible)' : 'Upload Files'}
         >
           Upload
         </Button>

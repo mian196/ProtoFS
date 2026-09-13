@@ -24,7 +24,7 @@ import { useModalStore } from '../../stores/useModalStore';
 
 export const TacticalSidebar: React.FC = () => {
   const { session, connectionStatus, checkConnection } = useAuthStore();
-  const { drives, activeDrive, setActiveDrive } = useDriveStore();
+  const { drives, activeDrive, setActiveDrive, driveAccessibility } = useDriveStore();
   const { filterType, setFilterType } = useVfsStore();
   const { virtualDrive, mountVirtualDrive, unmountVirtualDrive } = useNativeStore();
   const { openModal } = useModalStore();
@@ -97,7 +97,7 @@ export const TacticalSidebar: React.FC = () => {
           >
             {drives.map((d) => (
               <option key={d.id} value={d.id}>
-                {d.name} ({d.id})
+                {driveAccessibility[d.id] === false ? '⚠️ [Recovery] ' : ''}{d.name} ({d.id})
               </option>
             ))}
           </select>

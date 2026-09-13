@@ -27,55 +27,95 @@ impl<T: TelegramTransport> SyncEngine<T> {
         }
     }
 
-    /// Load or initialize drive from pinned Telegram manifest (fast-path: <1s)
+    /// Load or initialize drive from pinned Telegram manifest (fast-path: <1s) with local SQLite disaster recovery fallback
     pub async fn load_drive(&self, drive_id: &str, channel_id: i64) -> Result<VfsTree> {
         info!(
             "Attempting fast-path load for drive '{}' via pinned manifest",
             drive_id
         );
 
-        if let Some((_msg_id, compressed_bytes)) =
-            self.transport.get_pinned_manifest(channel_id).await?
+        // 1. Check in-memory tree cache
         {
-            match ManifestSnapshot::from_compressed_bytes(&compressed_bytes) {
-                Ok(snapshot) => {
-                    let mut tree = VfsTree::new();
-                    snapshot.populate_tree(&mut tree);
-
-                    // Sync to local SQLite cache
-                    self.cache.batch_insert_manifest(&snapshot)?;
-
-                    let mut trees = self.trees_by_drive.write().await;
-                    trees.insert(drive_id.to_string(), tree.clone());
-
-                    let mut versions = self.versions_by_drive.write().await;
-                    versions.insert(drive_id.to_string(), snapshot.header.version);
-
-                    info!(
-                        "Drive '{}' successfully loaded from pinned manifest (v{}, {} folders, {} files)",
-                        drive_id,
-                        snapshot.header.version,
-                        snapshot.header.folder_count,
-                        snapshot.header.file_count
-                    );
-                    return Ok(tree);
-                }
-                Err(e) => {
-                    warn!(
-                        "Failed to decompress pinned manifest: {}. Triggering self-healing rebuild scan.",
-                        e
-                    );
+            let trees = self.trees_by_drive.read().await;
+            if let Some(tree) = trees.get(drive_id) {
+                if !tree.is_empty() {
+                    return Ok(tree.clone());
                 }
             }
-        } else {
-            info!(
-                "No pinned manifest found for drive '{}'. Triggering self-healing rebuild scan.",
-                drive_id
-            );
         }
 
-        // Self-healing fallback: scan channel history
-        self.rebuild_drive_index(drive_id, channel_id).await
+        // 2. Fast-path: query remote Telegram pinned manifest
+        match self.transport.get_pinned_manifest(channel_id).await {
+            Ok(Some((_msg_id, compressed_bytes))) => {
+                match ManifestSnapshot::from_compressed_bytes(&compressed_bytes) {
+                    Ok(snapshot) => {
+                        let mut tree = VfsTree::new();
+                        snapshot.populate_tree(&mut tree);
+
+                        // Sync to local SQLite cache
+                        let _ = self.cache.batch_insert_manifest(&snapshot);
+
+                        let mut trees = self.trees_by_drive.write().await;
+                        trees.insert(drive_id.to_string(), tree.clone());
+
+                        let mut versions = self.versions_by_drive.write().await;
+                        versions.insert(drive_id.to_string(), snapshot.header.version);
+
+                        info!(
+                            "Drive '{}' successfully loaded from pinned manifest (v{}, {} folders, {} files)",
+                            drive_id,
+                            snapshot.header.version,
+                            snapshot.header.folder_count,
+                            snapshot.header.file_count
+                        );
+                        return Ok(tree);
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to decompress pinned manifest: {}. Attempting self-healing rebuild scan.",
+                            e
+                        );
+                    }
+                }
+            }
+            Ok(None) => {
+                info!(
+                    "No pinned manifest found for drive '{}'. Attempting self-healing rebuild scan.",
+                    drive_id
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "Remote Telegram channel {} for drive '{}' is inaccessible ({:?}). Checking local disaster recovery cache.",
+                    channel_id, drive_id, e
+                );
+            }
+        }
+
+        // 3. Try self-healing scan from Telegram messages
+        if let Ok(tree) = self.rebuild_drive_index(drive_id, channel_id).await {
+            return Ok(tree);
+        }
+
+        // 4. Disaster recovery fallback: load from local SQLite cache!
+        match self.cache.load_tree(drive_id) {
+            Ok(tree) if !tree.is_empty() => {
+                warn!(
+                    "Preserved local disaster recovery tree loaded for drive '{}' ({} nodes)",
+                    drive_id,
+                    tree.count()
+                );
+                let mut trees = self.trees_by_drive.write().await;
+                trees.insert(drive_id.to_string(), tree.clone());
+                Ok(tree)
+            }
+            _ => {
+                let tree = VfsTree::new();
+                let mut trees = self.trees_by_drive.write().await;
+                trees.insert(drive_id.to_string(), tree.clone());
+                Ok(tree)
+            }
+        }
     }
 
     /// Self-healing rebuild scan: reconstructs tree from captions across channel history

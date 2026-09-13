@@ -26,6 +26,7 @@ import type {
   P2pTransferProgress,
   P2pSessionInfo,
   P2pStatus,
+  DriveHealthStatus,
 } from './types';
 
 interface TauriCommandResponse<T> {
@@ -416,6 +417,45 @@ export class ProtoFsApi {
       }
     }
     return true;
+  }
+
+  async checkDriveHealth(driveId: string, channelId: number): Promise<DriveHealthStatus> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<DriveHealthStatus>>('check_drive_health_command', {
+          driveId,
+          channelId,
+        });
+        if (res.success && res.data) {
+          return res.data;
+        }
+      } catch (err) {
+        console.warn('Tauri check_drive_health_command error:', err);
+      }
+    }
+    return {
+      drive_id: driveId,
+      channel_id: channelId,
+      is_accessible: true,
+    };
+  }
+
+  async exportDriveManifest(driveId: string, format: 'json' | 'csv' = 'json'): Promise<string> {
+    if (isTauri()) {
+      try {
+        const res = await invoke<TauriCommandResponse<string>>('export_drive_manifest_command', {
+          driveId,
+          format,
+        });
+        if (res.success && res.data) {
+          return res.data;
+        }
+        throw new Error(res.error || 'Failed to export manifest');
+      } catch (err: any) {
+        throw new Error(err.message || String(err));
+      }
+    }
+    return JSON.stringify({ driveId, format, exported_at: new Date().toISOString() }, null, 2);
   }
 
   async getOwnedChannels(showAll: boolean): Promise<OwnedChannel[]> {
