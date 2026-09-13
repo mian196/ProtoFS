@@ -103,13 +103,36 @@ export interface SyncPair {
   file_count: number;
 }
 
+export interface TransferProgressPayload {
+  transfer_id: string;
+  file_id?: string;
+  name: string;
+  bytes_transferred: number;
+  total_bytes: number;
+  speed_bytes_sec: number;
+  eta_secs: number | null;
+  status: 'uploading' | 'downloading' | 'completed' | 'failed' | 'paused';
+  error?: string;
+}
+
 export interface TransferItem {
   id: string;
+  file_id?: string;
   name: string;
   size: string;
+  size_bytes?: number;
+  bytes_transferred?: number;
+  total_bytes?: number;
   progress: number;
   speed: string;
-  status: 'uploading' | 'downloading' | 'completed' | 'paused';
+  speed_bytes_sec?: number;
+  eta?: string;
+  eta_secs?: number | null;
+  status: 'uploading' | 'downloading' | 'completed' | 'failed' | 'paused';
+  error?: string;
+  file_path?: string;
+  drive_id?: string;
+  parent_id?: string;
 }
 
 export interface OwnedChannel {
@@ -303,5 +326,22 @@ export interface DriveHealthStatus {
   channel_id: number;
   is_accessible: boolean;
   error?: string;
+}
+
+export interface PurgeCacheResult {
+  freed_bytes: number;
+  files_deleted: number;
+}
+
+export interface UploadFileOptions {
+  driveId: string;
+  parentId: string;
+  name: string;
+  sizeBytes: number;
+  isEncrypted: boolean;
+  filePath?: string;
+  fileBytes?: Uint8Array;
+  fileBase64?: string;
+  conflictAction?: 'replace' | 'rename' | 'skip';
 }
 
