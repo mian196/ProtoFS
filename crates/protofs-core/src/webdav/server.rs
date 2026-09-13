@@ -97,11 +97,11 @@ impl<T: TelegramTransport + 'static> WebDavServer<T> {
 
         for p in start_port..=(start_port + 10) {
             let addr_str = format!("127.0.0.1:{}", p);
-            if let Ok(addr) = addr_str.parse::<SocketAddr>() {
-                if let Ok(l) = TcpListener::bind(addr).await {
-                    listener = Some(l);
-                    break;
-                }
+            if let Ok(addr) = addr_str.parse::<SocketAddr>()
+                && let Ok(l) = TcpListener::bind(addr).await
+            {
+                listener = Some(l);
+                break;
             }
         }
 

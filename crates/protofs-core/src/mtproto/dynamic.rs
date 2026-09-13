@@ -50,6 +50,26 @@ impl DynamicTelegramTransport {
         let lock = self.backend.read().await;
         matches!(&*lock, TransportBackend::Real(_))
     }
+
+    pub async fn delete_channel(&self, channel_id: i64) -> Result<()> {
+        let lock = self.backend.read().await;
+        match &*lock {
+            TransportBackend::Real(r) => r.delete_channel(channel_id).await,
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
+        }
+    }
+
+    pub async fn leave_channel(&self, channel_id: i64) -> Result<()> {
+        let lock = self.backend.read().await;
+        match &*lock {
+            TransportBackend::Real(r) => r.leave_channel(channel_id).await,
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
+        }
+    }
 }
 
 #[async_trait]

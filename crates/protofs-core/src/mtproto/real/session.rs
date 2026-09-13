@@ -93,7 +93,7 @@ pub fn reconnect_from_session(
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
     use super::*;
 
     #[test]
