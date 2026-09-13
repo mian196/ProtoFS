@@ -14,6 +14,8 @@ pub struct SyncEngine<T: TelegramTransport> {
     trees_by_drive: Arc<RwLock<std::collections::HashMap<String, VfsTree>>>,
     versions_by_drive: Arc<RwLock<std::collections::HashMap<String, u64>>>,
     is_dirty_by_drive: Arc<RwLock<std::collections::HashMap<String, bool>>>,
+    uncommitted_counts_by_drive: Arc<RwLock<std::collections::HashMap<String, usize>>>,
+    last_flush_by_drive: Arc<RwLock<std::collections::HashMap<String, std::time::Instant>>>,
 }
 
 impl<T: TelegramTransport> SyncEngine<T> {
@@ -24,6 +26,8 @@ impl<T: TelegramTransport> SyncEngine<T> {
             trees_by_drive: Arc::new(RwLock::new(std::collections::HashMap::new())),
             versions_by_drive: Arc::new(RwLock::new(std::collections::HashMap::new())),
             is_dirty_by_drive: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            uncommitted_counts_by_drive: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            last_flush_by_drive: Arc::new(RwLock::new(std::collections::HashMap::new())),
         }
     }
 
@@ -254,11 +258,47 @@ impl<T: TelegramTransport> SyncEngine<T> {
         let mut dirty = self.is_dirty_by_drive.write().await;
         dirty.insert(drive_id.to_string(), false);
 
+        let mut uncommitted = self.uncommitted_counts_by_drive.write().await;
+        uncommitted.insert(drive_id.to_string(), 0);
+
+        let mut last_flush = self.last_flush_by_drive.write().await;
+        last_flush.insert(drive_id.to_string(), std::time::Instant::now());
+
         info!(
             "Flushed manifest v{} to Telegram channel {}",
             next_version, channel_id
         );
         Ok(())
+    }
+
+    /// Debounced manifest flush check (D-27).
+    /// Flushes to Telegram pinned message after 20 files or 30 seconds idle time.
+    pub async fn debounced_flush_manifest(&self, drive_id: &str, channel_id: i64) -> Result<bool> {
+        let should_flush = {
+            let mut counts = self.uncommitted_counts_by_drive.write().await;
+            let count = counts.entry(drive_id.to_string()).or_insert(0);
+            *count += 1;
+
+            let flushes = self.last_flush_by_drive.read().await;
+            let elapsed_30s = match flushes.get(drive_id) {
+                Some(inst) => inst.elapsed() >= std::time::Duration::from_secs(30),
+                None => true,
+            };
+
+            *count >= 20 || elapsed_30s
+        };
+
+        if should_flush {
+            self.flush_manifest(drive_id, channel_id).await?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Force immediate manifest flush bypassing debouncing (D-27).
+    pub async fn force_flush_manifest(&self, drive_id: &str, channel_id: i64) -> Result<()> {
+        self.flush_manifest(drive_id, channel_id).await
     }
 
     pub async fn get_tree(&self, drive_id: &str) -> Option<VfsTree> {

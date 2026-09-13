@@ -161,6 +161,7 @@ pub fn run() {
             commands::get_secure_secret_command,
             commands::delete_secure_secret_command,
             commands::check_for_updates_command,
+            commands::purge_local_cache_command,
             commands::get_shell_integration_status_command,
             commands::set_shell_integration_command,
             commands::get_pending_uploads_command,

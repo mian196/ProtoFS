@@ -29,6 +29,7 @@ import {
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { ClearCacheConfirmModal } from './ClearCacheConfirmModal';
 import { useThemeStore } from '../../stores/useThemeStore';
 import { useDriveStore } from '../../stores/useDriveStore';
 import { useAuthStore } from '../../stores/useAuthStore';
@@ -254,6 +255,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       setTimeout(() => setCacheCleared(false), 2500);
     } catch {
       setClearingCache(false);
+    }
+  };
+
+  const [isClearCacheModalOpen, setIsClearCacheModalOpen] = useState(false);
+  const [isPurgingCache, setIsPurgingCache] = useState(false);
+  const [cachePurgedFeedback, setCachePurgedFeedback] = useState<string | null>(null);
+
+  const handleConfirmPurgeCache = async () => {
+    setIsPurgingCache(true);
+    try {
+      const res = await api.purgeLocalCache(activeDrive?.id);
+      const freedMb = (res.freed_bytes / (1024 * 1024)).toFixed(1);
+      setCachePurgedFeedback(`Cache Purged (${freedMb} MB)`);
+      setIsClearCacheModalOpen(false);
+      if (activeDrive) {
+        const metrics = await api.getStorageUsage(activeDrive.id);
+        setStorageMetrics(metrics);
+      }
+      setTimeout(() => setCachePurgedFeedback(null), 3000);
+    } catch {
+      setIsClearCacheModalOpen(false);
+    } finally {
+      setIsPurgingCache(false);
     }
   };
 
@@ -1198,6 +1222,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                   {cacheCleared ? 'Cleared' : clearingCache ? 'Cleaning...' : 'Clear Cache'}
                 </Button>
               </div>
+
+              {/* Local Cache & Temporary Downloads Card (D-28, D-29) */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                    Local Cache & Temporary Downloads
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                    %LOCALAPPDATA%\ProtoFS\cache
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Safely removes temporary download chunks and staging files without touching cloud storage.
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsClearCacheModalOpen(true)}
+                  disabled={isPurgingCache}
+                  icon={
+                    cachePurgedFeedback ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    )
+                  }
+                >
+                  {cachePurgedFeedback || (isPurgingCache ? 'Purging...' : 'Clear Local Cache & Temp Downloads')}
+                </Button>
+              </div>
             </div>
           )}
 
@@ -1255,6 +1309,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           Done
         </Button>
       </div>
+
+      <ClearCacheConfirmModal
+        isOpen={isClearCacheModalOpen}
+        onClose={() => setIsClearCacheModalOpen(false)}
+        onConfirm={handleConfirmPurgeCache}
+        isLoading={isPurgingCache}
+      />
     </Modal>
   );
 };

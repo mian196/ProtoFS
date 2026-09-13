@@ -10,18 +10,7 @@ import { DropZoneOverlay } from './components/explorer/DropZoneOverlay';
 import { CustomContextMenu } from './components/explorer/CustomContextMenu';
 import { DisasterRecoveryBanner } from './components/explorer/DisasterRecoveryBanner';
 import { FloatingTransferHUD } from './components/telemetry/FloatingTransferHUD';
-import { MediaPreviewModal } from './components/preview/MediaPreviewModal';
-import { AuthModal } from './components/modals/AuthModal';
-import { AccountManagerModal } from './components/modals/AccountManagerModal';
-import { DriveManagerModal } from './components/modals/DriveManagerModal';
-import { CreateFolderModal } from './components/modals/CreateFolderModal';
-import { RenameModal } from './components/modals/RenameModal';
-import { MoveModal } from './components/modals/MoveModal';
-import { ShareLinkModal } from './components/modals/ShareLinkModal';
-import { VersionHistoryModal } from './components/modals/VersionHistoryModal';
-import { SyncConfigModal } from './components/modals/SyncConfigModal';
-import { P2pTransferModal } from './components/modals/P2pTransferModal';
-import { SettingsModal } from './components/modals/SettingsModal';
+import { AppModals } from './components/modals/AppModals';
 
 import { useAuthStore } from './stores/useAuthStore';
 import { useDriveStore } from './stores/useDriveStore';
@@ -29,15 +18,16 @@ import { useVfsStore } from './stores/useVfsStore';
 import { useTransferStore } from './stores/useTransferStore';
 import { useNativeStore } from './stores/useNativeStore';
 import { useModalStore } from './stores/useModalStore';
+import { useTransferListener } from './hooks/useTransferListener';
+import { useUploadManager } from './hooks/useUploadManager';
 import { api } from './api';
 import { isTauri } from './api/client';
-import { useTransferListener } from './hooks/useTransferListener';
 import type { FileNode, FolderNode, VfsNode } from './types';
 import { Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   useTransferListener();
-  const { session, isLoading: isAuthLoading, initSession } = useAuthStore();
+  const { session, initSession } = useAuthStore();
   const { activeDrive, isDriveAccessible, loadDrives } = useDriveStore();
   const {
     currentParentId,
@@ -53,9 +43,8 @@ export const App: React.FC = () => {
   } = useVfsStore();
   const { addTransfer, updateTransfer } = useTransferStore();
   const { loadNativeStatus } = useNativeStore();
-  const { activeModal, payload, openModal, closeModal } = useModalStore();
+  const { openModal } = useModalStore();
 
-  const [isDragging, setIsDragging] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -65,7 +54,17 @@ export const App: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize session & drives on mount
+  const { isDragging, conflictState, enqueueFiles } = useUploadManager({
+    activeDrive,
+    currentParentId,
+    files,
+    onUploadSuccess: async () => {
+      if (activeDrive) {
+        await loadDirectory(activeDrive.id, currentParentId);
+      }
+    },
+  });
+
   useEffect(() => {
     initSession();
   }, [initSession]);
@@ -83,127 +82,6 @@ export const App: React.FC = () => {
     }
   }, [activeDrive, currentParentId, filterType, loadDirectory]);
 
-  // Helper to read File as Base64 efficiently without huge memory overhead
-  const readFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const res = reader.result as string;
-        const commaIdx = res.indexOf(',');
-        resolve(commaIdx !== -1 ? res.substring(commaIdx + 1) : res);
-      };
-      reader.onerror = (e) => reject(e);
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // Sequential Upload Queue
-  const uploadQueueRef = useRef<File[]>([]);
-  const isUploadingRef = useRef(false);
-
-  const processUploadQueue = async () => {
-    if (isUploadingRef.current || uploadQueueRef.current.length === 0) return;
-    isUploadingRef.current = true;
-
-    while (uploadQueueRef.current.length > 0) {
-      const file = uploadQueueRef.current.shift();
-      if (file) {
-        await handleUploadFile(file);
-      }
-    }
-
-    isUploadingRef.current = false;
-  };
-
-  const enqueueFiles = (files: FileList | File[]) => {
-    for (let i = 0; i < files.length; i++) {
-      uploadQueueRef.current.push(files[i]);
-    }
-    processUploadQueue();
-  };
-
-  // Global Drag and Drop handlers
-  useEffect(() => {
-    const handleDragOver = (e: DragEvent) => {
-      e.preventDefault();
-      setIsDragging(true);
-    };
-    const handleDragLeave = (e: DragEvent) => {
-      if (e.relatedTarget === null) {
-        setIsDragging(false);
-      }
-    };
-    const handleDrop = async (e: DragEvent) => {
-      e.preventDefault();
-      setIsDragging(false);
-      if (!e.dataTransfer?.files || !activeDrive) return;
-      enqueueFiles(e.dataTransfer.files);
-    };
-
-    window.addEventListener('dragover', handleDragOver);
-    window.addEventListener('dragleave', handleDragLeave);
-    window.addEventListener('drop', handleDrop);
-
-    return () => {
-      window.removeEventListener('dragover', handleDragOver);
-      window.removeEventListener('dragleave', handleDragLeave);
-      window.removeEventListener('drop', handleDrop);
-    };
-  }, [activeDrive, currentParentId]);
-
-  // Upload handler
-  const handleUploadFile = async (file: File) => {
-    if (!activeDrive) return;
-    const transferId = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const formatBytes = (bytes: number): string => {
-      if (bytes === 0) return '0 B';
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-    };
-
-    addTransfer({
-      id: transferId,
-      name: file.name,
-      size: formatBytes(file.size),
-      size_bytes: file.size,
-      total_bytes: file.size,
-      bytes_transferred: 0,
-      progress: 0,
-      speed: 'Starting...',
-      speed_bytes_sec: 0,
-      status: 'uploading',
-    });
-
-    try {
-      const nativePath = (file as any).path as string | undefined;
-      const base64Data = nativePath ? undefined : await readFileAsBase64(file);
-      const isEncrypted = localStorage.getItem('protofs_encryption_enabled') === 'true';
-
-      await api.uploadFile(
-        activeDrive.id,
-        currentParentId,
-        file.name,
-        file.size,
-        isEncrypted,
-        undefined,
-        nativePath,
-        base64Data
-      );
-
-      if (!isTauri()) {
-        updateTransfer(transferId, 100, '0 B/s', 'completed');
-      }
-      await loadDirectory(activeDrive.id, currentParentId);
-    } catch (err: any) {
-      updateTransfer(transferId, {
-        status: 'failed',
-        error: err?.message || 'Upload failed',
-      });
-    }
-  };
-
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       enqueueFiles(e.target.files);
@@ -211,7 +89,6 @@ export const App: React.FC = () => {
     }
   };
 
-  // Node opening
   const handleOpenNode = (node: VfsNode) => {
     if (node.kind === 'folder') {
       navigateToFolder(node.data.id, node.data.name);
@@ -220,7 +97,6 @@ export const App: React.FC = () => {
     }
   };
 
-  // Context Menu trigger
   const handleContextMenu = (node: VfsNode, e: React.MouseEvent) => {
     e.preventDefault();
     setContextMenu({
@@ -231,7 +107,6 @@ export const App: React.FC = () => {
     });
   };
 
-  // Actions from Context Menu
   const handleDownloadFile = async (file: FileNode) => {
     if (!activeDrive) return;
     const transferId = `dl_${Date.now()}`;
@@ -282,43 +157,29 @@ export const App: React.FC = () => {
     loadDirectory(activeDrive.id, currentParentId);
   };
 
-  // Filtered VFS Nodes
   const vfsNodes: VfsNode[] = [
     ...folders.map((f) => ({ kind: 'folder' as const, data: f })),
-    ...files
-      .filter((f) => {
-        if (filterType === 'all' || filterType === 'trash') return true;
-        if (filterType === 'pinned') return f.pinned;
-        return f.type === filterType;
-      })
-      .map((f) => ({ kind: 'file' as const, data: f })),
+    ...files.map((f) => ({ kind: 'file' as const, data: f })),
   ];
 
+  const isVaultEncrypted = localStorage.getItem('protofs_encryption_enabled') === 'true';
+
   return (
-    <div className="flex h-screen w-screen bg-slate-100/60 dark:bg-slate-950 overflow-hidden font-sans text-slate-900 dark:text-slate-100 transition-colors">
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={handleFileInputChange}
-      />
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200 select-none">
+      <TacticalSidebar />
 
-      {/* Desktop Left Sidebar */}
-      <div className="hidden md:block">
-        <TacticalSidebar />
-      </div>
-
-      {/* Main Work Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        {/* Mobile Top App Bar */}
+      <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden">
         <MobileTopBar onSearchToggle={() => {}} />
-
-        {/* Desktop Fluid Island Floating Header */}
         <FluidHeader onUploadClick={() => fileInputRef.current?.click()} />
 
-        {/* Content View Area */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileInputChange}
+          multiple
+          className="hidden"
+        />
+
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 mb-16 md:mb-0">
           {activeDrive && !isDriveAccessible && (
             <DisasterRecoveryBanner drive={activeDrive} />
@@ -350,14 +211,11 @@ export const App: React.FC = () => {
           )}
         </main>
 
-        {/* Mobile Bottom Tab Bar */}
         <MobileTabBar />
       </div>
 
-      {/* Drag and Drop Overlay */}
-      <DropZoneOverlay isDragging={isDragging} />
+      <DropZoneOverlay isDragging={isDragging} isEncrypted={isVaultEncrypted} />
 
-      {/* Context Menu */}
       <CustomContextMenu
         x={contextMenu.x}
         y={contextMenu.y}
@@ -374,48 +232,11 @@ export const App: React.FC = () => {
         onDelete={handleDeleteNode}
       />
 
-      {/* Floating Transfer HUD */}
       <FloatingTransferHUD />
 
-      {/* Modals */}
-      <AuthModal
-        isOpen={(!isAuthLoading && !session) || activeModal === 'auth'}
-        onClose={closeModal}
-      />
-      <AccountManagerModal
-        isOpen={activeModal === 'accountManager'}
-        onClose={closeModal}
-      />
-      <DriveManagerModal isOpen={activeModal === 'driveManager'} onClose={closeModal} />
-      <CreateFolderModal isOpen={activeModal === 'createFolder'} onClose={closeModal} />
-      <RenameModal
-        isOpen={activeModal === 'rename'}
-        onClose={closeModal}
-        targetNode={payload.targetNode}
-      />
-      <MoveModal
-        isOpen={activeModal === 'move'}
-        onClose={closeModal}
-        targetNode={payload.targetNode}
-      />
-      <ShareLinkModal
-        isOpen={activeModal === 'shareLink'}
-        onClose={closeModal}
-        targetFile={payload.previewFile}
-      />
-      <VersionHistoryModal
-        isOpen={activeModal === 'versionHistory'}
-        onClose={closeModal}
-        targetFile={payload.previewFile}
-      />
-      <SyncConfigModal isOpen={activeModal === 'syncConfig'} onClose={closeModal} />
-      <P2pTransferModal isOpen={activeModal === 'p2pTransfer'} onClose={closeModal} />
-      <SettingsModal isOpen={activeModal === 'settings'} onClose={closeModal} />
-      <MediaPreviewModal
-        isOpen={activeModal === 'preview'}
-        onClose={closeModal}
-        file={payload.previewFile || null}
-        onDownload={handleDownloadFile}
+      <AppModals
+        onDownloadFile={handleDownloadFile}
+        conflictState={conflictState}
       />
     </div>
   );

@@ -3,6 +3,7 @@ pub mod drives;
 pub mod native;
 pub mod settings;
 pub mod sharing;
+pub mod shell_integration;
 pub mod sync;
 pub mod transfer_controls;
 pub mod transfers;
@@ -14,6 +15,7 @@ pub use drives::*;
 pub use native::*;
 pub use settings::*;
 pub use sharing::*;
+pub use shell_integration::*;
 pub use sync::*;
 pub use transfer_controls::*;
 pub use transfers::*;
@@ -69,6 +71,12 @@ pub struct DownloadFileResult {
     pub size_bytes: u64,
     pub destination_path: Option<String>,
     pub data_base64: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PurgeCacheResult {
+    pub freed_bytes: u64,
+    pub files_deleted: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

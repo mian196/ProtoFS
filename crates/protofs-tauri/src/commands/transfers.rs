@@ -136,8 +136,8 @@ pub async fn upload_file_command(
             .await
         {
             Ok(file_node) => {
-                if let Err(e) = state.engine.flush_manifest(&drive_id, channel_id).await {
-                    tracing::warn!("Auto-flush manifest after upload failed: {}", e);
+                if let Err(e) = state.engine.debounced_flush_manifest(&drive_id, channel_id).await {
+                    tracing::warn!("Debounced manifest flush failed: {}", e);
                 }
 
                 emitter.finish();
