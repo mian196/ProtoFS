@@ -1,5 +1,9 @@
-use super::{CommandResponse, ensure_dir, silent_command};
+use std::path::{Path, PathBuf};
+
 use serde::{Deserialize, Serialize};
+
+use super::common::{ensure_dir, get_protofs_mount_dir, silent_command};
+use crate::commands::CommandResponse;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShellIntegrationStatus {
@@ -8,6 +12,37 @@ pub struct ShellIntegrationStatus {
     pub platform: String,
     pub send_to_path: String,
     pub target_exe: String,
+}
+
+#[tauri::command]
+pub async fn open_virtual_drive_in_explorer_command(
+    drive_letter: String,
+) -> Result<CommandResponse<bool>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let clean = drive_letter.trim().trim_end_matches([':', '\\', '/']);
+        let target = format!("{}:\\", clean);
+        let _ = silent_command("explorer").arg(&target).spawn();
+        Ok(CommandResponse::ok(true))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = drive_letter;
+        Ok(CommandResponse::ok(false))
+    }
+}
+
+#[tauri::command]
+pub async fn clear_virtual_drive_cache_command(
+    app: tauri::AppHandle,
+    drive_id: String,
+) -> Result<CommandResponse<bool>, String> {
+    let mount_dir = get_protofs_mount_dir(&app, &drive_id);
+    if mount_dir.exists() {
+        let _ = std::fs::remove_dir_all(&mount_dir);
+        ensure_dir(&mount_dir);
+    }
+    Ok(CommandResponse::ok(true))
 }
 
 #[tauri::command]
@@ -20,7 +55,7 @@ pub async fn get_shell_integration_status_command()
     #[cfg(target_os = "windows")]
     {
         let appdata = std::env::var("APPDATA").unwrap_or_default();
-        let send_to_dir = std::path::PathBuf::from(&appdata).join("Microsoft\\Windows\\SendTo");
+        let send_to_dir = PathBuf::from(&appdata).join("Microsoft\\Windows\\SendTo");
         let send_to_cmd = send_to_dir.join("ProtoFS.cmd");
         let send_to_lnk = send_to_dir.join("ProtoFS.lnk");
         let send_to_enabled = send_to_cmd.exists() || send_to_lnk.exists();
@@ -45,7 +80,7 @@ pub async fn get_shell_integration_status_command()
     #[cfg(target_os = "linux")]
     {
         let home = std::env::var("HOME").unwrap_or_default();
-        let desktop_file = std::path::PathBuf::from(&home)
+        let desktop_file = PathBuf::from(&home)
             .join(".local/share/applications/protofs-upload.desktop");
         let enabled = desktop_file.exists();
 
@@ -82,7 +117,7 @@ pub async fn set_shell_integration_command(
     #[cfg(target_os = "windows")]
     {
         let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
-        let send_to_dir = std::path::PathBuf::from(&appdata).join("Microsoft\\Windows\\SendTo");
+        let send_to_dir = PathBuf::from(&appdata).join("Microsoft\\Windows\\SendTo");
         if !send_to_dir.exists() {
             ensure_dir(&send_to_dir);
         }
@@ -205,7 +240,7 @@ pub async fn set_shell_integration_command(
     #[cfg(target_os = "linux")]
     {
         let home = std::env::var("HOME").unwrap_or_default();
-        let app_dir = std::path::PathBuf::from(&home).join(".local/share/applications");
+        let app_dir = PathBuf::from(&home).join(".local/share/applications");
         let desktop_file = app_dir.join("protofs-upload.desktop");
 
         if enable_send_to || enable_context_menu {
@@ -253,7 +288,7 @@ pub async fn get_pending_uploads_command() -> Result<CommandResponse<Vec<String>
             continue;
         }
         if upload_mode && !arg.starts_with("--") {
-            let p = std::path::PathBuf::from(&arg);
+            let p = PathBuf::from(&arg);
             if p.exists() {
                 pending.push(arg);
             }
@@ -264,7 +299,7 @@ pub async fn get_pending_uploads_command() -> Result<CommandResponse<Vec<String>
 
 #[tauri::command]
 pub async fn open_path_in_explorer_command(path: String) -> Result<CommandResponse<bool>, String> {
-    let p = std::path::Path::new(&path);
+    let p = Path::new(&path);
     if !p.is_absolute() {
         return Ok(CommandResponse::err("Path must be absolute".to_string()));
     }
