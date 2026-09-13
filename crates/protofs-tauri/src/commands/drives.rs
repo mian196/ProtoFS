@@ -49,6 +49,23 @@ pub fn load_user_drives(app: &tauri::AppHandle, user_id: i64) -> Vec<DriveMetada
     Vec::new()
 }
 
+pub async fn trigger_chat_folder_sync(state: &AppState) {
+    let drives = state.drives.read().await;
+    let channel_ids: Vec<i64> = drives
+        .iter()
+        .map(|d| d.channel_id)
+        .filter(|&cid| cid != 0)
+        .collect();
+    drop(drives);
+
+    if !channel_ids.is_empty() {
+        let _ = state
+            .engine
+            .sync_chat_folder("ProtoFS-Drives", &channel_ids)
+            .await;
+    }
+}
+
 #[tauri::command]
 pub async fn get_drives_command(
     app: tauri::AppHandle,
@@ -68,6 +85,8 @@ pub async fn get_drives_command(
         drop(session_guard);
         let mut state_drives = state.drives.write().await;
         *state_drives = drives.clone();
+        drop(state_drives);
+        trigger_chat_folder_sync(&state).await;
         return Ok(CommandResponse::ok(drives));
     }
     drop(session_guard);
@@ -94,6 +113,8 @@ pub async fn delete_drive_command(
         save_user_drives(&app, s.user_id, &drives);
     }
     drop(session_guard);
+    drop(drives);
+    trigger_chat_folder_sync(&state).await;
     Ok(CommandResponse::ok(true))
 }
 
@@ -190,6 +211,9 @@ pub async fn create_drive_command(
         save_user_drives(&app, s.user_id, &drives);
     }
     drop(session_guard);
+    drop(drives);
+
+    trigger_chat_folder_sync(&state).await;
 
     Ok(CommandResponse::ok(new_drive))
 }
@@ -284,6 +308,9 @@ pub async fn adopt_channel_as_drive_command(
         save_user_drives(&app, s.user_id, &drives);
     }
     drop(session_guard);
+    drop(drives);
+
+    trigger_chat_folder_sync(&state).await;
 
     Ok(CommandResponse::ok(new_drive))
 }
@@ -315,8 +342,12 @@ pub async fn sync_and_prune_drives_command(
             save_user_drives(&app, s.user_id, &drives);
         }
         drop(session_guard);
+        let updated_drives = drives.clone();
+        drop(drives);
 
-        return Ok(CommandResponse::ok(drives.clone()));
+        trigger_chat_folder_sync(&state).await;
+
+        return Ok(CommandResponse::ok(updated_drives));
     }
 
     let drives = state.drives.read().await;
@@ -367,6 +398,8 @@ pub async fn load_drive_command(
                         save_user_drives(&app, s.user_id, &drives);
                     }
                     drop(session_guard);
+                    drop(drives);
+                    trigger_chat_folder_sync(&state).await;
                     return Ok(CommandResponse::err(
                         "This drive channel was deleted from Telegram and has been unlinked."
                             .to_string(),
@@ -423,4 +456,13 @@ pub async fn flush_manifest_command(
         Ok(_) => Ok(CommandResponse::ok(())),
         Err(e) => Ok(CommandResponse::err(e.to_string())),
     }
+}
+
+#[tauri::command]
+pub async fn sync_chat_folder_command(
+    app: tauri::AppHandle,
+) -> Result<CommandResponse<()>, String> {
+    let state = app.state::<AppState>();
+    trigger_chat_folder_sync(&state).await;
+    Ok(CommandResponse::ok(()))
 }

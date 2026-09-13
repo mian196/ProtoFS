@@ -299,6 +299,9 @@ mod tests {
                 msgs.iter().filter(|m| m.id > min_id).cloned().collect();
             Ok(filtered)
         }
+        async fn sync_chat_folder(&self, _folder_title: &str, _channel_ids: &[i64]) -> Result<()> {
+            Ok(())
+        }
     }
 
     #[tokio::test]

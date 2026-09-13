@@ -231,6 +231,12 @@ impl<T: TelegramTransport> SyncEngine<T> {
         trees.entry(drive_id.to_string()).or_default().clone()
     }
 
+    pub async fn sync_chat_folder(&self, folder_title: &str, channel_ids: &[i64]) -> Result<()> {
+        self.transport
+            .sync_chat_folder(folder_title, channel_ids)
+            .await
+    }
+
     pub async fn add_node(&self, drive_id: &str, node: VfsNode) -> Result<()> {
         let mut trees = self.trees_by_drive.write().await;
         let tree = trees.entry(drive_id.to_string()).or_default();

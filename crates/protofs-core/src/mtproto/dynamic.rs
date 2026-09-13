@@ -190,4 +190,14 @@ impl TelegramTransport for DynamicTelegramTransport {
             TransportBackend::Real(r) => r.scan_messages(channel_id, min_id, limit).await,
         }
     }
+
+    async fn sync_chat_folder(&self, folder_title: &str, channel_ids: &[i64]) -> Result<()> {
+        let lock = self.backend.read().await;
+        match &*lock {
+            TransportBackend::Unauthenticated => Err(ProtoFsError::Mtproto(
+                "Not authenticated with Telegram".to_string(),
+            )),
+            TransportBackend::Real(r) => r.sync_chat_folder(folder_title, channel_ids).await,
+        }
+    }
 }

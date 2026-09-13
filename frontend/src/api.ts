@@ -367,6 +367,16 @@ export class ProtoFsApi {
     return this.getDrives();
   }
 
+  async syncChatFolder(): Promise<void> {
+    if (isTauri()) {
+      try {
+        await invoke<TauriCommandResponse<void>>('sync_chat_folder_command');
+      } catch (err) {
+        console.warn('Tauri sync_chat_folder_command error:', err);
+      }
+    }
+  }
+
   async createDrive(name: string, channelId: number): Promise<DriveMetadata> {
     if (isTauri()) {
       try {

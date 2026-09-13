@@ -72,4 +72,5 @@ pub trait TelegramTransport: Send + Sync {
         min_id: i32,
         limit: usize,
     ) -> Result<Vec<TelegramMessage>>;
+    async fn sync_chat_folder(&self, folder_title: &str, channel_ids: &[i64]) -> Result<()>;
 }

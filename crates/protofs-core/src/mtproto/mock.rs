@@ -268,4 +268,9 @@ impl TelegramTransport for MockTelegramTransport {
             .collect();
         Ok(filtered)
     }
+
+    async fn sync_chat_folder(&self, _folder_title: &str, _channel_ids: &[i64]) -> Result<()> {
+        // Mock success for in-memory / testing environments
+        Ok(())
+    }
 }
