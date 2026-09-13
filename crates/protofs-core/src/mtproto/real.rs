@@ -53,6 +53,19 @@ pub struct RealTelegramTransport {
     session: Arc<MemorySession>,
     api_id: i32,
     api_hash: String,
+    channel_hashes: Arc<tokio::sync::RwLock<HashMap<i64, i64>>>,
+}
+
+impl RealTelegramTransport {
+    pub fn new(client: Client, session: Arc<MemorySession>, api_id: i32, api_hash: String) -> Self {
+        Self {
+            client,
+            session,
+            api_id,
+            api_hash,
+            channel_hashes: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+        }
+    }
 }
 
 // Base64URL encoder without padding for Telegram QR login tokens
@@ -80,50 +93,112 @@ fn normalize_channel_id(channel_id: i64) -> i64 {
     channel_id.abs()
 }
 
-async fn get_channel_access_hash(client: &Client, session: &MemorySession, channel_id: i64) -> i64 {
-    // 1. Try memory session cache
-    if let Ok(Some(PeerInfo::Channel {
-        auth: Some(auth), ..
-    })) = session.peer(PeerId::channel_unchecked(channel_id)).await
+async fn get_channel_access_hash(
+    client: &Client,
+    session: &MemorySession,
+    channel_hashes: &Arc<tokio::sync::RwLock<HashMap<i64, i64>>>,
+    channel_id: i64,
+) -> i64 {
+    let normalized = normalize_channel_id(channel_id);
+
+    // 1. Try in-memory cached hashes map
     {
-        let h = auth.hash();
-        if h != 0 {
+        let map = channel_hashes.read().await;
+        if let Some(&h) = map.get(&channel_id).or_else(|| map.get(&normalized))
+            && h != 0
+        {
             return h;
         }
     }
 
-    // 2. Query GetDialogs to warm up the session peer cache with access_hash
-    let req = tl::functions::messages::GetDialogs {
-        exclude_pinned: false,
-        folder_id: None,
-        offset_date: 0,
-        offset_id: 0,
-        offset_peer: tl::enums::InputPeer::Empty,
-        limit: 100,
-        hash: 0,
-    };
-    if let Ok(dialogs) = client.invoke(&req).await {
-        let chats = match dialogs {
-            tl::enums::messages::Dialogs::Dialogs(d) => d.chats,
-            tl::enums::messages::Dialogs::Slice(s) => s.chats,
-            tl::enums::messages::Dialogs::NotModified(_) => Vec::new(),
-        };
-        for chat in chats {
-            if let tl::enums::Chat::Channel(c) = chat
-                && (normalize_channel_id(c.id) == channel_id || c.id == channel_id)
-                && let Some(hash) = c.access_hash
-            {
-                return hash;
-            }
+    // 2. Try memory session cache
+    if let Ok(Some(PeerInfo::Channel {
+        auth: Some(auth), ..
+    })) = session.peer(PeerId::channel_unchecked(normalized)).await
+    {
+        let h = auth.hash();
+        if h != 0 {
+            let mut map = channel_hashes.write().await;
+            map.insert(channel_id, h);
+            map.insert(normalized, h);
+            return h;
         }
     }
 
-    // 3. Fallback: check session again after GetDialogs
+    // 3. Query GetDialogs to warm up the session peer cache with access_hash
+    let mut offset_id = 0;
+    let mut offset_date = 0;
+    let offset_peer = tl::enums::InputPeer::Empty;
+
+    for _ in 0..3 {
+        let req = tl::functions::messages::GetDialogs {
+            exclude_pinned: false,
+            folder_id: None,
+            offset_date,
+            offset_id,
+            offset_peer: offset_peer.clone(),
+            limit: 100,
+            hash: 0,
+        };
+
+        if let Ok(dialogs) = client.invoke(&req).await {
+            let (chats, messages) = match dialogs {
+                tl::enums::messages::Dialogs::Dialogs(d) => (d.chats, d.messages),
+                tl::enums::messages::Dialogs::Slice(s) => (s.chats, s.messages),
+                tl::enums::messages::Dialogs::NotModified(_) => (Vec::new(), Vec::new()),
+            };
+
+            let mut map = channel_hashes.write().await;
+            for chat in chats {
+                if let tl::enums::Chat::Channel(c) = chat
+                    && let Some(hash) = c.access_hash
+                    && hash != 0
+                {
+                    map.insert(c.id, hash);
+                    map.insert(normalize_channel_id(c.id), hash);
+                }
+            }
+
+            if let Some(&h) = map.get(&channel_id).or_else(|| map.get(&normalized))
+                && h != 0
+            {
+                return h;
+            }
+
+            if messages.is_empty() {
+                break;
+            }
+
+            if let Some(last_msg) = messages.last() {
+                match last_msg {
+                    tl::enums::Message::Message(m) => {
+                        offset_id = m.id;
+                        offset_date = m.date;
+                    }
+                    tl::enums::Message::Service(s) => {
+                        offset_id = s.id;
+                        offset_date = s.date;
+                    }
+                    tl::enums::Message::Empty(_) => break,
+                }
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    // 4. Fallback: check session again after GetDialogs
     if let Ok(Some(PeerInfo::Channel {
         auth: Some(auth), ..
-    })) = session.peer(PeerId::channel_unchecked(channel_id)).await
+    })) = session.peer(PeerId::channel_unchecked(normalized)).await
     {
-        return auth.hash();
+        let h = auth.hash();
+        let mut map = channel_hashes.write().await;
+        map.insert(channel_id, h);
+        map.insert(normalized, h);
+        return h;
     }
 
     0
@@ -283,12 +358,12 @@ impl TelegramAuthClient {
                         phone: Some(phone.clone()),
                     };
                     let session_bytes = export_session_bytes(session).await?;
-                    let transport = RealTelegramTransport {
-                        client: client.clone(),
-                        session: Arc::clone(session),
-                        api_id: *api_id,
-                        api_hash: api_hash.clone(),
-                    };
+                    let transport = RealTelegramTransport::new(
+                        client.clone(),
+                        Arc::clone(session),
+                        *api_id,
+                        api_hash.clone(),
+                    );
                     let _ = lock.take();
                     Ok(VerifyOutcome::Success {
                         transport,
@@ -318,7 +393,9 @@ impl TelegramAuthClient {
     ) -> Result<(RealTelegramTransport, TelegramUser, Vec<u8>)> {
         let mut lock = self.pending.lock().await;
         let pending = lock.as_mut().ok_or_else(|| {
-            ProtoFsError::Mtproto("No pending 2FA login session found.".to_string())
+            ProtoFsError::Mtproto(
+                "No login request in progress. Please request a code or QR first.".to_string(),
+            )
         })?;
 
         match pending {
@@ -359,12 +436,12 @@ impl TelegramAuthClient {
                     phone: Some(phone.clone()),
                 };
                 let session_bytes = export_session_bytes(session).await?;
-                let transport = RealTelegramTransport {
-                    client: client.clone(),
-                    session: Arc::clone(session),
-                    api_id: *api_id,
-                    api_hash: api_hash.clone(),
-                };
+                let transport = RealTelegramTransport::new(
+                    client.clone(),
+                    Arc::clone(session),
+                    *api_id,
+                    api_hash.clone(),
+                );
                 let _ = lock.take();
                 Ok((transport, tg_user, session_bytes))
             }
@@ -406,12 +483,12 @@ impl TelegramAuthClient {
                     phone: None,
                 };
                 let session_bytes = export_session_bytes(session).await?;
-                let transport = RealTelegramTransport {
-                    client: client.clone(),
-                    session: Arc::clone(session),
-                    api_id: *api_id,
-                    api_hash: api_hash.clone(),
-                };
+                let transport = RealTelegramTransport::new(
+                    client.clone(),
+                    Arc::clone(session),
+                    *api_id,
+                    api_hash.clone(),
+                );
                 let _ = lock.take();
                 Ok((transport, tg_user, session_bytes))
             }
@@ -563,12 +640,12 @@ impl TelegramAuthClient {
                         };
 
                         let session_bytes = export_session_bytes(session).await?;
-                        let transport = RealTelegramTransport {
-                            client: client.clone(),
-                            session: Arc::clone(session),
-                            api_id: *api_id,
-                            api_hash: api_hash.clone(),
-                        };
+                        let transport = RealTelegramTransport::new(
+                            client.clone(),
+                            Arc::clone(session),
+                            *api_id,
+                            api_hash.clone(),
+                        );
 
                         let _ = lock.take();
                         Ok(QrCheckOutcome::Success {
@@ -620,19 +697,25 @@ impl TelegramAuthClient {
             ));
         }
 
-        Ok(RealTelegramTransport {
+        Ok(RealTelegramTransport::new(
             client,
             session,
             api_id,
-            api_hash: api_hash.to_string(),
-        })
+            api_hash.to_string(),
+        ))
     }
 }
 
 impl RealTelegramTransport {
     async fn resolve_channel_peer(&self, raw_channel_id: i64) -> (i64, i64) {
         let channel_id = normalize_channel_id(raw_channel_id);
-        let hash = get_channel_access_hash(&self.client, &self.session, channel_id).await;
+        let hash = get_channel_access_hash(
+            &self.client,
+            &self.session,
+            &self.channel_hashes,
+            channel_id,
+        )
+        .await;
         (channel_id, hash)
     }
 
@@ -686,10 +769,16 @@ impl TelegramTransport for RealTelegramTransport {
         if let tl::enums::Updates::Updates(u) = updates {
             for chat in u.chats {
                 if let tl::enums::Chat::Channel(c) = chat {
+                    let access_hash = c.access_hash.unwrap_or(0);
+                    if access_hash != 0 {
+                        let mut map = self.channel_hashes.write().await;
+                        map.insert(c.id, access_hash);
+                        map.insert(normalize_channel_id(c.id), access_hash);
+                    }
                     return Ok(ChannelInfo {
                         id: c.id,
                         title: c.title,
-                        access_hash: c.access_hash.unwrap_or(0),
+                        access_hash,
                     });
                 }
             }
@@ -722,6 +811,19 @@ impl TelegramTransport for RealTelegramTransport {
         };
 
         let mut owned = Vec::new();
+        {
+            let mut map = self.channel_hashes.write().await;
+            for chat in &chats {
+                if let tl::enums::Chat::Channel(c) = chat
+                    && let Some(hash) = c.access_hash
+                    && hash != 0
+                {
+                    map.insert(c.id, hash);
+                    map.insert(normalize_channel_id(c.id), hash);
+                }
+            }
+        }
+
         for chat in chats {
             match chat {
                 tl::enums::Chat::Channel(c) => {

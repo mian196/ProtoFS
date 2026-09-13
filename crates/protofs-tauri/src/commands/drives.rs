@@ -381,28 +381,6 @@ pub async fn load_drive_command(
                 return Ok(CommandResponse::ok(nodes));
             }
             Err(e) => {
-                let err_str = e.to_string();
-                if err_str.contains("CHANNEL_INVALID") {
-                    tracing::warn!(
-                        "Channel {} was deleted from Telegram. Auto-pruning drive '{}'",
-                        target_channel_id,
-                        drive_id
-                    );
-                    let mut drives = state.drives.write().await;
-                    drives.retain(|d| d.id != drive_id);
-                    let session_guard = state.session.read().await;
-                    if let Some(ref s) = *session_guard {
-                        save_user_drives(&app, s.user_id, &drives);
-                    }
-                    drop(session_guard);
-                    drop(drives);
-                    trigger_chat_folder_sync(&state).await;
-                    return Ok(CommandResponse::err(
-                        "This drive channel was deleted from Telegram and has been unlinked."
-                            .to_string(),
-                    ));
-                }
-
                 tracing::warn!(
                     "Failed to load remote drive '{}' from channel {}: {}. Falling back to local cache.",
                     drive_id,
