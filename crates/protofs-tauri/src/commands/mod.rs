@@ -63,6 +63,15 @@ pub struct ExportDriveResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadFileResult {
+    pub file_id: String,
+    pub name: String,
+    pub size_bytes: u64,
+    pub destination_path: Option<String>,
+    pub data_base64: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShareLinkInfo {
     pub file_id: String,
     pub file_name: String,

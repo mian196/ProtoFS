@@ -1,21 +1,12 @@
 use chrono::Utc;
 use protofs_core::vfs::FileNode;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tokio::io::AsyncReadExt;
 
 use super::{
-    AppState, CommandResponse, check_transfer_gate, ensure_dir, fnv1a_hash_filename, guess_mime,
-    register_transfer, unregister_transfer,
+    check_transfer_gate, ensure_dir, fnv1a_hash_filename, guess_mime, register_transfer,
+    unregister_transfer, AppState, CommandResponse, DownloadFileResult, ThrottledProgressEmitter,
 };
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct DownloadFileResult {
-    pub file_id: String,
-    pub name: String,
-    pub size_bytes: u64,
-    pub destination_path: Option<String>,
-    pub data_base64: Option<String>,
-}
 
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -34,12 +25,28 @@ pub async fn upload_file_command(
     let transfer_id = format!("upload_{}_{}", Utc::now().timestamp_millis(), &name);
     let mut rx = register_transfer(&state, &transfer_id).await;
 
+    let total_upload_size = if let Some(ref path_str) = file_path {
+        std::fs::metadata(path_str).map(|m| m.len()).unwrap_or(size_bytes)
+    } else {
+        size_bytes
+    };
+
+    let mut emitter = ThrottledProgressEmitter::new(
+        app.clone(),
+        "upload-progress",
+        transfer_id.clone(),
+        format!("temp_{}", &name),
+        name.clone(),
+        total_upload_size,
+    );
+
     // Resolve authenticated master key from AppState if encrypted (D-22, D-23, D-24)
     let master_key = if is_encrypted {
         let guard = state.master_key.read().await;
         match *guard {
             Some(k) => Some(k),
             None => {
+                emitter.fail("Vault locked: Master key not unlocked in AppState");
                 unregister_transfer(&state, &transfer_id).await;
                 return Ok(CommandResponse::err(
                     "Encryption is enabled but no master key is unlocked in AppState. Please unlock your vault in Settings.",
@@ -59,6 +66,7 @@ pub async fn upload_file_command(
     let payload_bytes = if let Some(ref path_str) = file_path {
         let path = std::path::PathBuf::from(path_str);
         if !path.exists() {
+            emitter.fail(&format!("File does not exist: {}", path_str));
             unregister_transfer(&state, &transfer_id).await;
             return Ok(CommandResponse::err(format!("File does not exist: {}", path_str)));
         }
@@ -66,18 +74,19 @@ pub async fn upload_file_command(
         let mut file = match tokio::fs::File::open(&path).await {
             Ok(f) => f,
             Err(e) => {
+                let err = format!("Failed to open file: {}", e);
+                emitter.fail(&err);
                 unregister_transfer(&state, &transfer_id).await;
-                return Ok(CommandResponse::err(format!("Failed to open file: {}", e)));
+                return Ok(CommandResponse::err(err));
             }
         };
 
-        let total_size = file.metadata().await.map(|m| m.len()).unwrap_or(size_bytes);
-        let mut read_bytes = 0u64;
-        let mut full_data = Vec::with_capacity(total_size.min(1024 * 1024 * 1024) as usize);
+        let mut full_data = Vec::with_capacity(total_upload_size.min(1024 * 1024 * 1024) as usize);
         let mut chunk_buf = vec![0u8; 512 * 1024]; // 512KB sequential chunk buffer
 
         loop {
             if let Err(e) = check_transfer_gate(&mut rx).await {
+                emitter.fail(&e);
                 unregister_transfer(&state, &transfer_id).await;
                 return Ok(CommandResponse::err(e));
             }
@@ -86,34 +95,15 @@ pub async fn upload_file_command(
                 Ok(0) => break,
                 Ok(bytes_read) => bytes_read,
                 Err(e) => {
+                    let err = format!("Disk read error: {}", e);
+                    emitter.fail(&err);
                     unregister_transfer(&state, &transfer_id).await;
-                    return Ok(CommandResponse::err(format!("Disk read error: {}", e)));
+                    return Ok(CommandResponse::err(err));
                 }
             };
 
             full_data.extend_from_slice(&chunk_buf[..n]);
-            read_bytes += n as u64;
-
-            let progress = if total_size > 0 {
-                ((read_bytes as f64 / total_size as f64) * 100.0) as u32
-            } else {
-                100
-            };
-
-            let _ = app.emit(
-                "upload-progress",
-                serde_json::json!({
-                    "transfer_id": transfer_id,
-                    "file_id": format!("temp_{}", read_bytes),
-                    "name": name,
-                    "bytes_transferred": read_bytes,
-                    "total_bytes": total_size,
-                    "speed_bytes_sec": 0,
-                    "eta_secs": null,
-                    "status": "uploading",
-                    "progress": progress,
-                }),
-            );
+            emitter.update(n as u64);
         }
         full_data
     } else if let Some(b64) = file_base64 {
@@ -121,6 +111,7 @@ pub async fn upload_file_command(
         match base64::engine::general_purpose::STANDARD.decode(b64.trim()) {
             Ok(bytes) => bytes,
             Err(e) => {
+                emitter.fail(&format!("Invalid base64 payload: {}", e));
                 unregister_transfer(&state, &transfer_id).await;
                 return Ok(CommandResponse::err(format!("Invalid base64 payload: {}", e)));
             }
@@ -149,27 +140,16 @@ pub async fn upload_file_command(
                     tracing::warn!("Auto-flush manifest after upload failed: {}", e);
                 }
 
-                let _ = app.emit(
-                    "upload-progress",
-                    serde_json::json!({
-                        "transfer_id": transfer_id,
-                        "file_id": file_node.id,
-                        "name": file_node.name,
-                        "bytes_transferred": file_node.size_bytes,
-                        "total_bytes": file_node.size_bytes,
-                        "speed_bytes_sec": 0,
-                        "eta_secs": 0,
-                        "status": "completed",
-                        "progress": 100,
-                    }),
-                );
+                emitter.finish();
                 unregister_transfer(&state, &transfer_id).await;
                 return Ok(CommandResponse::ok(file_node));
             }
             Err(e) => {
+                let err = format!("Telegram upload failed: {}", e);
                 tracing::error!("MTProto upload to channel {} failed: {}", channel_id, e);
+                emitter.fail(&err);
                 unregister_transfer(&state, &transfer_id).await;
-                return Ok(CommandResponse::err(format!("Telegram upload failed: {}", e)));
+                return Ok(CommandResponse::err(err));
             }
         }
     }
@@ -208,6 +188,7 @@ pub async fn upload_file_command(
         updated_at: Utc::now(),
     };
 
+    emitter.finish();
     unregister_transfer(&state, &transfer_id).await;
     Ok(CommandResponse::ok(file))
 }
@@ -232,12 +213,27 @@ pub async fn download_file_command(
     let file_node_opt = tree.get_file(&file_id).cloned();
     drop(tree);
 
+    let download_name = file_node_opt
+        .as_ref()
+        .map(|f| f.name.clone())
+        .unwrap_or_else(|| file_id.clone());
+    let download_size = file_node_opt.as_ref().map(|f| f.size_bytes).unwrap_or(0);
+    let mut emitter = ThrottledProgressEmitter::new(
+        app.clone(),
+        "download-progress",
+        transfer_id.clone(),
+        file_id.clone(),
+        download_name,
+        download_size,
+    );
+
     let master_key = if let Some(ref f) = file_node_opt {
         if f.is_encrypted {
             let guard = state.master_key.read().await;
             match *guard {
                 Some(k) => Some(k),
                 None => {
+                    emitter.fail("Vault locked: Master key not unlocked in AppState");
                     unregister_transfer(&state, &transfer_id).await;
                     return Ok(CommandResponse::err(
                         "File is encrypted but master key is not unlocked in AppState. Please unlock in Settings.",
@@ -252,6 +248,7 @@ pub async fn download_file_command(
     };
 
     if let Err(e) = check_transfer_gate(&mut rx).await {
+        emitter.fail(&e);
         unregister_transfer(&state, &transfer_id).await;
         return Ok(CommandResponse::err(e));
     }
@@ -266,6 +263,7 @@ pub async fn download_file_command(
             if let Some(dest) = destination_path.as_ref() {
                 let dest_path = std::path::PathBuf::from(dest);
                 if dest_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+                    emitter.fail("Path traversal detected in destination_path");
                     unregister_transfer(&state, &transfer_id).await;
                     return Ok(CommandResponse::err("Path traversal detected in destination_path"));
                 }
@@ -273,10 +271,13 @@ pub async fn download_file_command(
                     ensure_dir(parent);
                 }
                 if let Err(e) = std::fs::write(&dest_path, &data) {
+                    let err = format!("Failed to write file: {}", e);
+                    emitter.fail(&err);
                     unregister_transfer(&state, &transfer_id).await;
-                    return Ok(CommandResponse::err(format!("Failed to write file: {}", e)));
+                    return Ok(CommandResponse::err(err));
                 }
 
+                emitter.finish();
                 unregister_transfer(&state, &transfer_id).await;
                 return Ok(CommandResponse::ok(DownloadFileResult {
                     file_id: file_node.id,
@@ -289,6 +290,7 @@ pub async fn download_file_command(
 
             use base64::Engine;
             let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+            emitter.finish();
             unregister_transfer(&state, &transfer_id).await;
             Ok(CommandResponse::ok(DownloadFileResult {
                 file_id: file_node.id,
@@ -299,8 +301,10 @@ pub async fn download_file_command(
             }))
         }
         Err(e) => {
+            let err = e.to_string();
+            emitter.fail(&err);
             unregister_transfer(&state, &transfer_id).await;
-            Ok(CommandResponse::err(e.to_string()))
+            Ok(CommandResponse::err(err))
         }
     }
 }

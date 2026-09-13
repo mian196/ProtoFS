@@ -30,10 +30,13 @@ import { useTransferStore } from './stores/useTransferStore';
 import { useNativeStore } from './stores/useNativeStore';
 import { useModalStore } from './stores/useModalStore';
 import { api } from './api';
+import { isTauri } from './api/client';
+import { useTransferListener } from './hooks/useTransferListener';
 import type { FileNode, FolderNode, VfsNode } from './types';
 import { Loader2 } from 'lucide-react';
 
 export const App: React.FC = () => {
+  useTransferListener();
   const { session, isLoading: isAuthLoading, initSession } = useAuthStore();
   const { activeDrive, isDriveAccessible, loadDrives } = useDriveStore();
   const {
@@ -164,19 +167,18 @@ export const App: React.FC = () => {
       id: transferId,
       name: file.name,
       size: formatBytes(file.size),
+      size_bytes: file.size,
+      total_bytes: file.size,
+      bytes_transferred: 0,
       progress: 0,
-      speed: 'Reading...',
+      speed: 'Starting...',
+      speed_bytes_sec: 0,
       status: 'uploading',
     });
 
     try {
-      let progress = 15;
-      const progressTimer = setInterval(() => {
-        progress = Math.min(92, progress + 15);
-        updateTransfer(transferId, progress, '4.2 MB/s', 'uploading');
-      }, 350);
-
-      const base64Data = await readFileAsBase64(file);
+      const nativePath = (file as any).path as string | undefined;
+      const base64Data = nativePath ? undefined : await readFileAsBase64(file);
       const isEncrypted = localStorage.getItem('protofs_encryption_enabled') === 'true';
 
       await api.uploadFile(
@@ -186,15 +188,19 @@ export const App: React.FC = () => {
         file.size,
         isEncrypted,
         undefined,
-        undefined,
+        nativePath,
         base64Data
       );
 
-      clearInterval(progressTimer);
-      updateTransfer(transferId, 100, '0 MB/s', 'completed');
+      if (!isTauri()) {
+        updateTransfer(transferId, 100, '0 B/s', 'completed');
+      }
       await loadDirectory(activeDrive.id, currentParentId);
     } catch (err: any) {
-      updateTransfer(transferId, 0, err.message || 'Upload failed', 'paused');
+      updateTransfer(transferId, {
+        status: 'failed',
+        error: err?.message || 'Upload failed',
+      });
     }
   };
 
@@ -233,21 +239,20 @@ export const App: React.FC = () => {
       id: transferId,
       name: file.name,
       size: file.size,
+      size_bytes: file.size_bytes,
+      total_bytes: file.size_bytes,
+      bytes_transferred: 0,
       progress: 0,
       speed: 'Starting...',
+      speed_bytes_sec: 0,
       status: 'downloading',
     });
 
     try {
-      let progress = 20;
-      const progressTimer = setInterval(() => {
-        progress = Math.min(95, progress + 25);
-        updateTransfer(transferId, progress, '5.8 MB/s', 'downloading');
-      }, 300);
-
       const res = await api.downloadFile(activeDrive.id, file.id);
-      clearInterval(progressTimer);
-      updateTransfer(transferId, 100, '0 MB/s', 'completed');
+      if (!isTauri()) {
+        updateTransfer(transferId, 100, '0 B/s', 'completed');
+      }
 
       if (res && res.data_base64) {
         const link = document.createElement('a');
@@ -257,8 +262,11 @@ export const App: React.FC = () => {
         link.click();
         document.body.removeChild(link);
       }
-    } catch {
-      updateTransfer(transferId, 0, 'Failed', 'paused');
+    } catch (err: any) {
+      updateTransfer(transferId, {
+        status: 'failed',
+        error: err?.message || 'Download failed',
+      });
     }
   };
 
