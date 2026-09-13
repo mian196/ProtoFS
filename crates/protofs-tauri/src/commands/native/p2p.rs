@@ -268,8 +268,14 @@ mod tests {
             assert_eq!(parts.len(), 2, "PIN should have exactly one hyphen");
             assert_eq!(parts[0].len(), 3, "First part should be 3 digits");
             assert_eq!(parts[1].len(), 3, "Second part should be 3 digits");
-            assert!(parts[0].chars().all(|c| c.is_ascii_digit()), "First part must be digits");
-            assert!(parts[1].chars().all(|c| c.is_ascii_digit()), "Second part must be digits");
+            assert!(
+                parts[0].chars().all(|c| c.is_ascii_digit()),
+                "First part must be digits"
+            );
+            assert!(
+                parts[1].chars().all(|c| c.is_ascii_digit()),
+                "Second part must be digits"
+            );
         }
     }
 }

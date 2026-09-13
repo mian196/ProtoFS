@@ -545,8 +545,14 @@ impl CacheDatabase {
 
         tx.execute("DELETE FROM folders WHERE drive_id = ?1", params![drive_id])?;
         tx.execute("DELETE FROM files WHERE drive_id = ?1", params![drive_id])?;
-        tx.execute("DELETE FROM fts_nodes WHERE drive_id = ?1", params![drive_id])?;
-        tx.execute("DELETE FROM sync_pairs WHERE drive_id = ?1", params![drive_id])?;
+        tx.execute(
+            "DELETE FROM fts_nodes WHERE drive_id = ?1",
+            params![drive_id],
+        )?;
+        tx.execute(
+            "DELETE FROM sync_pairs WHERE drive_id = ?1",
+            params![drive_id],
+        )?;
         tx.execute("DELETE FROM drives WHERE id = ?1", params![drive_id])?;
 
         tx.commit()?;
@@ -589,14 +595,39 @@ mod tests {
             ).expect("insert fts");
         }
 
-        db.delete_drive_cache("test_drive_purge").expect("delete drive cache");
+        db.delete_drive_cache("test_drive_purge")
+            .expect("delete drive cache");
         db.wal_checkpoint_passive().expect("wal checkpoint passive");
 
         let conn = db.lock_conn().expect("lock conn");
-        let drive_count: i64 = conn.query_row("SELECT COUNT(*) FROM drives WHERE id = ?1", params!["test_drive_purge"], |r| r.get(0)).unwrap();
-        let folder_count: i64 = conn.query_row("SELECT COUNT(*) FROM folders WHERE drive_id = ?1", params!["test_drive_purge"], |r| r.get(0)).unwrap();
-        let file_count: i64 = conn.query_row("SELECT COUNT(*) FROM files WHERE drive_id = ?1", params!["test_drive_purge"], |r| r.get(0)).unwrap();
-        let fts_count: i64 = conn.query_row("SELECT COUNT(*) FROM fts_nodes WHERE drive_id = ?1", params!["test_drive_purge"], |r| r.get(0)).unwrap();
+        let drive_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM drives WHERE id = ?1",
+                params!["test_drive_purge"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let folder_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM folders WHERE drive_id = ?1",
+                params!["test_drive_purge"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let file_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE drive_id = ?1",
+                params!["test_drive_purge"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let fts_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM fts_nodes WHERE drive_id = ?1",
+                params!["test_drive_purge"],
+                |r| r.get(0),
+            )
+            .unwrap();
 
         assert_eq!(drive_count, 0);
         assert_eq!(folder_count, 0);

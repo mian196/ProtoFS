@@ -611,7 +611,10 @@ impl<T: TelegramTransport> SyncEngine<T> {
         self.trees_by_drive.write().await.remove(drive_id);
         self.versions_by_drive.write().await.remove(drive_id);
         self.is_dirty_by_drive.write().await.remove(drive_id);
-        self.uncommitted_counts_by_drive.write().await.remove(drive_id);
+        self.uncommitted_counts_by_drive
+            .write()
+            .await
+            .remove(drive_id);
         self.last_flush_by_drive.write().await.remove(drive_id);
     }
 }

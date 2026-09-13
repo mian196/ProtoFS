@@ -1,6 +1,6 @@
 use chrono::Utc;
 use grammers_tl_types as tl;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 use super::RealTelegramTransport;
 use crate::error::{ProtoFsError, Result};
@@ -24,9 +24,11 @@ impl RealTelegramTransport {
         filename: &str,
         data: &[u8],
     ) -> Result<tl::enums::InputFile> {
-        let _permit = self.transfer_semaphore.acquire().await.map_err(|_| {
-            ProtoFsError::Internal("Transfer semaphore closed".to_string())
-        })?;
+        let _permit = self
+            .transfer_semaphore
+            .acquire()
+            .await
+            .map_err(|_| ProtoFsError::Internal("Transfer semaphore closed".to_string()))?;
 
         let temp = tempfile::NamedTempFile::new().map_err(ProtoFsError::Io)?;
         std::fs::write(temp.path(), data).map_err(ProtoFsError::Io)?;
@@ -137,9 +139,11 @@ impl RealTelegramTransport {
         offset: u64,
         limit: u32,
     ) -> Result<Vec<u8>> {
-        let _permit = self.transfer_semaphore.acquire().await.map_err(|_| {
-            ProtoFsError::Internal("Transfer semaphore closed".to_string())
-        })?;
+        let _permit = self
+            .transfer_semaphore
+            .acquire()
+            .await
+            .map_err(|_| ProtoFsError::Internal("Transfer semaphore closed".to_string()))?;
 
         let (channel_id, access_hash) = self.resolve_channel_peer(channel_id).await;
         let get_msg_req = tl::functions::channels::GetMessages {

@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use grammers_client::Client;
+use grammers_session::Session;
 use grammers_session::storages::MemorySession;
 use grammers_session::types::{PeerId, PeerInfo};
-use grammers_session::Session;
 use grammers_tl_types as tl;
 use tokio::sync::RwLock;
 
@@ -14,7 +14,10 @@ use crate::mtproto::transport::{ChannelInfo, OwnedChannel, TelegramUser};
 
 pub fn normalize_channel_id(channel_id: i64) -> i64 {
     let id_str = channel_id.abs().to_string();
-    if id_str.len() > 10 && id_str.starts_with("100") && let Ok(parsed) = id_str[3..].parse::<i64>() {
+    if id_str.len() > 10
+        && id_str.starts_with("100")
+        && let Ok(parsed) = id_str[3..].parse::<i64>()
+    {
         return parsed;
     }
     channel_id.abs()
@@ -37,8 +40,9 @@ pub async fn get_channel_access_hash(
         }
     }
 
-    if let Ok(Some(PeerInfo::Channel { auth: Some(auth), .. })) =
-        session.peer(PeerId::channel_unchecked(normalized)).await
+    if let Ok(Some(PeerInfo::Channel {
+        auth: Some(auth), ..
+    })) = session.peer(PeerId::channel_unchecked(normalized)).await
     {
         let h = auth.hash();
         if h != 0 {
@@ -94,8 +98,14 @@ pub async fn get_channel_access_hash(
 
             if let Some(last_msg) = messages.last() {
                 match last_msg {
-                    tl::enums::Message::Message(m) => { offset_id = m.id; offset_date = m.date; }
-                    tl::enums::Message::Service(s) => { offset_id = s.id; offset_date = s.date; }
+                    tl::enums::Message::Message(m) => {
+                        offset_id = m.id;
+                        offset_date = m.date;
+                    }
+                    tl::enums::Message::Service(s) => {
+                        offset_id = s.id;
+                        offset_date = s.date;
+                    }
                     tl::enums::Message::Empty(_) => break,
                 }
             } else {
@@ -106,8 +116,9 @@ pub async fn get_channel_access_hash(
         }
     }
 
-    if let Ok(Some(PeerInfo::Channel { auth: Some(auth), .. })) =
-        session.peer(PeerId::channel_unchecked(normalized)).await
+    if let Ok(Some(PeerInfo::Channel {
+        auth: Some(auth), ..
+    })) = session.peer(PeerId::channel_unchecked(normalized)).await
     {
         let h = auth.hash();
         let mut map = channel_hashes.write().await;
@@ -169,7 +180,9 @@ impl RealTelegramTransport {
             }
         }
 
-        Err(ProtoFsError::Mtproto("Failed to parse created channel response from Telegram".to_string()))
+        Err(ProtoFsError::Mtproto(
+            "Failed to parse created channel response from Telegram".to_string(),
+        ))
     }
 
     pub(crate) async fn do_list_owned_channels(&self) -> Result<Vec<OwnedChannel>> {
@@ -257,9 +270,14 @@ impl RealTelegramTransport {
             channel_id: resolved_id,
             access_hash,
         });
-        let req = tl::functions::channels::DeleteChannel { channel: input_channel };
+        let req = tl::functions::channels::DeleteChannel {
+            channel: input_channel,
+        };
         self.client.invoke(&req).await.map_err(|e| {
-            ProtoFsError::Mtproto(format!("Failed to delete Telegram channel {}: {}", channel_id, e))
+            ProtoFsError::Mtproto(format!(
+                "Failed to delete Telegram channel {}: {}",
+                channel_id, e
+            ))
         })?;
         Ok(())
     }
@@ -271,9 +289,14 @@ impl RealTelegramTransport {
             channel_id: resolved_id,
             access_hash,
         });
-        let req = tl::functions::channels::LeaveChannel { channel: input_channel };
+        let req = tl::functions::channels::LeaveChannel {
+            channel: input_channel,
+        };
         self.client.invoke(&req).await.map_err(|e| {
-            ProtoFsError::Mtproto(format!("Failed to leave Telegram channel {}: {}", channel_id, e))
+            ProtoFsError::Mtproto(format!(
+                "Failed to leave Telegram channel {}: {}",
+                channel_id, e
+            ))
         })?;
         Ok(())
     }

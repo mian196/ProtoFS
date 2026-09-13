@@ -6,7 +6,11 @@ use crate::error::Result;
 
 #[allow(dead_code)]
 impl RealTelegramTransport {
-    pub(crate) async fn do_sync_chat_folder(&self, folder_title: &str, channel_ids: &[i64]) -> Result<()> {
+    pub(crate) async fn do_sync_chat_folder(
+        &self,
+        folder_title: &str,
+        channel_ids: &[i64],
+    ) -> Result<()> {
         let effective_title = if folder_title.is_empty() || folder_title.chars().count() > 12 {
             "ProtoFS"
         } else {
@@ -32,7 +36,10 @@ impl RealTelegramTransport {
                     access_hash,
                 }));
             } else {
-                warn!("Could not resolve access hash for channel {}, skipping from chat folder", cid);
+                warn!(
+                    "Could not resolve access hash for channel {}, skipping from chat folder",
+                    cid
+                );
             }
         }
 
@@ -103,11 +110,16 @@ impl RealTelegramTransport {
         };
 
         if let Err(e) = self.client.invoke(&update_req).await {
-            warn!("Failed to update Telegram chat folder '{}': {}", effective_title, e);
+            warn!(
+                "Failed to update Telegram chat folder '{}': {}",
+                effective_title, e
+            );
         } else {
             info!(
                 "Successfully synchronized Telegram chat folder '{}' (id: {}) with {} channel(s)",
-                effective_title, folder_id, channel_ids.len()
+                effective_title,
+                folder_id,
+                channel_ids.len()
             );
         }
 

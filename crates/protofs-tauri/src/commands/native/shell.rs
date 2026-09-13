@@ -80,8 +80,8 @@ pub async fn get_shell_integration_status_command()
     #[cfg(target_os = "linux")]
     {
         let home = std::env::var("HOME").unwrap_or_default();
-        let desktop_file = PathBuf::from(&home)
-            .join(".local/share/applications/protofs-upload.desktop");
+        let desktop_file =
+            PathBuf::from(&home).join(".local/share/applications/protofs-upload.desktop");
         let enabled = desktop_file.exists();
 
         Ok(CommandResponse::ok(ShellIntegrationStatus {

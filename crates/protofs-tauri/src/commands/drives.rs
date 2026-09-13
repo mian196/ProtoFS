@@ -101,8 +101,74 @@ pub async fn get_drives_command(
 pub async fn delete_drive_command(
     app: tauri::AppHandle,
     drive_id: String,
+    delete_cloud_channel: Option<bool>,
 ) -> Result<CommandResponse<bool>, String> {
     let state = app.state::<AppState>();
+    let should_delete_cloud = delete_cloud_channel.unwrap_or(false);
+
+    // Step 1: Look up target_channel_id from state.drives
+    let target_channel_id = {
+        let drives = state.drives.read().await;
+        drives
+            .iter()
+            .find(|d| d.id == drive_id)
+            .map(|d| d.channel_id)
+            .unwrap_or(0)
+    };
+
+    // Step 2 (Phase 1: Telegram Cloud Channel Deletion / Leave):
+    if should_delete_cloud && target_channel_id != 0 {
+        match state.transport.list_owned_channels().await {
+            Ok(channels) => {
+                let norm_target = target_channel_id.abs();
+                let is_creator = channels
+                    .iter()
+                    .find(|c| c.channel_id.abs() == norm_target)
+                    .map(|c| c.is_creator)
+                    .unwrap_or(false);
+
+                if is_creator {
+                    if let Err(e) = state.transport.delete_channel(target_channel_id).await {
+                        tracing::warn!(
+                            "Failed to delete Telegram cloud channel {}: {}",
+                            target_channel_id,
+                            e
+                        );
+                    }
+                } else {
+                    tracing::info!(
+                        "User is not creator of channel {}; leaving channel instead of deleting",
+                        target_channel_id
+                    );
+                    if let Err(e) = state.transport.leave_channel(target_channel_id).await {
+                        tracing::warn!(
+                            "Failed to leave Telegram cloud channel {}: {}",
+                            target_channel_id,
+                            e
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to list channels before drive deletion: {}", e);
+            }
+        }
+    }
+
+    // Step 3 (Phase 2: Local Cascade Purge):
+    // 1. Unload in-memory tree
+    state.engine.unload_drive(&drive_id).await;
+
+    // 2. Unmount OS virtual drive if mounted
+    let _ = super::native::unmount_virtual_drive_command(app.clone(), drive_id.clone()).await;
+
+    // 3. Purge SQLite cache atomically & checkpoint WAL
+    if let Err(e) = state.cache.delete_drive_cache(&drive_id) {
+        tracing::warn!("Failed to purge SQLite cache for drive {}: {}", drive_id, e);
+    }
+    let _ = state.cache.wal_checkpoint_passive();
+
+    // 4. Remove drive from state.drives and persist
     let mut drives = state.drives.write().await;
     drives.retain(|d| d.id != drive_id);
     let session_guard = state.session.read().await;
@@ -111,8 +177,28 @@ pub async fn delete_drive_command(
     }
     drop(session_guard);
     drop(drives);
+
+    // 5. Sync Telegram chat folder without deleted channel
     trigger_chat_folder_sync(&state).await;
+
     Ok(CommandResponse::ok(true))
+}
+
+#[allow(dead_code)]
+pub async fn export_drive_manifest_snapshot_backup(
+    app: &tauri::AppHandle,
+    drive_id: &str,
+) -> Result<std::path::PathBuf, String> {
+    let state = app.state::<AppState>();
+    let tree = state.engine.get_or_create_tree(drive_id).await;
+    let nodes: Vec<_> = tree.all_nodes().cloned().collect();
+    let json = serde_json::to_string_pretty(&nodes).map_err(|e| e.to_string())?;
+
+    let backup_dir = super::native::common::get_protofs_mount_dir(app, "_backups");
+    super::native::common::ensure_dir(&backup_dir);
+    let backup_path = backup_dir.join(format!("{}_manifest_backup.json", drive_id));
+    std::fs::write(&backup_path, json.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(backup_path)
 }
 
 #[tauri::command]

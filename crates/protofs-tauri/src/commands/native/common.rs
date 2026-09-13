@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -37,6 +37,58 @@ pub fn get_protofs_mount_dir(app: &tauri::AppHandle, drive_id: &str) -> PathBuf 
     let mount_dir = base_dir.join("mount").join(drive_id);
     ensure_dir(&mount_dir);
     mount_dir
+}
+
+pub async fn project_vfs_to_disk(
+    state: &crate::commands::AppState,
+    drive_id: &str,
+    mount_root: &Path,
+) -> Result<(), String> {
+    use protofs_core::vfs::VfsNode;
+    let tree = state.engine.get_or_create_tree(drive_id).await;
+    let mut folder_paths = std::collections::HashMap::new();
+    folder_paths.insert("root".to_string(), mount_root.to_path_buf());
+
+    for n in tree.all_nodes() {
+        if let VfsNode::Folder(f) = n
+            && !f.is_trashed
+        {
+            let rel = tree.resolve_relative_path(&f.id);
+            let abs = if rel.is_empty() {
+                mount_root.to_path_buf()
+            } else {
+                mount_root.join(&rel)
+            };
+            ensure_dir(&abs);
+            folder_paths.insert(f.id.clone(), abs);
+        }
+    }
+
+    for n in tree.all_nodes() {
+        if let VfsNode::File(f) = n
+            && !f.is_trashed
+        {
+            let p_dir = folder_paths
+                .get(&f.parent_id)
+                .cloned()
+                .unwrap_or_else(|| mount_root.to_path_buf());
+            let file_path = p_dir.join(&f.name);
+            if !file_path.exists() {
+                let stub = format!(
+                    "ProtoFS Cloud Virtual File\nName: {}\nSize: {} bytes\n",
+                    f.name, f.size_bytes
+                );
+                let _ = std::fs::write(&file_path, stub.as_bytes());
+            }
+        }
+    }
+
+    let readme_path = mount_root.join("ProtoFS_Virtual_Drive_Info.txt");
+    if !readme_path.exists() {
+        let readme = "ProtoFS Virtual Cloud Drive\n===========================\nFiles displayed here stream directly from your Telegram cloud storage.\n";
+        let _ = std::fs::write(&readme_path, readme.as_bytes());
+    }
+    Ok(())
 }
 
 pub fn load_mount_state(app: &tauri::AppHandle) -> PersistedMountState {
@@ -152,7 +204,10 @@ mod tests {
         let json = serde_json::to_string(&state).expect("serialize mount state");
         let deserialized: PersistedMountState =
             serde_json::from_str(&json).expect("deserialize mount state");
-        assert_eq!(deserialized.mounts.get("drive_1"), state.mounts.get("drive_1"));
+        assert_eq!(
+            deserialized.mounts.get("drive_1"),
+            state.mounts.get("drive_1")
+        );
     }
 
     #[test]

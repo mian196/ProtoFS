@@ -12,12 +12,15 @@ use crate::error::Result;
 pub mod auth;
 pub mod channels;
 pub mod dialog_filters;
+pub mod manifest;
 pub mod messages;
+pub mod qr;
 pub mod session;
 pub mod transfers;
 
 pub use auth::*;
 pub use channels::*;
+pub use qr::*;
 pub use session::*;
 pub use transfers::*;
 
@@ -76,7 +79,8 @@ impl TelegramTransport for RealTelegramTransport {
     }
 
     async fn update_pinned_manifest(&self, channel_id: i64, manifest_bytes: &[u8]) -> Result<i32> {
-        self.do_update_pinned_manifest(channel_id, manifest_bytes).await
+        self.do_update_pinned_manifest(channel_id, manifest_bytes)
+            .await
     }
 
     async fn upload_document(
@@ -86,7 +90,8 @@ impl TelegramTransport for RealTelegramTransport {
         caption: &str,
         data: &[u8],
     ) -> Result<TelegramMessage> {
-        self.do_upload_document(channel_id, filename, caption, data).await
+        self.do_upload_document(channel_id, filename, caption, data)
+            .await
     }
 
     async fn download_range(
@@ -96,11 +101,18 @@ impl TelegramTransport for RealTelegramTransport {
         offset: u64,
         limit: u32,
     ) -> Result<Vec<u8>> {
-        self.do_download_range(channel_id, message_id, offset, limit).await
+        self.do_download_range(channel_id, message_id, offset, limit)
+            .await
     }
 
-    async fn edit_caption(&self, channel_id: i64, message_id: i32, new_caption: &str) -> Result<()> {
-        self.do_edit_caption(channel_id, message_id, new_caption).await
+    async fn edit_caption(
+        &self,
+        channel_id: i64,
+        message_id: i32,
+        new_caption: &str,
+    ) -> Result<()> {
+        self.do_edit_caption(channel_id, message_id, new_caption)
+            .await
     }
 
     async fn delete_message(&self, channel_id: i64, message_id: i32) -> Result<()> {
