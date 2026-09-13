@@ -47,13 +47,18 @@ impl From<ExportedSession> for SessionData {
     }
 }
 
+pub mod session;
+pub mod auth;
+pub mod channels;
+pub mod dialog_filters;
+
 #[allow(dead_code)]
 pub struct RealTelegramTransport {
-    client: Client,
-    session: Arc<MemorySession>,
-    api_id: i32,
-    api_hash: String,
-    channel_hashes: Arc<tokio::sync::RwLock<HashMap<i64, i64>>>,
+    pub(crate) client: Client,
+    pub(crate) session: Arc<MemorySession>,
+    pub(crate) api_id: i32,
+    pub(crate) api_hash: String,
+    pub(crate) channel_hashes: Arc<tokio::sync::RwLock<HashMap<i64, i64>>>,
 }
 
 impl RealTelegramTransport {
@@ -752,7 +757,7 @@ fn extract_message_id_from_updates(updates: &tl::enums::Updates) -> Option<i32> 
 }
 
 impl RealTelegramTransport {
-    async fn resolve_channel_peer(&self, raw_channel_id: i64) -> (i64, i64) {
+    pub(crate) async fn resolve_channel_peer(&self, raw_channel_id: i64) -> (i64, i64) {
         let channel_id = normalize_channel_id(raw_channel_id);
         let hash = get_channel_access_hash(
             &self.client,
