@@ -1351,6 +1351,13 @@ impl TelegramTransport for RealTelegramTransport {
     }
 
     async fn sync_chat_folder(&self, folder_title: &str, channel_ids: &[i64]) -> Result<()> {
+        // Telegram API requires folder title to be at most 12 characters
+        let effective_title = if folder_title.is_empty() || folder_title.chars().count() > 12 {
+            "ProtoFS"
+        } else {
+            folder_title
+        };
+
         let req = tl::functions::messages::GetDialogFilters {};
         let filters_res = self.client.invoke(&req).await;
         let filters: Vec<tl::enums::DialogFilter> = match filters_res {
@@ -1361,14 +1368,21 @@ impl TelegramTransport for RealTelegramTransport {
             }
         };
 
-        // Resolve input peers for each channel ID
+        // Resolve input peers for each channel ID with valid access hash
         let mut include_peers: Vec<tl::enums::InputPeer> = Vec::new();
         for &cid in channel_ids {
             let (resolved_id, access_hash) = self.resolve_channel_peer(cid).await;
-            include_peers.push(tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
-                channel_id: resolved_id,
-                access_hash,
-            }));
+            if access_hash != 0 {
+                include_peers.push(tl::enums::InputPeer::Channel(tl::types::InputPeerChannel {
+                    channel_id: resolved_id,
+                    access_hash,
+                }));
+            } else {
+                tracing::warn!(
+                    "Could not resolve access hash for channel {}, skipping from chat folder",
+                    cid
+                );
+            }
         }
 
         // Search for existing folder with same title
@@ -1381,7 +1395,11 @@ impl TelegramTransport for RealTelegramTransport {
                 let title_text = match &filter.title {
                     tl::enums::TextWithEntities::Entities(twe) => &twe.text,
                 };
-                if title_text.eq_ignore_ascii_case(folder_title) {
+                if title_text.eq_ignore_ascii_case(effective_title)
+                    || title_text.eq_ignore_ascii_case("ProtoFS")
+                    || title_text.eq_ignore_ascii_case("ProtoFS-Drive")
+                    || title_text.eq_ignore_ascii_case("ProtoFS-Drives")
+                {
                     existing_folder_id = Some(filter.id);
                     break;
                 }
@@ -1390,7 +1408,11 @@ impl TelegramTransport for RealTelegramTransport {
                 let title_text = match &chatlist.title {
                     tl::enums::TextWithEntities::Entities(twe) => &twe.text,
                 };
-                if title_text.eq_ignore_ascii_case(folder_title) {
+                if title_text.eq_ignore_ascii_case(effective_title)
+                    || title_text.eq_ignore_ascii_case("ProtoFS")
+                    || title_text.eq_ignore_ascii_case("ProtoFS-Drive")
+                    || title_text.eq_ignore_ascii_case("ProtoFS-Drives")
+                {
                     existing_folder_id = Some(chatlist.id);
                     break;
                 }
@@ -1411,7 +1433,7 @@ impl TelegramTransport for RealTelegramTransport {
             title_noanimate: false,
             id: folder_id,
             title: tl::enums::TextWithEntities::Entities(tl::types::TextWithEntities {
-                text: folder_title.to_string(),
+                text: effective_title.to_string(),
                 entities: Vec::new(),
             }),
             emoticon: Some("💾".to_string()),
@@ -1429,13 +1451,13 @@ impl TelegramTransport for RealTelegramTransport {
         if let Err(e) = self.client.invoke(&update_req).await {
             tracing::warn!(
                 "Failed to update Telegram chat folder '{}': {}",
-                folder_title,
+                effective_title,
                 e
             );
         } else {
             tracing::info!(
                 "Successfully synchronized Telegram chat folder '{}' (id: {}) with {} channel(s)",
-                folder_title,
+                effective_title,
                 folder_id,
                 channel_ids.len()
             );

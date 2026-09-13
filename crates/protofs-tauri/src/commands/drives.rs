@@ -59,10 +59,7 @@ pub async fn trigger_chat_folder_sync(state: &AppState) {
     drop(drives);
 
     if !channel_ids.is_empty() {
-        let _ = state
-            .engine
-            .sync_chat_folder("ProtoFS-Drives", &channel_ids)
-            .await;
+        let _ = state.engine.sync_chat_folder("ProtoFS", &channel_ids).await;
     }
 }
 
