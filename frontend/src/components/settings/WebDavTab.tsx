@@ -5,12 +5,14 @@ import {
   Copy,
   Check,
   Power,
+  FolderOpen,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Badge } from '../ui/Badge';
 import { useNativeStore } from '../../stores/useNativeStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
+import { api } from '../../api';
 import { toast } from 'sonner';
 
 export const WebDavTab: React.FC = () => {
@@ -62,13 +64,13 @@ export const WebDavTab: React.FC = () => {
       const driveId = virtualDrive?.drive_id || 'personal';
       if (virtualDrive?.is_mounted) {
         await unmountVirtualDrive(driveId);
-        toast.info('Virtual Drive Unmounted', {
-          description: `Drive ${virtualDrive.drive_letter}: successfully disconnected.`,
+        toast.info('WebDAV Drive Unmounted', {
+          description: `Drive ${virtualDrive.drive_letter || preferredDriveLetter}: successfully disconnected.`,
         });
       } else {
         await mountVirtualDrive(driveId, preferredDriveLetter, fastStreamingPlayback);
-        toast.success('Virtual Drive Mounted', {
-          description: `Mapped to ${preferredDriveLetter}:\\ via native zero-install WebDAV.`,
+        toast.success('WebDAV Drive Connected', {
+          description: `Drive ${preferredDriveLetter}: ready in File Explorer.`,
         });
       }
     } catch (err: unknown) {
@@ -98,7 +100,7 @@ export const WebDavTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* 1. Live WebDAV Server Status Card (D-33) */}
+      {/* 1. Live WebDAV Server Status Card (D-33, D-04) */}
       <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -108,9 +110,13 @@ export const WebDavTab: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h4 className="text-base font-semibold text-slate-900 dark:text-slate-100 leading-tight">
-                  WebDAV Server Status
+                  WebDAV Drive
                 </h4>
-                {webdavServer?.is_running ? (
+                {webdavServer?.is_running && virtualDrive?.is_mounted ? (
+                  <Badge variant="emerald" size="sm">
+                    Connected ({virtualDrive.drive_letter || preferredDriveLetter}:)
+                  </Badge>
+                ) : webdavServer?.is_running ? (
                   <Badge variant="emerald" size="sm">
                     Running on Port {port}
                   </Badge>
@@ -126,19 +132,32 @@ export const WebDavTab: React.FC = () => {
             </div>
           </div>
 
-          <Button
-            variant={virtualDrive?.is_mounted ? 'danger' : 'primary'}
-            size="sm"
-            onClick={handleToggleMount}
-            disabled={isMounting}
-            icon={virtualDrive?.is_mounted ? <Power className="w-4 h-4" /> : <HardDrive className="w-4 h-4" />}
-          >
-            {isMounting
-              ? 'Working...'
-              : virtualDrive?.is_mounted
-              ? `Unmount Drive (${virtualDrive.drive_letter}:)`
-              : 'Mount WebDAV Drive'}
-          </Button>
+          <div className="flex items-center gap-2">
+            {virtualDrive?.is_mounted && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<FolderOpen className="w-4 h-4 text-sky-500" />}
+                onClick={() => api.openVirtualDriveInExplorer(virtualDrive.drive_letter || preferredDriveLetter)}
+                title={`Reveal ${virtualDrive.drive_letter || preferredDriveLetter}:\\ in File Explorer`}
+              >
+                Reveal in File Explorer
+              </Button>
+            )}
+            <Button
+              variant={virtualDrive?.is_mounted ? 'danger' : 'primary'}
+              size="sm"
+              onClick={handleToggleMount}
+              disabled={isMounting}
+              icon={virtualDrive?.is_mounted ? <Power className="w-4 h-4" /> : <HardDrive className="w-4 h-4" />}
+            >
+              {isMounting
+                ? 'Working...'
+                : virtualDrive?.is_mounted
+                ? `Unmount Drive (${virtualDrive.drive_letter || preferredDriveLetter}:)`
+                : 'Mount WebDAV Drive'}
+            </Button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/60">
