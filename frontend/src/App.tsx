@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { TacticalSidebar } from './components/layout/TacticalSidebar';
-import { FluidHeader } from './components/layout/FluidHeader';
+import { Sidebar } from './components/layout/Sidebar';
+import { Header } from './components/layout/Header';
 import { MobileTopBar } from './components/layout/MobileTopBar';
 import { MobileTabBar } from './components/layout/MobileTabBar';
 import { FileGrid } from './components/explorer/FileGrid';
@@ -9,7 +9,7 @@ import { EmptyFolderState } from './components/explorer/EmptyFolderState';
 import { DropZoneOverlay } from './components/explorer/DropZoneOverlay';
 import { CustomContextMenu } from './components/explorer/CustomContextMenu';
 import { DisasterRecoveryBanner } from './components/explorer/DisasterRecoveryBanner';
-import { FloatingTransferHUD } from './components/telemetry/FloatingTransferHUD';
+import { TransferQueue } from './components/transfers/TransferQueue';
 import { AppModals } from './components/modals/AppModals';
 
 import { useAuthStore } from './stores/useAuthStore';
@@ -169,11 +169,11 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200 select-none">
-      <TacticalSidebar />
+      <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden">
         <MobileTopBar onSearchToggle={() => {}} />
-        <FluidHeader onUploadClick={() => fileInputRef.current?.click()} />
+        <Header onUploadClick={() => fileInputRef.current?.click()} />
 
         <input
           type="file"
@@ -235,7 +235,7 @@ export const App: React.FC = () => {
         onDelete={handleDeleteNode}
       />
 
-      <FloatingTransferHUD />
+      <TransferQueue />
 
       <AppModals
         onDownloadFile={handleDownloadFile}

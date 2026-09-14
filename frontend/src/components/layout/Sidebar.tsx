@@ -22,7 +22,7 @@ import { useVfsStore, type FilterType } from '../../stores/useVfsStore';
 import { useNativeStore } from '../../stores/useNativeStore';
 import { useModalStore } from '../../stores/useModalStore';
 
-export const TacticalSidebar: React.FC = () => {
+export const Sidebar: React.FC = () => {
   const { session, connectionStatus, checkConnection } = useAuthStore();
   const { drives, activeDrive, setActiveDrive, driveAccessibility } = useDriveStore();
   const { filterType, setFilterType } = useVfsStore();
@@ -264,5 +264,3 @@ export const TacticalSidebar: React.FC = () => {
     </aside>
   );
 };
-
-

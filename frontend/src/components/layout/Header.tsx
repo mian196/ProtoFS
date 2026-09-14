@@ -17,11 +17,11 @@ import { useThemeStore } from '../../stores/useThemeStore';
 import { useModalStore } from '../../stores/useModalStore';
 import { useDriveStore } from '../../stores/useDriveStore';
 
-interface FluidHeaderProps {
+export interface HeaderProps {
   onUploadClick: () => void;
 }
 
-export const FluidHeader: React.FC<FluidHeaderProps> = ({ onUploadClick }) => {
+export const Header: React.FC<HeaderProps> = ({ onUploadClick }) => {
   const { viewMode, setViewMode, searchQuery, setSearchQuery, performSearch, clearSearch } =
     useVfsStore();
   const { theme, toggleTheme } = useThemeStore();
@@ -137,4 +137,3 @@ export const FluidHeader: React.FC<FluidHeaderProps> = ({ onUploadClick }) => {
     </header>
   );
 };
-
