@@ -27,7 +27,6 @@ export const EmptyFolderState: React.FC<EmptyFolderStateProps> = ({ onUploadClic
           size="sm"
           onClick={onUploadClick}
           icon={<Upload className="w-4 h-4" />}
-          trailingIcon={<Upload className="w-3 h-3" />}
         >
           Upload Files
         </Button>
@@ -43,7 +42,7 @@ export const EmptyFolderState: React.FC<EmptyFolderStateProps> = ({ onUploadClic
 
       <div className="flex items-center gap-1.5 mt-8 text-[11px] text-emerald-400/80 font-mono">
         <ShieldCheck className="w-3.5 h-3.5" />
-        <span>Zero-Knowledge Encryption Active</span>
+        <span>End-to-End Encrypted</span>
       </div>
     </div>
   );

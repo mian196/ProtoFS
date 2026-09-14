@@ -107,7 +107,7 @@ export const CustomContextMenu: React.FC<ContextMenuProps> = ({
               className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs text-slate-200 hover:text-white hover:bg-white/10 transition-colors"
             >
               <Download className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Download Decrypted</span>
+              <span>Download</span>
             </button>
 
             <button
@@ -118,7 +118,7 @@ export const CustomContextMenu: React.FC<ContextMenuProps> = ({
               className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs text-slate-200 hover:text-white hover:bg-white/10 transition-colors"
             >
               <Share2 className="w-3.5 h-3.5 text-blue-400" />
-              <span>Zero-Knowledge Share</span>
+              <span>Share Link</span>
             </button>
 
             <button

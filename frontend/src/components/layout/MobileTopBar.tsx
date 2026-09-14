@@ -1,5 +1,5 @@
 import React from 'react';
-import { HardDrive, Settings, Search, Plus } from 'lucide-react';
+import { HardDrive, Settings, Search, Plus, Shield } from 'lucide-react';
 import { useDriveStore } from '../../stores/useDriveStore';
 import { useModalStore } from '../../stores/useModalStore';
 
@@ -21,7 +21,10 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({ onSearchToggle }) =>
           <h1 className="text-xs font-bold text-white truncate max-w-[150px]">
             {activeDrive?.name || 'ProtoFS Drive'}
           </h1>
-          <p className="text-[10px] text-slate-400 font-mono">Zero-Knowledge</p>
+          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono">
+            <Shield className="w-3 h-3 text-sky-400" />
+            <span>Encrypted</span>
+          </div>
         </div>
       </div>
 

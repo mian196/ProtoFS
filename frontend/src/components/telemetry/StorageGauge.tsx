@@ -41,7 +41,7 @@ export const StorageGauge: React.FC<StorageGaugeProps> = ({
 
       <div className="flex items-center gap-1.5 pt-1 text-[10px] text-slate-400 border-t border-white/5">
         <Shield className="w-3 h-3 text-sky-400" />
-        <span>Telegram MTProto Zero-Knowledge VFS</span>
+        <span>Encrypted Cloud Storage</span>
       </div>
     </div>
   );
