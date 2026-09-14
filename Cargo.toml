@@ -48,3 +48,9 @@ grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers.git", rev = "5
 
 # Internal workspace crates
 protofs-core = { path = "crates/protofs-core" }
+
+[profile.test.package.argon2]
+opt-level = 3
+
+[profile.test.package.blake2]
+opt-level = 3

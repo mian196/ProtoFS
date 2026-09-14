@@ -105,6 +105,16 @@ pub fn run() {
                 });
             }
 
+            // Attempt auto-unlock if "vault_auto_unlock" secret exists (Windows DPAPI / machine-bound)
+            if let Ok(Some(secret_bytes)) = app_state.cache.get_secure_secret("vault_auto_unlock") {
+                if secret_bytes.len() == 32 {
+                    let mut key = [0u8; 32];
+                    key.copy_from_slice(&secret_bytes);
+                    *app_state.master_key.blocking_write() = Some(key);
+                    tracing::info!("Security vault auto-unlocked successfully via secure storage");
+                }
+            }
+
             app.manage(app_state);
             Ok(())
         })
@@ -191,6 +201,12 @@ pub fn run() {
             commands::cancel_transfer_command,
             commands::pause_transfer_command,
             commands::resume_transfer_command,
+            commands::get_vault_status_command,
+            commands::unlock_vault_command,
+            commands::lock_vault_command,
+            commands::set_vault_passphrase_command,
+            commands::get_recovery_phrase_command,
+            commands::recover_vault_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs application");
