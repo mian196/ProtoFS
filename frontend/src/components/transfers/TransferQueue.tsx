@@ -6,7 +6,7 @@ import { ProgressBar } from '../ui/ProgressBar';
 import { formatBytes } from '../../api/mock';
 import { api } from '../../api';
 
-export const FloatingTransferHUD: React.FC = () => {
+export const TransferQueue: React.FC = () => {
   const {
     transfers,
     isOpen,
@@ -58,7 +58,7 @@ export const FloatingTransferHUD: React.FC = () => {
   return (
     <div className="fixed bottom-4 right-4 z-40 w-80 sm:w-96 rounded-3xl p-1.5 bg-white/[0.04] border border-white/10 backdrop-blur-2xl shadow-2xl transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] animate-in fade-in slide-in-from-bottom-3">
       <div className="rounded-[calc(1.5rem-0.375rem)] bg-slate-900/95 border border-white/[0.05] overflow-hidden shadow-inner">
-        {/* HUD Header */}
+        {/* Transfer Queue Header */}
         <div
           onClick={toggleOpen}
           className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors border-b border-white/5 select-none"
@@ -96,7 +96,7 @@ export const FloatingTransferHUD: React.FC = () => {
                   e.stopPropagation();
                   clearCompleted();
                 }}
-                title="Clear completed"
+                title="Clear completed transfers"
                 className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -107,7 +107,7 @@ export const FloatingTransferHUD: React.FC = () => {
                 e.stopPropagation();
                 toggleOpen();
               }}
-              title={isOpen ? 'Collapse' : 'Expand'}
+              title={isOpen ? 'Collapse transfer queue' : 'Expand transfer queue'}
               className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
             >
               {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
@@ -117,7 +117,7 @@ export const FloatingTransferHUD: React.FC = () => {
                 e.stopPropagation();
                 setIsOpen(false);
               }}
-              title="Close HUD"
+              title="Close transfer queue"
               className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
             >
               <X className="w-3.5 h-3.5" />
@@ -132,7 +132,7 @@ export const FloatingTransferHUD: React.FC = () => {
           </div>
         )}
 
-        {/* HUD Content Drawer */}
+        {/* Transfer Queue Drawer */}
         {isOpen && (
           <div className="max-h-72 overflow-y-auto p-3 space-y-2 divide-y divide-white/5 no-scrollbar">
             {transfers.map((item) => (

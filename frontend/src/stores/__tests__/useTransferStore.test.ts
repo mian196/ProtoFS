@@ -11,7 +11,7 @@ describe('useTransferStore telemetry & queue management', () => {
     });
   });
 
-  test('addTransfer sets item in store and opens transfer HUD', () => {
+  test('addTransfer sets item in store and opens transfer queue', () => {
     const item: TransferItem = {
       id: 'tx_1',
       name: 'archive.tar.gz',
