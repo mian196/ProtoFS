@@ -36,6 +36,7 @@ export interface ModalPayload {
   targetParentId?: string;
   defaultTab?: SettingsTabId;
   onSuccess?: () => void;
+  recoveryMode?: boolean;
 }
 
 interface ModalState {

@@ -106,13 +106,13 @@ pub fn run() {
             }
 
             // Attempt auto-unlock if "vault_auto_unlock" secret exists (Windows DPAPI / machine-bound)
-            if let Ok(Some(secret_bytes)) = app_state.cache.get_secure_secret("vault_auto_unlock") {
-                if secret_bytes.len() == 32 {
-                    let mut key = [0u8; 32];
-                    key.copy_from_slice(&secret_bytes);
-                    *app_state.master_key.blocking_write() = Some(key);
-                    tracing::info!("Security vault auto-unlocked successfully via secure storage");
-                }
+            if let Ok(Some(secret_bytes)) = app_state.cache.get_secure_secret("vault_auto_unlock")
+                && secret_bytes.len() == 32
+            {
+                let mut key = [0u8; 32];
+                key.copy_from_slice(&secret_bytes);
+                *app_state.master_key.blocking_write() = Some(key);
+                tracing::info!("Security vault auto-unlocked successfully via secure storage");
             }
 
             app.manage(app_state);

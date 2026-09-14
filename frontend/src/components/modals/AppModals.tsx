@@ -12,6 +12,11 @@ import { P2pTransferModal } from './P2pTransferModal';
 import { SettingsModal } from './SettingsModal';
 import { MediaPreviewModal } from '../preview/MediaPreviewModal';
 import { ConflictModal } from './ConflictModal';
+import { VaultUnlockModal } from '../settings/modals/VaultUnlockModal';
+import { RecoveryPhraseModal } from '../settings/modals/RecoveryPhraseModal';
+import { ClearCacheConfirmModal } from '../settings/modals/ClearCacheConfirmModal';
+import { ExportBackupModal } from '../settings/modals/ExportBackupModal';
+import { ImportBackupModal } from '../settings/modals/ImportBackupModal';
 import { useModalStore } from '../../stores/useModalStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import type { ConflictState } from '../../hooks/useUploadManager';
@@ -69,6 +74,31 @@ export const AppModals: React.FC<AppModalsProps> = ({
         onClose={closeModal}
         file={payload.previewFile || null}
         onDownload={onDownloadFile}
+      />
+      <VaultUnlockModal
+        isOpen={activeModal === 'vaultUnlock'}
+        onClose={closeModal}
+        onSuccess={payload.onSuccess}
+      />
+      <RecoveryPhraseModal
+        isOpen={activeModal === 'recoveryPhrase'}
+        onClose={closeModal}
+        initialMode={payload.recoveryMode ? 'recover' : 'export'}
+        onSuccess={payload.onSuccess}
+      />
+      <ClearCacheConfirmModal
+        isOpen={activeModal === 'clearCacheConfirm'}
+        onClose={closeModal}
+        onConfirm={payload.onSuccess}
+        driveId={payload.targetDriveId}
+      />
+      <ExportBackupModal
+        isOpen={activeModal === 'exportBackup'}
+        onClose={closeModal}
+      />
+      <ImportBackupModal
+        isOpen={activeModal === 'importBackup'}
+        onClose={closeModal}
       />
       {conflictState && (
         <ConflictModal
