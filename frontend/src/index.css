@@ -74,17 +74,6 @@
   }
 }
 
-/* Fluid Island Navigation Bar */
-.fluid-island {
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--border);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
-}
-
-.dark .fluid-island {
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-}
-
 /* Custom spring easing transitions */
 .spring-transition {
   transition-property: all;
