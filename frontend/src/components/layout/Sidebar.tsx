@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   HardDrive,
   FolderSync,
@@ -12,9 +12,11 @@ import {
   Pin,
   Trash2,
   Plus,
-  Power,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { api } from '../../api';
 import { StorageGauge } from '../telemetry/StorageGauge';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useDriveStore } from '../../stores/useDriveStore';
@@ -28,13 +30,45 @@ export const Sidebar: React.FC = () => {
   const { filterType, setFilterType } = useVfsStore();
   const { virtualDrive, mountVirtualDrive, unmountVirtualDrive } = useNativeStore();
   const { openModal } = useModalStore();
+  const [isMounting, setIsMounting] = useState(false);
 
-  const handleDriveMountToggle = async () => {
-    if (!activeDrive) return;
+  const handleWebDavRowClick = async () => {
     if (virtualDrive?.is_mounted) {
-      await unmountVirtualDrive(activeDrive.id);
+      await api.openVirtualDriveInExplorer(virtualDrive.drive_letter || 'P');
     } else {
-      await mountVirtualDrive(activeDrive.id, 'X');
+      openModal('settings', { defaultTab: 'webdav' });
+    }
+  };
+
+  const handlePillClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!activeDrive) return;
+
+    setIsMounting(true);
+    try {
+      if (virtualDrive?.is_mounted) {
+        await unmountVirtualDrive(activeDrive.id);
+        toast.info('WebDAV Drive Unmounted', {
+          description: `Drive ${virtualDrive.drive_letter || 'P'}: successfully disconnected.`,
+        });
+      } else {
+        const preferred = localStorage.getItem('protofs_mount_letter_personal') || 'P';
+        await mountVirtualDrive(activeDrive.id, preferred);
+        toast.success('WebDAV Drive Connected', {
+          description: `Drive ${preferred}: ready in File Explorer.`,
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error('WebDAV Mount Failed', {
+        description: msg,
+        action: {
+          label: 'Open WebDAV Settings',
+          onClick: () => openModal('settings', { defaultTab: 'webdav' }),
+        },
+      });
+    } finally {
+      setIsMounting(false);
     }
   };
 
@@ -103,35 +137,65 @@ export const Sidebar: React.FC = () => {
           </select>
         </div>
 
-        {/* WinFsp Native Virtual Drive Mount */}
-        <div className="p-2.5 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Power
-              className={`w-4 h-4 ${
-                virtualDrive?.is_mounted ? 'text-emerald-500 animate-pulse' : 'text-slate-400'
-              }`}
-            />
-            <div>
-              <p className="text-xs font-medium text-slate-900 dark:text-slate-200">
-                {virtualDrive?.is_mounted
-                  ? `Virtual Drive (${virtualDrive.drive_letter}:)`
-                  : 'Mount Virtual Drive'}
+        {/* WebDAV Drive Mount & Status (UX-01, D-01, D-02, D-03) */}
+        <div
+          onClick={handleWebDavRowClick}
+          title={
+            virtualDrive?.is_mounted
+              ? `Open ${virtualDrive.drive_letter || 'P'}:\\ in File Explorer`
+              : 'Configure WebDAV Drive'
+          }
+          className="p-2.5 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between cursor-pointer hover:border-sky-500/50 transition-all group"
+        >
+          <div className="flex items-center gap-2 min-w-0 pr-2">
+            <div className="w-7 h-7 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 shrink-0 group-hover:text-sky-500 transition-colors">
+              <HardDrive className="w-3.5 h-3.5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-900 dark:text-slate-200 leading-tight truncate">
+                WebDAV Drive
               </p>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                {virtualDrive?.is_mounted ? (virtualDrive.driver_mode || 'WebDAV Network Drive') : 'Cross-Platform WebDAV'}
-              </p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                {virtualDrive?.is_mounted ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal font-mono truncate">
+                      {virtualDrive.drive_letter || 'P'}: • Connected
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-600 shrink-0" />
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal font-mono truncate">
+                      Disconnected
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
           <button
-            onClick={handleDriveMountToggle}
-            className={`px-2.5 py-1 rounded-full text-[11px] font-mono font-medium transition-colors ${
-              virtualDrive?.is_mounted
-                ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+            onClick={handlePillClick}
+            disabled={isMounting}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-mono font-medium transition-colors shrink-0 ${
+              isMounting
+                ? 'opacity-70 cursor-wait flex items-center gap-1 bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700'
+                : virtualDrive?.is_mounted
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                : 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30 hover:bg-sky-500/20'
             }`}
           >
-            {virtualDrive?.is_mounted ? 'Unmount' : 'Mount'}
+            {isMounting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>{virtualDrive?.is_mounted ? 'Disconnecting...' : 'Connecting...'}</span>
+              </>
+            ) : virtualDrive?.is_mounted ? (
+              'Unmount'
+            ) : (
+              'Mount'
+            )}
           </button>
         </div>
 
