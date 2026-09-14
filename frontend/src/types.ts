@@ -3,6 +3,8 @@ export interface DriveMetadata {
   name: string;
   channel_id: number;
   pinned_manifest_msg_id?: number;
+  total_files?: number;
+  total_bytes?: number;
   created_at: string;
   updated_at: string;
 }

@@ -20,12 +20,15 @@ import { useNativeStore } from './stores/useNativeStore';
 import { useModalStore } from './stores/useModalStore';
 import { useTransferListener } from './hooks/useTransferListener';
 import { useUploadManager } from './hooks/useUploadManager';
+import { useThemeStore } from './stores/useThemeStore';
 import { api } from './api';
 import { isTauri } from './api/client';
 import type { FileNode, FolderNode, VfsNode } from './types';
 import { Loader2 } from 'lucide-react';
+import { Toaster } from 'sonner';
 
 export const App: React.FC = () => {
+  const { theme } = useThemeStore();
   useTransferListener();
   const { session, initSession } = useAuthStore();
   const { activeDrive, isDriveAccessible, loadDrives } = useDriveStore();
@@ -237,6 +240,14 @@ export const App: React.FC = () => {
       <AppModals
         onDownloadFile={handleDownloadFile}
         conflictState={conflictState}
+      />
+
+      <Toaster
+        position="top-right"
+        richColors
+        theme={theme === 'system' ? 'system' : theme}
+        closeButton
+        duration={4000}
       />
     </div>
   );

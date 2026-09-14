@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import type { FileNode, FolderNode } from '../types';
 
+export type SettingsTabId =
+  | 'general'
+  | 'drives'
+  | 'sync'
+  | 'security'
+  | 'webdav'
+  | 'advanced';
+
 export type ModalType =
   | 'auth'
   | 'accountManager'
@@ -14,6 +22,11 @@ export type ModalType =
   | 'p2pTransfer'
   | 'settings'
   | 'preview'
+  | 'vaultUnlock'
+  | 'recoveryPhrase'
+  | 'clearCacheConfirm'
+  | 'exportBackup'
+  | 'importBackup'
   | null;
 
 export interface ModalPayload {
@@ -21,6 +34,8 @@ export interface ModalPayload {
   previewFile?: FileNode;
   targetDriveId?: string;
   targetParentId?: string;
+  defaultTab?: SettingsTabId;
+  onSuccess?: () => void;
 }
 
 interface ModalState {
