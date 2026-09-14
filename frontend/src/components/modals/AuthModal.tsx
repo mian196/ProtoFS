@@ -183,7 +183,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       isOpen={isOpen}
       onClose={onClose}
       title="Telegram MTProto Authentication"
-      subtitle="Connect your account to access zero-knowledge encrypted channels"
+      subtitle="Connect your account to access client-side encrypted cloud drives"
       maxWidth="md"
     >
       {/* 2FA Form */}

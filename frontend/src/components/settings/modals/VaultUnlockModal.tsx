@@ -48,7 +48,7 @@ export const VaultUnlockModal: React.FC<VaultUnlockModalProps> = ({ isOpen, onCl
       isOpen={isOpen}
       onClose={onClose}
       title="Unlock Security Vault"
-      subtitle="Enter your master passphrase to unlock zero-knowledge encryption keys"
+      subtitle="Enter your master passphrase to unlock master encryption keys"
       maxWidth="md"
     >
       <form onSubmit={handleUnlock} className="space-y-4 pt-2">

@@ -124,7 +124,7 @@ export const AccountManagerModal: React.FC<AccountManagerModalProps> = ({ isOpen
                 </p>
                 <p className="text-[10px] opacity-80 font-mono">
                   {isOnline
-                    ? 'MTProto transport active • Zero-Knowledge Channel Sync Ready'
+                    ? 'MTProto transport active • Encrypted Channel Sync Ready'
                     : 'Telegram is blocked in your region/ISP. Please enable a VPN or Proxy.'}
                 </p>
               </div>

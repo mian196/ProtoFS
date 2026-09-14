@@ -48,7 +48,7 @@ export const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
           setLoading(false);
         } else if (file.type === 'doc') {
           setTextContent(
-            `// ProtoFS Zero-Knowledge Stream Preview\n// File: ${file.name}\n// Hash: ${file.sha256_hash || 'SHA256-VERIFIED'}\n// Size: ${file.size}\n\n[End-to-End Encrypted Document. Click Download below to save and open locally.]`
+            `// ProtoFS Encrypted Stream\n// File: ${file.name}\n// Hash: ${file.sha256_hash || 'SHA256-VERIFIED'}\n// Size: ${file.size}\n\n[End-to-End Encrypted Document. Click Download below to save and open locally.]`
           );
           setLoading(false);
         } else {

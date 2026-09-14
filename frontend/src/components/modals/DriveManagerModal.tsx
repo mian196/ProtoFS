@@ -110,7 +110,7 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
       isOpen={isOpen}
       onClose={onClose}
       title="Drive & Channel Manager"
-      subtitle="Mount MTProto broadcast channels as Zero-Knowledge virtual drives"
+      subtitle="Connect private Telegram channels as encrypted cloud drives"
       maxWidth="md"
     >
       <div className="space-y-4">
@@ -293,7 +293,7 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
               <div className="p-3 rounded-xl bg-sky-500/5 border border-sky-500/15 flex items-start gap-2.5 text-[11px] text-sky-200">
                 <ShieldCheck className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
                 <span>
-                  ProtoFS will securely create a dedicated private channel via MTProto with Zero-Knowledge encryption headers.
+                  ProtoFS will securely create a dedicated private channel via MTProto with end-to-end encryption headers.
                 </span>
               </div>
             ) : (

@@ -231,7 +231,7 @@ export class MockStorageApi {
       telegram_message_link: `https://t.me/c/${strippedCid}/${msgId}`,
       telegram_web_link: `https://web.telegram.org/a/#-${cleanCid}_${msgId}`,
       protofs_app_link: protofsUrl,
-      zero_knowledge_note: file.encrypted ? 'Zero-Knowledge Protection' : 'Public Telegram Link',
+      zero_knowledge_note: file.encrypted ? 'End-to-End Encrypted' : 'Public Telegram Link',
     };
   }
 

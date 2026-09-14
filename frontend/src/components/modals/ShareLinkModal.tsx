@@ -49,8 +49,8 @@ export const ShareLinkModal: React.FC<ShareLinkModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Zero-Knowledge Share Link"
-      subtitle="Generates end-to-end decryptable links anchored by Telegram MTProto channel messages"
+      title="Share Link"
+      subtitle="Generate end-to-end encrypted links anchored to Telegram storage"
       maxWidth="md"
     >
       {loading ? (

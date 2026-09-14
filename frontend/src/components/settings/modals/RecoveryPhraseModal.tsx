@@ -122,7 +122,7 @@ export const RecoveryPhraseModal: React.FC<RecoveryPhraseModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title={mode === 'export' ? 'Emergency Recovery Phrase (BIP-39)' : 'Recover Vault from Phrase'}
-      subtitle={mode === 'export' ? '24-word recovery phrase provides full zero-knowledge disaster restoration' : 'Enter 24-word phrase to regain access and set a new passphrase'}
+      subtitle={mode === 'export' ? '24-word recovery phrase provides full emergency disaster recovery' : 'Enter 24-word phrase to regain access and set a new passphrase'}
       maxWidth="md"
     >
       {mode === 'export' ? (
