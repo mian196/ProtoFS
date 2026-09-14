@@ -1,6 +1,6 @@
 use protofs_core::crypto::bip39::{entropy_to_mnemonic, mnemonic_to_entropy};
 use protofs_core::crypto::envelope::{
-    generate_root_master_key, unwrap_master_key, wrap_master_key, VaultEnvelope,
+    VaultEnvelope, generate_root_master_key, unwrap_master_key, wrap_master_key,
 };
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
@@ -100,9 +100,7 @@ pub async fn unlock_vault_command(
 }
 
 #[tauri::command]
-pub async fn lock_vault_command(
-    app: tauri::AppHandle,
-) -> Result<CommandResponse<()>, String> {
+pub async fn lock_vault_command(app: tauri::AppHandle) -> Result<CommandResponse<()>, String> {
     let state = app.state::<AppState>();
     let mut key_guard = state.master_key.write().await;
     if let Some(ref mut k) = *key_guard {
@@ -128,8 +126,8 @@ pub async fn set_vault_passphrase_command(
             .map_err(|e| e.to_string())?;
 
         if let Some(bytes) = existing {
-            let env: VaultEnvelope = serde_json::from_slice(&bytes)
-                .map_err(|e| format!("Corrupt envelope: {}", e))?;
+            let env: VaultEnvelope =
+                serde_json::from_slice(&bytes).map_err(|e| format!("Corrupt envelope: {}", e))?;
             let pass = current_passphrase.ok_or_else(|| {
                 "Current passphrase required to change vault settings.".to_string()
             })?;
@@ -140,10 +138,8 @@ pub async fn set_vault_passphrase_command(
         }
     };
 
-    let new_envelope = wrap_master_key(&root_key, &new_passphrase)
-        .map_err(|e| e.to_string())?;
-    let json_bytes = serde_json::to_vec(&new_envelope)
-        .map_err(|e| e.to_string())?;
+    let new_envelope = wrap_master_key(&root_key, &new_passphrase).map_err(|e| e.to_string())?;
+    let json_bytes = serde_json::to_vec(&new_envelope).map_err(|e| e.to_string())?;
 
     state
         .cache
@@ -179,14 +175,13 @@ pub async fn get_recovery_phrase_command(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Security vault is not configured.".to_string())?;
 
-    let envelope: VaultEnvelope = serde_json::from_slice(&envelope_bytes)
-        .map_err(|e| format!("Corrupt envelope: {}", e))?;
+    let envelope: VaultEnvelope =
+        serde_json::from_slice(&envelope_bytes).map_err(|e| format!("Corrupt envelope: {}", e))?;
 
     let root_key = unwrap_master_key(&envelope, &current_passphrase)
         .map_err(|_| "Current passphrase incorrect.".to_string())?;
 
-    let phrase = entropy_to_mnemonic(&root_key)
-        .map_err(|e| e.to_string())?;
+    let phrase = entropy_to_mnemonic(&root_key).map_err(|e| e.to_string())?;
 
     Ok(CommandResponse::ok(phrase))
 }
@@ -202,11 +197,10 @@ pub async fn recover_vault_command(
     let restored_root_key = mnemonic_to_entropy(&mnemonic)
         .map_err(|e| format!("Recovery phrase validation failed: {}", e))?;
 
-    let new_envelope = wrap_master_key(&restored_root_key, &new_passphrase)
-        .map_err(|e| e.to_string())?;
+    let new_envelope =
+        wrap_master_key(&restored_root_key, &new_passphrase).map_err(|e| e.to_string())?;
 
-    let json_bytes = serde_json::to_vec(&new_envelope)
-        .map_err(|e| e.to_string())?;
+    let json_bytes = serde_json::to_vec(&new_envelope).map_err(|e| e.to_string())?;
 
     state
         .cache

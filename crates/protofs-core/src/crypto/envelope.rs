@@ -5,7 +5,7 @@ use ring::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::crypto::kdf::{derive_key, generate_salt, KEY_LEN, SALT_LEN};
+use crate::crypto::kdf::{KEY_LEN, SALT_LEN, derive_key, generate_salt};
 use crate::error::{ProtoFsError, Result};
 
 pub const NONCE_LEN: usize = 12;
