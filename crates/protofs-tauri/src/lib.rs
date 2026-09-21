@@ -117,6 +117,34 @@ pub fn run() {
                 tracing::info!("Security vault auto-unlocked successfully via secure storage");
             }
 
+            // Initialize active proxy if enabled (D-15)
+            if app_state.cache.is_proxy_enabled().unwrap_or(false)
+                && let Ok(Some(active_proxy)) = app_state.cache.get_active_proxy()
+            {
+                match active_proxy.to_proxy_config() {
+                    Ok(cfg) => {
+                        let t_clone = app_state.transport.clone();
+                        let a_clone = app_state.auth_client.clone();
+                        let label = active_proxy.label.clone();
+                        let host = active_proxy.host.clone();
+                        let port = active_proxy.port;
+                        tauri::async_runtime::spawn(async move {
+                            t_clone.set_proxy(Some(cfg.clone())).await;
+                            a_clone.set_proxy(Some(cfg)).await;
+                            tracing::info!(
+                                "Startup active proxy initialized from cache: {} ({}:{})",
+                                label,
+                                host,
+                                port
+                            );
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse active proxy on startup: {}", e);
+                    }
+                }
+            }
+
             app.manage(app_state);
             Ok(())
         })
@@ -209,6 +237,14 @@ pub fn run() {
             commands::set_vault_passphrase_command,
             commands::get_recovery_phrase_command,
             commands::recover_vault_command,
+            commands::test_proxy_connection_command,
+            commands::get_proxies_command,
+            commands::get_proxy_command,
+            commands::save_proxy_command,
+            commands::delete_proxy_command,
+            commands::set_active_proxy_command,
+            commands::toggle_proxy_enabled_command,
+            commands::get_proxy_status_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running protofs application");

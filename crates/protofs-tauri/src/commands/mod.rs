@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod drives;
 pub mod native;
+pub mod proxy;
 pub mod settings;
 pub mod sharing;
 pub mod sync;
@@ -13,6 +14,7 @@ pub mod vfs;
 pub use auth::*;
 pub use drives::*;
 pub use native::*;
+pub use proxy::*;
 pub use settings::*;
 pub use sharing::*;
 pub use sync::*;

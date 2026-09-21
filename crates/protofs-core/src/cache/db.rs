@@ -35,7 +35,7 @@ pub struct CacheDatabase {
 }
 
 impl CacheDatabase {
-    fn lock_conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
+    pub(crate) fn lock_conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
         self.conn.lock().map_err(|_| {
             crate::error::ProtoFsError::Vfs("Cache database lock poisoned".to_string())
         })
@@ -123,6 +123,23 @@ impl CacheDatabase {
                 key TEXT PRIMARY KEY,
                 encrypted_value BLOB NOT NULL,
                 updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS proxies (
+                id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                proxy_type TEXT NOT NULL,
+                host TEXT NOT NULL,
+                port INTEGER NOT NULL,
+                username TEXT,
+                is_active INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS proxy_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             );
 
             -- FTS5 Full-Text Search Virtual Table
