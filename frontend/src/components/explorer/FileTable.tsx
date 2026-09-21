@@ -45,4 +45,3 @@ export const FileTable: React.FC<FileTableProps> = ({
     </div>
   );
 };
-

@@ -300,6 +300,7 @@ impl TelegramAuthClient {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn check_2fa(
     client: &Client,
     session: &Arc<MemorySession>,

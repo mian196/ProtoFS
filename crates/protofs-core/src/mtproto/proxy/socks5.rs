@@ -200,10 +200,15 @@ mod tests {
             assert_eq!(&conn_req[0..4], &[0x05, 0x01, 0x00, 0x01]);
 
             // Respond Success: [0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]
-            server.write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await.unwrap();
+            server
+                .write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                .await
+                .unwrap();
         });
 
-        socks5_handshake(&mut client, "127.0.0.1", 443, None).await.unwrap();
+        socks5_handshake(&mut client, "127.0.0.1", 443, None)
+            .await
+            .unwrap();
         server_task.await.unwrap();
     }
 
@@ -243,7 +248,10 @@ mod tests {
             server.read_exact(&mut conn_req).await.unwrap();
 
             // Respond Success
-            server.write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await.unwrap();
+            server
+                .write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                .await
+                .unwrap();
         });
 
         let auth = ProxyAuth {
@@ -251,7 +259,9 @@ mod tests {
             password: "mypass".to_string(),
         };
 
-        socks5_handshake(&mut client, "127.0.0.1", 443, Some(&auth)).await.unwrap();
+        socks5_handshake(&mut client, "127.0.0.1", 443, Some(&auth))
+            .await
+            .unwrap();
         server_task.await.unwrap();
     }
 }

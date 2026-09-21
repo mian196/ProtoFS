@@ -14,7 +14,10 @@ pub async fn mtproto_proxy_handshake<S>(
 where
     S: AsyncReadExt + AsyncWriteExt + Unpin,
 {
-    if secret.tls_domain.is_some() || secret.raw_secret.starts_with("ee") || secret.raw_secret.starts_with("EE") {
+    if secret.tls_domain.is_some()
+        || secret.raw_secret.starts_with("ee")
+        || secret.raw_secret.starts_with("EE")
+    {
         fake_tls_handshake(stream, secret).await
     } else {
         obfuscated2_handshake(stream, secret).await
@@ -71,10 +74,7 @@ where
 
 /// Constructs a TLS 1.3 ClientHello record with SNI domain and HMAC-SHA256 signature
 pub fn build_fake_tls_client_hello(secret: &MtprotoSecret) -> Vec<u8> {
-    let domain = secret
-        .tls_domain
-        .as_deref()
-        .unwrap_or("www.google.com");
+    let domain = secret.tls_domain.as_deref().unwrap_or("www.google.com");
 
     let mut client_hello_body = Vec::new();
 
@@ -212,7 +212,9 @@ mod tests {
 
     #[test]
     fn test_fake_tls_client_hello_structure() {
-        let secret = MtprotoSecret::parse("ee0123456789abcdef0123456789abcdef7777772e676f6f676c652e636f6d").unwrap();
+        let secret =
+            MtprotoSecret::parse("ee0123456789abcdef0123456789abcdef7777772e676f6f676c652e636f6d")
+                .unwrap();
         let record = build_fake_tls_client_hello(&secret);
 
         assert_eq!(record[0], 0x16); // TLS Handshake
@@ -228,7 +230,9 @@ mod tests {
     #[tokio::test]
     async fn test_fake_tls_handshake_flow() {
         let (mut client, mut server) = duplex(4096);
-        let secret = MtprotoSecret::parse("ee0123456789abcdef0123456789abcdef7777772e676f6f676c652e636f6d").unwrap();
+        let secret =
+            MtprotoSecret::parse("ee0123456789abcdef0123456789abcdef7777772e676f6f676c652e636f6d")
+                .unwrap();
 
         let server_task = tokio::spawn(async move {
             let mut hdr = [0u8; 5];
@@ -239,7 +243,10 @@ mod tests {
             server.read_exact(&mut body).await.unwrap();
 
             // Send simulated ServerHello (ContentType 0x16, TLS 1.2, 8 bytes dummy body)
-            server.write_all(&[0x16, 0x03, 0x03, 0x00, 0x08, 1, 2, 3, 4, 5, 6, 7, 8]).await.unwrap();
+            server
+                .write_all(&[0x16, 0x03, 0x03, 0x00, 0x08, 1, 2, 3, 4, 5, 6, 7, 8])
+                .await
+                .unwrap();
         });
 
         fake_tls_handshake(&mut client, &secret).await.unwrap();

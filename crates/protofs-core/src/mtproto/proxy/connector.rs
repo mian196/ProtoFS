@@ -25,26 +25,26 @@ pub async fn connect_stream(
             }
             Some(ProxyConfig::Socks5 { host, port, auth }) => {
                 let proxy_addr = format!("{}:{}", host, port);
-                let mut stream = TcpStream::connect(&proxy_addr).await.map_err(|e| {
-                    ProxyError::DnsResolutionFailed(host.clone(), e.to_string())
-                })?;
+                let mut stream = TcpStream::connect(&proxy_addr)
+                    .await
+                    .map_err(|e| ProxyError::DnsResolutionFailed(host.clone(), e.to_string()))?;
                 socks5_handshake(&mut stream, target_host, target_port, auth.as_ref()).await?;
                 Ok(stream)
             }
             Some(ProxyConfig::Http { host, port, auth }) => {
                 let proxy_addr = format!("{}:{}", host, port);
-                let mut stream = TcpStream::connect(&proxy_addr).await.map_err(|e| {
-                    ProxyError::DnsResolutionFailed(host.clone(), e.to_string())
-                })?;
+                let mut stream = TcpStream::connect(&proxy_addr)
+                    .await
+                    .map_err(|e| ProxyError::DnsResolutionFailed(host.clone(), e.to_string()))?;
                 http_connect_handshake(&mut stream, target_host, target_port, auth.as_ref())
                     .await?;
                 Ok(stream)
             }
             Some(ProxyConfig::Mtproto { host, port, secret }) => {
                 let proxy_addr = format!("{}:{}", host, port);
-                let mut stream = TcpStream::connect(&proxy_addr).await.map_err(|e| {
-                    ProxyError::DnsResolutionFailed(host.clone(), e.to_string())
-                })?;
+                let mut stream = TcpStream::connect(&proxy_addr)
+                    .await
+                    .map_err(|e| ProxyError::DnsResolutionFailed(host.clone(), e.to_string()))?;
                 mtproto_proxy_handshake(&mut stream, secret, target_host, target_port).await?;
                 Ok(stream)
             }
@@ -98,6 +98,9 @@ mod tests {
     async fn test_connection_timeout() {
         // Non-routable IP address to force timeout
         let res = connect_stream("10.255.255.1", 80, None, Duration::from_millis(50)).await;
-        assert!(matches!(res, Err(ProxyError::ConnectionTimeout(_)) | Err(ProxyError::DnsResolutionFailed(..))));
+        assert!(matches!(
+            res,
+            Err(ProxyError::ConnectionTimeout(_)) | Err(ProxyError::DnsResolutionFailed(..))
+        ));
     }
 }

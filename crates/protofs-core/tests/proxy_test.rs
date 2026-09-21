@@ -1,10 +1,9 @@
-use std::time::Duration;
 use protofs_core::mtproto::proxy::{
-    build_fake_tls_client_hello, connect_stream, generate_obfuscated2_init,
-    http_connect_handshake, ping_proxy, socks5_handshake, MtprotoSecret, ProxyAuth, ProxyConfig,
-    ProxyType,
+    MtprotoSecret, ProxyAuth, ProxyConfig, ProxyType, build_fake_tls_client_hello, connect_stream,
+    generate_obfuscated2_init, http_connect_handshake, ping_proxy, socks5_handshake,
 };
-use tokio::io::{duplex, AsyncReadExt, AsyncWriteExt};
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, duplex};
 use tokio::net::TcpListener;
 
 #[tokio::test]
@@ -120,7 +119,8 @@ fn test_mtproto_secrets_and_fake_tls() {
     assert_eq!(&init_dd[56..60], &[0xdd, 0xdd, 0xdd, 0xdd]);
 
     // 3. EE Fake-TLS secret with custom domain SNI (e.g. cloudflare.com = 636c6f7564666c6172652e636f6d)
-    let ee = MtprotoSecret::parse("eed0e0f00102030405060708090a0b0c0d636c6f7564666c6172652e636f6d").unwrap();
+    let ee = MtprotoSecret::parse("eed0e0f00102030405060708090a0b0c0d636c6f7564666c6172652e636f6d")
+        .unwrap();
     assert!(!ee.is_dd);
     assert_eq!(ee.tls_domain, Some("cloudflare.com".to_string()));
 

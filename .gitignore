@@ -71,6 +71,3 @@ service-account*.json
 # IntelliJ
 *.iml
 .idea/
-
-# Planning
-.planning/*

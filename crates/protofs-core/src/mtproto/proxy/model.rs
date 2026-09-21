@@ -52,7 +52,9 @@ impl MtprotoSecret {
     pub fn parse(raw: &str) -> Result<Self, ProxyError> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
-            return Err(ProxyError::InvalidSecret("Secret cannot be empty".to_string()));
+            return Err(ProxyError::InvalidSecret(
+                "Secret cannot be empty".to_string(),
+            ));
         }
 
         // Check for 'dd' prefix (intermediate obfuscation, 34 hex chars)
@@ -79,7 +81,7 @@ impl MtprotoSecret {
 
             let tls_domain = if trimmed.len() > 34 {
                 let domain_hex = &trimmed[34..];
-                if domain_hex.len() % 2 != 0 {
+                if !domain_hex.len().is_multiple_of(2) {
                     return Err(ProxyError::InvalidSecret(
                         "Fake-TLS domain hex length must be even".to_string(),
                     ));
@@ -137,8 +139,10 @@ fn hex_decode_16(hex_str: &str) -> Result<[u8; 16], ProxyError> {
 }
 
 fn hex_decode_bytes(hex_str: &str) -> Result<Vec<u8>, ProxyError> {
-    if hex_str.len() % 2 != 0 {
-        return Err(ProxyError::InvalidSecret("Hex string must have even length".to_string()));
+    if !hex_str.len().is_multiple_of(2) {
+        return Err(ProxyError::InvalidSecret(
+            "Hex string must have even length".to_string(),
+        ));
     }
     let mut bytes = Vec::with_capacity(hex_str.len() / 2);
     for i in 0..hex_str.len() / 2 {
@@ -151,9 +155,10 @@ fn hex_decode_bytes(hex_str: &str) -> Result<Vec<u8>, ProxyError> {
     Ok(bytes)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProxyConfig {
+    #[default]
     Direct,
     Socks5 {
         host: String,
@@ -170,12 +175,6 @@ pub enum ProxyConfig {
         port: u16,
         secret: MtprotoSecret,
     },
-}
-
-impl Default for ProxyConfig {
-    fn default() -> Self {
-        Self::Direct
-    }
 }
 
 impl ProxyConfig {

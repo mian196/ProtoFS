@@ -348,4 +348,3 @@ export interface UploadFileOptions {
   fileBase64?: string;
   conflictAction?: 'replace' | 'rename' | 'skip';
 }
-

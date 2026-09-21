@@ -100,7 +100,9 @@ mod tests {
                 .unwrap();
         });
 
-        http_connect_handshake(&mut client, "149.154.167.50", 443, None).await.unwrap();
+        http_connect_handshake(&mut client, "149.154.167.50", 443, None)
+            .await
+            .unwrap();
         server_task.await.unwrap();
     }
 
