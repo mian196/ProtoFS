@@ -139,6 +139,10 @@ impl RealTelegramTransport {
         offset: u64,
         limit: u32,
     ) -> Result<Vec<u8>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
         let _permit = self
             .transfer_semaphore
             .acquire()
@@ -180,23 +184,70 @@ impl RealTelegramTransport {
                         thumb_size: String::new(),
                     },
                 );
-                let download_req = tl::functions::upload::GetFile {
-                    precise: true,
-                    cdn_supported: false,
-                    location,
-                    offset: offset as i64,
-                    limit: limit as i32,
-                };
-                if let Ok(file_res) = self.client.invoke(&download_req).await {
-                    let bytes = match file_res {
+
+                const CHUNK_SIZE: usize = 512 * 1024;
+                let start_offset = offset;
+                let end_offset = offset + limit as u64;
+
+                let chunk_aligned_start = (start_offset / CHUNK_SIZE as u64) * CHUNK_SIZE as u64;
+                let mut current_offset = chunk_aligned_start;
+                let mut collected_bytes = Vec::new();
+
+                while current_offset < end_offset {
+                    let download_req = tl::functions::upload::GetFile {
+                        precise: true,
+                        cdn_supported: false,
+                        location: location.clone(),
+                        offset: current_offset as i64,
+                        limit: CHUNK_SIZE as i32,
+                    };
+
+                    let file_res = match self.client.invoke(&download_req).await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::error!(
+                                "MTProto GetFile error at offset {} limit {}: {}",
+                                current_offset,
+                                CHUNK_SIZE,
+                                e
+                            );
+                            return Err(ProtoFsError::Mtproto(format!(
+                                "Failed to download file chunk at offset {}: {}",
+                                current_offset, e
+                            )));
+                        }
+                    };
+
+                    let chunk_bytes = match file_res {
                         tl::enums::upload::File::File(f) => f.bytes,
                         tl::enums::upload::File::CdnRedirect(_) => Vec::new(),
                     };
-                    return Ok(bytes);
+
+                    if chunk_bytes.is_empty() {
+                        break;
+                    }
+
+                    let chunk_len = chunk_bytes.len();
+                    collected_bytes.extend_from_slice(&chunk_bytes);
+                    current_offset += chunk_len as u64;
+
+                    if chunk_len < CHUNK_SIZE {
+                        break;
+                    }
                 }
+
+                let relative_start = (start_offset.saturating_sub(chunk_aligned_start)) as usize;
+                if relative_start >= collected_bytes.len() {
+                    return Ok(Vec::new());
+                }
+                let relative_end = (relative_start + limit as usize).min(collected_bytes.len());
+                return Ok(collected_bytes[relative_start..relative_end].to_vec());
             }
         }
 
-        Ok(Vec::new())
+        Err(ProtoFsError::NodeNotFound(format!(
+            "Message #{} does not contain a document media",
+            message_id
+        )))
     }
 }

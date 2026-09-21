@@ -37,6 +37,7 @@ pub struct WebDavServer<T: TelegramTransport + 'static> {
     engine: Arc<SyncEngine<T>>,
     drives: Arc<RwLock<Vec<DriveMetadata>>>,
     config: Arc<RwLock<WebDavConfig>>,
+    master_key: Arc<RwLock<Option<[u8; 32]>>>,
     shutdown_tx: Option<watch::Sender<bool>>,
     bound_addr: Arc<RwLock<Option<SocketAddr>>>,
 }
@@ -46,11 +47,13 @@ impl<T: TelegramTransport + 'static> WebDavServer<T> {
         engine: Arc<SyncEngine<T>>,
         drives: Arc<RwLock<Vec<DriveMetadata>>>,
         config: WebDavConfig,
+        master_key: Arc<RwLock<Option<[u8; 32]>>>,
     ) -> Self {
         Self {
             engine,
             drives,
             config: Arc::new(RwLock::new(config)),
+            master_key,
             shutdown_tx: None,
             bound_addr: Arc::new(RwLock::new(None)),
         }
@@ -122,6 +125,7 @@ impl<T: TelegramTransport + 'static> WebDavServer<T> {
         let engine = self.engine.clone();
         let drives = self.drives.clone();
         let config = self.config.clone();
+        let master_key = self.master_key.clone();
         let bound_addr_holder = self.bound_addr.clone();
 
         tokio::spawn(async move {
@@ -136,8 +140,9 @@ impl<T: TelegramTransport + 'static> WebDavServer<T> {
                                 let eng = engine.clone();
                                 let drvs = drives.clone();
                                 let cfg = config.clone();
+                                let mk = master_key.clone();
                                 tokio::spawn(async move {
-                                    if let Err(e) = handle_webdav_connection(stream, peer, eng, drvs, cfg).await {
+                                    if let Err(e) = handle_webdav_connection(stream, peer, eng, drvs, cfg, mk).await {
                                         tracing::debug!("WebDAV connection error from {}: {}", peer, e);
                                     }
                                 });
@@ -175,6 +180,7 @@ async fn handle_webdav_connection<T: TelegramTransport + 'static>(
     engine: Arc<SyncEngine<T>>,
     drives: Arc<RwLock<Vec<DriveMetadata>>>,
     config: Arc<RwLock<WebDavConfig>>,
+    master_key: Arc<RwLock<Option<[u8; 32]>>>,
 ) -> Result<()> {
     let mut buffer = vec![0u8; 8192];
     let bytes_read = stream
@@ -247,6 +253,7 @@ async fn handle_webdav_connection<T: TelegramTransport + 'static>(
                 &headers,
                 &engine,
                 &drives,
+                &master_key,
             )
             .await?;
         }
@@ -492,6 +499,7 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
     headers: &HashMap<String, String>,
     engine: &SyncEngine<T>,
     drives: &RwLock<Vec<DriveMetadata>>,
+    master_key: &RwLock<Option<[u8; 32]>>,
 ) -> Result<()> {
     let clean = path.trim_matches('/');
     let parts: Vec<&str> = clean.split('/').filter(|p| !p.is_empty()).collect();
@@ -535,6 +543,79 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
         .unwrap_or("application/octet-stream");
     let total_size = file_node.size_bytes;
 
+    if is_head {
+        let header_str = format!(
+            "HTTP/1.1 200 OK\r\n\
+            Content-Type: {}\r\n\
+            Content-Length: {}\r\n\
+            Accept-Ranges: bytes\r\n\
+            Connection: close\r\n\r\n",
+            mime, total_size
+        );
+        stream
+            .write_all(header_str.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        return Ok(());
+    }
+
+    if total_size == 0 {
+        let header_str = format!(
+            "HTTP/1.1 200 OK\r\n\
+            Content-Type: {}\r\n\
+            Content-Length: 0\r\n\
+            Accept-Ranges: bytes\r\n\
+            Connection: close\r\n\r\n",
+            mime
+        );
+        stream
+            .write_all(header_str.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        return Ok(());
+    }
+
+    // Resolve master key if file is encrypted
+    let key_guard = master_key.read().await;
+    let enc_key = *key_guard;
+    drop(key_guard);
+
+    if file_node.is_encrypted && enc_key.is_none() {
+        tracing::warn!(
+            "WebDAV GET denied: file '{}' is encrypted but vault is locked",
+            file_node.name
+        );
+        let response = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: 32\r\nConnection: close\r\n\r\nVault is locked. Unlock to view.";
+        stream
+            .write_all(response.as_bytes())
+            .await
+            .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+        return Ok(());
+    }
+
+    // Read and decrypt file data on-demand
+    let (_node, data) = match engine
+        .download_file_data(&drive_id, &file_node.id, enc_key.as_ref(), channel_id)
+        .await
+    {
+        Ok(res) => res,
+        Err(e) => {
+            tracing::error!(
+                "Failed to fetch file '{}' for WebDAV GET: {}",
+                file_node.name,
+                e
+            );
+            let response = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
+            return Ok(());
+        }
+    };
+
+    let actual_len = data.len() as u64;
+
     // Handle Range Header if present
     let (start_byte, end_byte, is_range) = if let Some(range_header) = headers.get("range") {
         if let Some(spec) = range_header.strip_prefix("bytes=") {
@@ -543,19 +624,19 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
             let end = if range_parts.len() > 1 && !range_parts[1].is_empty() {
                 range_parts[1]
                     .parse::<u64>()
-                    .unwrap_or(total_size.saturating_sub(1))
+                    .unwrap_or(actual_len.saturating_sub(1))
             } else {
-                total_size.saturating_sub(1)
+                actual_len.saturating_sub(1)
             };
-            (start, end.min(total_size.saturating_sub(1)), true)
+            (start, end.min(actual_len.saturating_sub(1)), true)
         } else {
-            (0, total_size.saturating_sub(1), false)
+            (0, actual_len.saturating_sub(1), false)
         }
     } else {
-        (0, total_size.saturating_sub(1), false)
+        (0, actual_len.saturating_sub(1), false)
     };
 
-    let content_len = if total_size == 0 {
+    let content_len = if actual_len == 0 || start_byte > end_byte {
         0
     } else {
         end_byte - start_byte + 1
@@ -569,7 +650,7 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
             Content-Length: {}\r\n\
             Accept-Ranges: bytes\r\n\
             Connection: close\r\n\r\n",
-            mime, start_byte, end_byte, total_size, content_len
+            mime, start_byte, end_byte, actual_len, content_len
         )
     } else {
         format!(
@@ -578,7 +659,7 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
             Content-Length: {}\r\n\
             Accept-Ranges: bytes\r\n\
             Connection: close\r\n\r\n",
-            mime, total_size
+            mime, actual_len
         )
     };
 
@@ -587,20 +668,13 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
         .await
         .map_err(|e| ProtoFsError::Internal(e.to_string()))?;
 
-    if is_head || total_size == 0 || content_len == 0 {
-        return Ok(());
-    }
-
-    // Read and decrypt file data on-demand
-    if let Ok((_node, data)) = engine
-        .download_file_data(&drive_id, &file_node.id, None, channel_id)
-        .await
-    {
+    if content_len > 0 {
         let start = start_byte as usize;
         let end = (end_byte as usize + 1).min(data.len());
         if start < data.len() {
             let slice = &data[start..end];
             let _ = stream.write_all(slice).await;
+            let _ = stream.flush().await;
         }
     }
 

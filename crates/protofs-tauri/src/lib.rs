@@ -73,10 +73,12 @@ pub fn run() {
                 auto_mount: webdav_settings.auto_mount,
                 auth_token: None,
             };
+            let master_key = Arc::new(RwLock::new(None));
             let webdav_server = Arc::new(RwLock::new(protofs_core::webdav::WebDavServer::new(
                 engine.clone(),
                 drives_state.clone(),
                 webdav_config.clone(),
+                master_key.clone(),
             )));
 
             let app_state = AppState {
@@ -87,7 +89,7 @@ pub fn run() {
                 auth_client,
                 transport,
                 webdav_server: webdav_server.clone(),
-                master_key: Arc::new(RwLock::new(None)),
+                master_key,
                 active_transfers: Arc::new(RwLock::new(std::collections::HashMap::new())),
             };
 
