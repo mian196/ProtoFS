@@ -38,6 +38,9 @@ pub enum ProtoFsError {
     #[error("Caption parse error: {0}")]
     CaptionParse(String),
 
+    #[error("Proxy error: {0}")]
+    Proxy(#[from] crate::mtproto::proxy::ProxyError),
+
     #[error("Internal error: {0}")]
     Internal(String),
 }
