@@ -70,8 +70,8 @@ export const useVfsStore = create<VfsState>((set, get) => ({
       const { folders: allFolders, files: allFiles } = await api.loadDrive(driveId, 0);
 
       const currentFolders = isTrashView
-        ? []
-        : allFolders.filter((f) => f.parent_id === targetParentId);
+        ? allFolders.filter((f) => f.trashed)
+        : allFolders.filter((f) => f.parent_id === targetParentId && !f.trashed);
 
       const currentFiles = isTrashView
         ? allFiles.filter((f) => f.trashed)

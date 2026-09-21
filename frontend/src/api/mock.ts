@@ -127,7 +127,8 @@ export class MockStorageApi {
     const folders = this.getStoredFolders();
     const fIdx = folders.findIndex((f) => f.id === nodeId);
     if (fIdx !== -1) {
-      folders.splice(fIdx, 1);
+      if (permanent) folders.splice(fIdx, 1);
+      else folders[fIdx].trashed = true;
       this.saveFolders(folders);
     }
   }
@@ -138,15 +139,28 @@ export class MockStorageApi {
     if (file) {
       file.trashed = false;
       this.saveFiles(files);
+      return;
+    }
+    const folders = this.getStoredFolders();
+    const folder = folders.find((f) => f.id === nodeId);
+    if (folder) {
+      folder.trashed = false;
+      this.saveFolders(folders);
     }
   }
 
   emptyTrash(driveId: string): number {
     const files = this.getStoredFiles();
-    const remaining = files.filter((f) => !f.trashed || f.drive_id !== driveId);
-    const count = files.length - remaining.length;
-    this.saveFiles(remaining);
-    return count;
+    const remainingFiles = files.filter((f) => !f.trashed || f.drive_id !== driveId);
+    const fileCount = files.length - remainingFiles.length;
+    this.saveFiles(remainingFiles);
+
+    const folders = this.getStoredFolders();
+    const remainingFolders = folders.filter((f) => !f.trashed || f.drive_id !== driveId);
+    const folderCount = folders.length - remainingFolders.length;
+    this.saveFolders(remainingFolders);
+
+    return fileCount + folderCount;
   }
 
   togglePin(nodeId: string, pinned: boolean): void {

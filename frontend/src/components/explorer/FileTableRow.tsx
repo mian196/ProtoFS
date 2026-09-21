@@ -25,6 +25,7 @@ export const FileTableRow: React.FC<FileTableRowProps> = ({
 
   return (
     <tr
+      data-context-item="true"
       onClick={onSelect}
       onDoubleClick={onOpen}
       onContextMenu={onContextMenu}

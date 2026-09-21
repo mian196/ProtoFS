@@ -18,14 +18,15 @@ import { useVfsStore } from './stores/useVfsStore';
 import { useTransferStore } from './stores/useTransferStore';
 import { useNativeStore } from './stores/useNativeStore';
 import { useModalStore } from './stores/useModalStore';
+import { confirmDialog } from './stores/useConfirmStore';
 import { useTransferListener } from './hooks/useTransferListener';
 import { useUploadManager } from './hooks/useUploadManager';
 import { useThemeStore } from './stores/useThemeStore';
 import { api } from './api';
 import { isTauri } from './api/client';
 import type { FileNode, FolderNode, VfsNode } from './types';
-import { Loader2 } from 'lucide-react';
-import { Toaster } from 'sonner';
+import { Loader2, Trash2, RotateCcw } from 'lucide-react';
+import { toast, Toaster } from 'sonner';
 
 export const App: React.FC = () => {
   const { theme } = useThemeStore();
@@ -43,6 +44,7 @@ export const App: React.FC = () => {
     loadDirectory,
     navigateToFolder,
     toggleSelect,
+    clearSelection,
   } = useVfsStore();
   const { addTransfer, updateTransfer } = useTransferStore();
   const { loadNativeStatus } = useNativeStore();
@@ -85,6 +87,35 @@ export const App: React.FC = () => {
     }
   }, [activeDrive, currentParentId, filterType, loadDirectory]);
 
+  // Bug 4 fix: Intercept F5 and Ctrl+R / Cmd+R to prevent full webview reload.
+  // Perform an in-app soft refresh of the file directory and drive state instead.
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r')) {
+        e.preventDefault();
+        if (activeDrive) {
+          toast.promise(
+            Promise.all([
+              loadDirectory(activeDrive.id, currentParentId),
+              loadDrives(),
+            ]),
+            {
+              loading: 'Refreshing files...',
+              success: 'Files refreshed',
+              error: 'Failed to refresh',
+              duration: 1500,
+            }
+          );
+        } else {
+          loadDrives();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeDrive, currentParentId, loadDirectory, loadDrives]);
+
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       enqueueFiles(e.target.files);
@@ -100,8 +131,9 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleContextMenu = (node: VfsNode, e: React.MouseEvent) => {
+  const handleContextMenu = (node: VfsNode | null, e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
@@ -156,8 +188,112 @@ export const App: React.FC = () => {
 
   const handleDeleteNode = async (node: FileNode | FolderNode) => {
     if (!activeDrive) return;
-    await api.deleteNode(activeDrive.id, node.id, false);
-    loadDirectory(activeDrive.id, currentParentId);
+    try {
+      await api.deleteNode(activeDrive.id, node.id, false);
+      toast.info(`Moved "${node.name}" to Trash`);
+      loadDirectory(activeDrive.id, currentParentId);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to move to Trash');
+    }
+  };
+
+  // Bug 3 fix: Recover/Restore node from Trash
+  const handleRestoreNode = async (node: FileNode | FolderNode) => {
+    if (!activeDrive) return;
+    try {
+      await api.restoreNode(activeDrive.id, node.id);
+      toast.success(`Restored "${node.name}"`);
+      loadDirectory(activeDrive.id, currentParentId);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to restore file');
+    }
+  };
+
+  // Permanent single node delete
+  const handleDeletePermanent = async (node: FileNode | FolderNode) => {
+    if (!activeDrive) return;
+    const confirmed = await confirmDialog({
+      title: 'Delete Permanently?',
+      message: `Are you sure you want to permanently delete "${node.name}"?\nThis action cannot be undone and cannot be recovered.`,
+      variant: 'danger',
+      icon: 'trash',
+      confirmText: 'Delete Permanently',
+      cancelText: 'Cancel',
+    });
+    if (!confirmed) return;
+
+    try {
+      await api.deleteNode(activeDrive.id, node.id, true);
+      toast.success(`Permanently deleted "${node.name}"`);
+      loadDirectory(activeDrive.id, currentParentId);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete permanently');
+    }
+  };
+
+  // Bug 2 fix: Clear / Empty trash action
+  const handleEmptyTrash = async () => {
+    if (!activeDrive) return;
+    const confirmed = await confirmDialog({
+      title: 'Empty Trash?',
+      message: `Are you sure you want to permanently delete all items in the Trash?\nAll trashed files and folders will be irrecoverably removed.`,
+      variant: 'danger',
+      icon: 'trash',
+      confirmText: 'Empty Trash',
+      cancelText: 'Cancel',
+    });
+    if (!confirmed) return;
+
+    try {
+      const count = await api.emptyTrash(activeDrive.id);
+      toast.success(`Trash cleared (${count} ${count === 1 ? 'item' : 'items'} removed)`);
+      loadDirectory(activeDrive.id, currentParentId);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to empty trash');
+    }
+  };
+
+  // Bug 3 fix: Batch restore selected items in Trash
+  const handleRestoreSelected = async () => {
+    if (!activeDrive || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    try {
+      for (const id of ids) {
+        await api.restoreNode(activeDrive.id, id);
+      }
+      toast.success(`Restored ${ids.length} ${ids.length === 1 ? 'item' : 'items'}`);
+      clearSelection();
+      loadDirectory(activeDrive.id, currentParentId);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to restore selected items');
+    }
+  };
+
+  // Batch delete selected items permanently in Trash
+  const handleDeletePermanentSelected = async () => {
+    if (!activeDrive || selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    const confirmed = await confirmDialog({
+      title: 'Delete Selected Permanently?',
+      message: `Are you sure you want to permanently delete ${count} selected ${count === 1 ? 'item' : 'items'}?\nThis action cannot be undone.`,
+      variant: 'danger',
+      icon: 'trash',
+      confirmText: 'Delete Permanently',
+      cancelText: 'Cancel',
+    });
+    if (!confirmed) return;
+
+    const ids = Array.from(selectedIds);
+    try {
+      for (const id of ids) {
+        await api.deleteNode(activeDrive.id, id, true);
+      }
+      toast.success(`Permanently deleted ${ids.length} ${ids.length === 1 ? 'item' : 'items'}`);
+      clearSelection();
+      loadDirectory(activeDrive.id, currentParentId);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete selected items');
+    }
   };
 
   const vfsNodes: VfsNode[] = [
@@ -166,6 +302,7 @@ export const App: React.FC = () => {
   ];
 
   const isVaultEncrypted = localStorage.getItem('protofs_encryption_enabled') === 'true';
+  const isTrashView = filterType === 'trash';
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200 select-none">
@@ -183,9 +320,80 @@ export const App: React.FC = () => {
           className="hidden"
         />
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 mb-16 md:mb-0">
+        <main
+          className="flex-1 overflow-y-auto p-4 sm:p-6 mb-16 md:mb-0"
+          onContextMenu={(e) => {
+            // Right-clicking empty canvas area
+            const target = e.target as HTMLElement;
+            if (!target.closest('[data-context-item]')) {
+              handleContextMenu(null, e);
+            }
+          }}
+        >
           {activeDrive && !isDriveAccessible && (
             <DisasterRecoveryBanner drive={activeDrive} />
+          )}
+
+          {/* Trash Bin Header Banner & Batch Actions */}
+          {isTrashView && (
+            <div className="mb-4 p-3 rounded-2xl bg-rose-500/[0.07] border border-rose-500/20 flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-150">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/15 text-rose-400">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-rose-300 flex items-center gap-2">
+                    <span>Trash Bin</span>
+                    <span className="text-[11px] font-normal text-rose-400/80 font-mono">
+                      ({vfsNodes.length} {vfsNodes.length === 1 ? 'item' : 'items'})
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    Items in trash can be recovered or permanently deleted.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {selectedIds.size > 0 ? (
+                  <>
+                    <span className="text-xs text-slate-300 font-mono px-2 py-1 bg-slate-850 dark:bg-slate-900 rounded-lg border border-white/10">
+                      {selectedIds.size} selected
+                    </span>
+                    <button
+                      onClick={handleRestoreSelected}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 text-xs font-medium transition-colors shadow-sm"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Restore Selected</span>
+                    </button>
+                    <button
+                      onClick={handleDeletePermanentSelected}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-medium transition-colors shadow-sm"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Selected</span>
+                    </button>
+                    <button
+                      onClick={clearSelection}
+                      className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </>
+                ) : (
+                  vfsNodes.length > 0 && (
+                    <button
+                      onClick={handleEmptyTrash}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/25 text-xs font-medium transition-colors shadow-sm"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Empty Trash</span>
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
           )}
 
           {isLoading ? (
@@ -194,7 +402,10 @@ export const App: React.FC = () => {
               <span className="text-xs font-mono">Syncing VFS state from SQLite WAL index...</span>
             </div>
           ) : vfsNodes.length === 0 ? (
-            <EmptyFolderState onUploadClick={() => fileInputRef.current?.click()} />
+            <EmptyFolderState
+              isTrash={isTrashView}
+              onUploadClick={() => fileInputRef.current?.click()}
+            />
           ) : viewMode === 'grid' ? (
             <FileGrid
               nodes={vfsNodes}
@@ -225,6 +436,7 @@ export const App: React.FC = () => {
         isOpen={contextMenu.isOpen}
         onClose={() => setContextMenu((prev) => ({ ...prev, isOpen: false }))}
         targetNode={contextMenu.node}
+        isTrashView={isTrashView}
         onPreview={(f) => openModal('preview', { previewFile: f })}
         onDownload={handleDownloadFile}
         onRename={(node) => openModal('rename', { targetNode: node })}
@@ -233,6 +445,14 @@ export const App: React.FC = () => {
         onHistory={(f) => openModal('versionHistory', { previewFile: f })}
         onTogglePin={handleTogglePin}
         onDelete={handleDeleteNode}
+        onRestore={handleRestoreNode}
+        onDeletePermanent={handleDeletePermanent}
+        onEmptyTrash={handleEmptyTrash}
+        onRefresh={() => {
+          if (activeDrive) loadDirectory(activeDrive.id, currentParentId);
+        }}
+        onNewFolder={() => isDriveAccessible && openModal('createFolder')}
+        onUpload={() => isDriveAccessible && fileInputRef.current?.click()}
       />
 
       <TransferQueue />

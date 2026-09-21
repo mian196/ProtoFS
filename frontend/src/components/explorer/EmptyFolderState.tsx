@@ -1,14 +1,33 @@
 import React from 'react';
-import { FolderPlus, Upload, ShieldCheck } from 'lucide-react';
+import { FolderPlus, Upload, ShieldCheck, Trash2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useModalStore } from '../../stores/useModalStore';
 
 interface EmptyFolderStateProps {
   onUploadClick?: () => void;
+  isTrash?: boolean;
 }
 
-export const EmptyFolderState: React.FC<EmptyFolderStateProps> = ({ onUploadClick }) => {
+export const EmptyFolderState: React.FC<EmptyFolderStateProps> = ({
+  onUploadClick,
+  isTrash = false,
+}) => {
   const { openModal } = useModalStore();
+
+  if (isTrash) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+        <div className="w-16 h-16 rounded-3xl bg-rose-500/[0.05] border border-rose-500/15 flex items-center justify-center mb-4 shadow-xl">
+          <Trash2 className="w-8 h-8 text-rose-400" />
+        </div>
+
+        <h3 className="text-base font-semibold text-slate-200">Trash is empty</h3>
+        <p className="text-xs text-slate-400 max-w-sm mt-1 mb-2">
+          Files and folders you delete will show up here. You can restore them anytime or permanently delete them.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center py-20 px-4 text-center">

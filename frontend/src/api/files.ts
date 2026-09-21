@@ -23,7 +23,10 @@ export async function loadDrive(
       const files: FileNode[] = [];
       for (const item of items || []) {
         if (item.kind === 'Folder' || item.kind === 'folder') {
-          folders.push(item);
+          folders.push({
+            ...item,
+            trashed: Boolean(item.is_trashed || item.trashed),
+          });
         } else if (item.kind === 'File' || item.kind === 'file') {
           files.push({
             ...item,

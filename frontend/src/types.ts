@@ -15,6 +15,8 @@ export interface FolderNode {
   parent_id: string;
   name: string;
   count?: string;
+  trashed?: boolean;
+  is_trashed?: boolean;
   created_at: string;
   updated_at: string;
 }

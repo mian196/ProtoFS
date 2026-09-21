@@ -25,6 +25,7 @@ export const FileGridCard: React.FC<FileGridCardProps> = ({
 
   return (
     <div
+      data-context-item="true"
       onClick={onSelect}
       onDoubleClick={onOpen}
       onContextMenu={onContextMenu}
