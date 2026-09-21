@@ -51,6 +51,21 @@ impl DynamicTelegramTransport {
         matches!(&*lock, TransportBackend::Real(_))
     }
 
+    pub async fn set_proxy(&self, proxy: Option<crate::mtproto::proxy::ProxyConfig>) {
+        let lock = self.backend.read().await;
+        if let TransportBackend::Real(r) = &*lock {
+            r.set_proxy(proxy).await;
+        }
+    }
+
+    pub async fn get_proxy(&self) -> Option<crate::mtproto::proxy::ProxyConfig> {
+        let lock = self.backend.read().await;
+        match &*lock {
+            TransportBackend::Real(r) => r.get_proxy().await,
+            TransportBackend::Unauthenticated => None,
+        }
+    }
+
     pub async fn delete_channel(&self, channel_id: i64) -> Result<()> {
         let lock = self.backend.read().await;
         match &*lock {

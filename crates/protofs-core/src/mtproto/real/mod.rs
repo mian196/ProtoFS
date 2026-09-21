@@ -24,6 +24,8 @@ pub use qr::*;
 pub use session::*;
 pub use transfers::*;
 
+use crate::mtproto::proxy::ProxyConfig;
+
 pub struct RealTelegramTransport {
     pub(crate) client: Client,
     pub(crate) session: Arc<MemorySession>,
@@ -31,20 +33,42 @@ pub struct RealTelegramTransport {
     pub(crate) api_id: i32,
     #[allow(dead_code)]
     pub(crate) api_hash: String,
+    pub(crate) proxy: Arc<RwLock<Option<ProxyConfig>>>,
     pub(crate) channel_hashes: Arc<RwLock<HashMap<i64, i64>>>,
     pub(crate) transfer_semaphore: Arc<Semaphore>,
 }
 
 impl RealTelegramTransport {
     pub fn new(client: Client, session: Arc<MemorySession>, api_id: i32, api_hash: String) -> Self {
+        Self::with_proxy(client, session, api_id, api_hash, None)
+    }
+
+    pub fn with_proxy(
+        client: Client,
+        session: Arc<MemorySession>,
+        api_id: i32,
+        api_hash: String,
+        proxy: Option<ProxyConfig>,
+    ) -> Self {
         Self {
             client,
             session,
             api_id,
             api_hash,
+            proxy: Arc::new(RwLock::new(proxy)),
             channel_hashes: Arc::new(RwLock::new(HashMap::new())),
             transfer_semaphore: Arc::new(Semaphore::new(4)),
         }
+    }
+
+    pub async fn set_proxy(&self, proxy: Option<ProxyConfig>) {
+        let mut lock = self.proxy.write().await;
+        *lock = proxy;
+    }
+
+    pub async fn get_proxy(&self) -> Option<ProxyConfig> {
+        let lock = self.proxy.read().await;
+        lock.clone()
     }
 
     pub(crate) async fn resolve_channel_peer(&self, raw_channel_id: i64) -> (i64, i64) {

@@ -42,7 +42,8 @@ pub enum QrCheckOutcome {
 impl TelegramAuthClient {
     pub async fn request_qr_code(&self, api_id: i32, api_hash: &str) -> Result<QrExportResult> {
         let session = Arc::new(MemorySession::default());
-        let client = init_grammers_client(Arc::clone(&session), api_id);
+        let proxy = self.get_proxy().await;
+        let client = init_grammers_client(Arc::clone(&session), api_id, proxy.clone());
         let req = tl::functions::auth::ExportLoginToken {
             api_id,
             api_hash: api_hash.to_string(),
@@ -73,6 +74,7 @@ impl TelegramAuthClient {
             api_hash: api_hash.to_string(),
             token_bytes,
             expires_at,
+            proxy,
             pwd_token: None,
         });
         Ok(QrExportResult {
@@ -95,6 +97,7 @@ impl TelegramAuthClient {
                 api_hash,
                 token_bytes,
                 expires_at,
+                proxy,
                 pwd_token,
             } => {
                 let req = tl::functions::auth::ExportLoginToken {
@@ -159,11 +162,12 @@ impl TelegramAuthClient {
                             }
                         };
                         let session_bytes = export_session_bytes(session).await?;
-                        let transport = RealTelegramTransport::new(
+                        let transport = RealTelegramTransport::with_proxy(
                             client.clone(),
                             Arc::clone(session),
                             *api_id,
                             api_hash.clone(),
+                            proxy.clone(),
                         );
                         let _ = lock.take();
                         Ok(QrCheckOutcome::Success {
