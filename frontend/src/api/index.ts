@@ -5,6 +5,7 @@ import { syncApi } from './sync';
 import { webdavApi } from './webdav';
 import { settingsApi } from './settings';
 import { p2pApi } from './p2p';
+import { proxyApi } from './proxy';
 import type { UploadFileOptions } from '../types';
 
 export * from './client';
@@ -16,6 +17,8 @@ export { syncApi } from './sync';
 export { webdavApi } from './webdav';
 export { settingsApi } from './settings';
 export { p2pApi } from './p2p';
+export { proxyApi } from './proxy';
+
 
 /**
  * Aggregated backward-compatible facade delegating to modular domain submodules.
@@ -118,6 +121,16 @@ export class ProtoFsApi {
   startP2pSession = p2pApi.startP2pSession;
   connectP2pPeer = p2pApi.connectP2pPeer;
   cancelP2pSession = p2pApi.cancelP2pSession;
+
+  // MTProto & SOCKS5 Proxies
+  getProxies = proxyApi.getProxies;
+  getProxy = proxyApi.getProxy;
+  saveProxy = proxyApi.saveProxy;
+  deleteProxy = proxyApi.deleteProxy;
+  setActiveProxy = proxyApi.setActiveProxy;
+  toggleProxyEnabled = proxyApi.toggleProxyEnabled;
+  testProxyConnection = proxyApi.testProxyConnection;
+  getProxyStatus = proxyApi.getProxyStatus;
 }
 
 export const api = new ProtoFsApi();

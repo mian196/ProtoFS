@@ -348,3 +348,91 @@ export interface UploadFileOptions {
   fileBase64?: string;
   conflictAction?: 'replace' | 'rename' | 'skip';
 }
+
+export type ProxyType = 'mtproto' | 'socks5' | 'http';
+
+export interface ProxyProfile {
+  id: string;
+  label: string;
+  proxy_type: ProxyType;
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  secret?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProxyProfileSummary {
+  id: string;
+  label: string;
+  proxy_type: ProxyType;
+  host: string;
+  port: number;
+  username?: string;
+  has_password: boolean;
+  masked_secret?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProxyConfig {
+  proxy_type: ProxyType;
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  secret?: string;
+}
+
+export interface ProxyDiagnosticResult {
+  is_connected: boolean;
+  latency_ms: number | null;
+  target_dc: number;
+  target_endpoint: string;
+  error_code: string | null;
+  message: string;
+}
+
+export interface ProxyStatusResponse {
+  is_enabled: boolean;
+  active_proxy: ProxyProfileSummary | null;
+  total_proxies: number;
+}
+
+export interface ProxyStateChangedPayload {
+  is_enabled: boolean;
+  active_proxy_id: string | null;
+  active_proxy_label: string | null;
+  timestamp: string;
+}
+
+export type SecretClassification = 'standard_mtproto' | 'obfuscated_dd' | 'fake_tls_ee' | 'invalid';
+
+export interface SecretClassificationInfo {
+  type: SecretClassification;
+  label: string;
+  tlsDomain?: string;
+  isValid: boolean;
+}
+
+export interface FieldValidationResult {
+  isValid: boolean;
+  error?: string;
+}
+
+export interface ParsedProxyResult {
+  isValid: boolean;
+  error?: string;
+  proxyType?: ProxyType;
+  host?: string;
+  port?: number;
+  secret?: string;
+  tlsDomain?: string;
+  username?: string;
+  password?: string;
+  rawLink?: string;
+}
