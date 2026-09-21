@@ -5,14 +5,17 @@ use tauri::Manager;
 
 use super::{AppState, CommandResponse};
 
-async fn auto_flush_manifest(state: &AppState, drive_id: &str) {
+async fn get_channel_id(state: &AppState, drive_id: &str) -> i64 {
     let drives = state.drives.read().await;
-    let channel_id = drives
+    drives
         .iter()
         .find(|d| d.id == drive_id)
         .map(|d| d.channel_id)
-        .unwrap_or(0);
-    drop(drives);
+        .unwrap_or(0)
+}
+
+async fn auto_flush_manifest(state: &AppState, drive_id: &str) {
+    let channel_id = get_channel_id(state, drive_id).await;
     if channel_id != 0 {
         let _ = state.engine.flush_manifest(drive_id, channel_id).await;
     }
@@ -63,10 +66,17 @@ pub async fn delete_node_command(
     permanent: bool,
 ) -> Result<CommandResponse<()>, String> {
     let state = app.state::<AppState>();
+    let channel_id = get_channel_id(&state, &drive_id).await;
     let res = if permanent {
-        state.engine.delete_node(&drive_id, &node_id).await
+        state
+            .engine
+            .delete_node(&drive_id, &node_id, channel_id)
+            .await
     } else {
-        state.engine.trash_node(&drive_id, &node_id).await
+        state
+            .engine
+            .trash_node(&drive_id, &node_id, channel_id)
+            .await
     };
 
     match res {
@@ -85,7 +95,12 @@ pub async fn restore_node_command(
     node_id: String,
 ) -> Result<CommandResponse<()>, String> {
     let state = app.state::<AppState>();
-    match state.engine.restore_node(&drive_id, &node_id).await {
+    let channel_id = get_channel_id(&state, &drive_id).await;
+    match state
+        .engine
+        .restore_node(&drive_id, &node_id, channel_id)
+        .await
+    {
         Ok(_) => {
             auto_flush_manifest(&state, &drive_id).await;
             Ok(CommandResponse::ok(()))
@@ -100,7 +115,8 @@ pub async fn empty_trash_command(
     drive_id: String,
 ) -> Result<CommandResponse<usize>, String> {
     let state = app.state::<AppState>();
-    match state.engine.empty_trash(&drive_id).await {
+    let channel_id = get_channel_id(&state, &drive_id).await;
+    match state.engine.empty_trash(&drive_id, channel_id).await {
         Ok(count) => {
             auto_flush_manifest(&state, &drive_id).await;
             Ok(CommandResponse::ok(count))
@@ -148,12 +164,14 @@ pub async fn rename_node_command(
     if trimmed.is_empty() {
         return Ok(CommandResponse::err("Node name cannot be empty"));
     }
-    if let Err(e) = state.engine.rename_node(&drive_id, &node_id, trimmed).await {
+    let channel_id = get_channel_id(&state, &drive_id).await;
+    if let Err(e) = state
+        .engine
+        .rename_node(&drive_id, &node_id, trimmed, channel_id)
+        .await
+    {
         return Ok(CommandResponse::err(e.to_string()));
     }
-    let _ = state
-        .cache
-        .rename_node_in_cache(&drive_id, &node_id, trimmed);
     auto_flush_manifest(&state, &drive_id).await;
     Ok(CommandResponse::ok(()))
 }
@@ -166,16 +184,14 @@ pub async fn move_node_command(
     new_parent_id: String,
 ) -> Result<CommandResponse<()>, String> {
     let state = app.state::<AppState>();
+    let channel_id = get_channel_id(&state, &drive_id).await;
     if let Err(e) = state
         .engine
-        .move_node(&drive_id, &node_id, &new_parent_id)
+        .move_node(&drive_id, &node_id, &new_parent_id, channel_id)
         .await
     {
         return Ok(CommandResponse::err(e.to_string()));
     }
-    let _ = state
-        .cache
-        .move_node_in_cache(&drive_id, &node_id, &new_parent_id);
     auto_flush_manifest(&state, &drive_id).await;
     Ok(CommandResponse::ok(()))
 }

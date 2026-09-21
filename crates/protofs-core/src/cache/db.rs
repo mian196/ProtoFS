@@ -315,7 +315,7 @@ impl CacheDatabase {
         // Load folders
         {
             let mut stmt = conn.prepare(
-                "SELECT id, drive_id, parent_id, name, is_trashed, created_at, updated_at FROM folders WHERE drive_id = ?1 AND is_trashed = 0",
+                "SELECT id, drive_id, parent_id, name, is_trashed, created_at, updated_at FROM folders WHERE drive_id = ?1",
             )?;
             let rows = stmt.query_map(params![drive_id], |row| {
                 let is_trashed: i32 = row.get(4)?;
@@ -349,7 +349,7 @@ impl CacheDatabase {
                        telegram_message_id, is_encrypted, encryption_iv, sha256_hash,
                        is_pinned_offline, is_trashed, version, history_json,
                        created_at, updated_at
-                FROM files WHERE drive_id = ?1 AND is_trashed = 0
+                FROM files WHERE drive_id = ?1
                 "#,
             )?;
             let rows = stmt.query_map(params![drive_id], |row| {
@@ -506,6 +506,68 @@ impl CacheDatabase {
             params![new_parent_id, node_id, drive_id],
         )?;
         Ok(())
+    }
+
+    pub fn trash_node_in_cache(
+        &self,
+        drive_id: &str,
+        node_id: &str,
+        is_trashed: bool,
+    ) -> Result<()> {
+        let conn = self.lock_conn()?;
+        let now = Utc::now().to_rfc3339();
+        let trashed_val = if is_trashed { 1 } else { 0 };
+        conn.execute(
+            "UPDATE folders SET is_trashed = ?1, updated_at = ?2 WHERE id = ?3 AND drive_id = ?4",
+            params![trashed_val, now, node_id, drive_id],
+        )?;
+        conn.execute(
+            "UPDATE files SET is_trashed = ?1, updated_at = ?2 WHERE id = ?3 AND drive_id = ?4",
+            params![trashed_val, now, node_id, drive_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_node_in_cache(&self, drive_id: &str, node_id: &str) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute(
+            "DELETE FROM folders WHERE id = ?1 AND drive_id = ?2",
+            params![node_id, drive_id],
+        )?;
+        conn.execute(
+            "DELETE FROM files WHERE id = ?1 AND drive_id = ?2",
+            params![node_id, drive_id],
+        )?;
+        conn.execute(
+            "DELETE FROM fts_nodes WHERE id = ?1 AND drive_id = ?2",
+            params![node_id, drive_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn empty_trash_in_cache(&self, drive_id: &str) -> Result<usize> {
+        let mut conn = self.lock_conn()?;
+        let tx = conn.transaction()?;
+
+        tx.execute(
+            "DELETE FROM fts_nodes WHERE drive_id = ?1 AND id IN (SELECT id FROM files WHERE drive_id = ?1 AND is_trashed = 1)",
+            params![drive_id],
+        )?;
+        tx.execute(
+            "DELETE FROM fts_nodes WHERE drive_id = ?1 AND id IN (SELECT id FROM folders WHERE drive_id = ?1 AND is_trashed = 1)",
+            params![drive_id],
+        )?;
+        let files_deleted = tx.execute(
+            "DELETE FROM files WHERE drive_id = ?1 AND is_trashed = 1",
+            params![drive_id],
+        )?;
+        let folders_deleted = tx.execute(
+            "DELETE FROM folders WHERE drive_id = ?1 AND is_trashed = 1",
+            params![drive_id],
+        )?;
+
+        tx.commit()?;
+        Ok(files_deleted + folders_deleted)
     }
 
     pub fn set_secure_secret(&self, key: &str, plaintext: &[u8]) -> Result<()> {

@@ -7,6 +7,7 @@ pub struct ParsedCaption {
     pub is_encrypted: bool,
     pub iv: Option<String>,
     pub sha256_hash: Option<String>,
+    pub is_trashed: bool,
 }
 
 fn encode_caption_val(val: &str) -> String {
@@ -39,6 +40,25 @@ impl ParsedCaption {
             is_encrypted,
             iv: iv.map(|s| s.to_string()),
             sha256_hash: hash.map(|s| s.to_string()),
+            is_trashed: false,
+        }
+    }
+
+    pub fn with_trashed(
+        parent_id: &str,
+        name: &str,
+        is_encrypted: bool,
+        iv: Option<&str>,
+        hash: Option<&str>,
+        is_trashed: bool,
+    ) -> Self {
+        Self {
+            parent_id: parent_id.to_string(),
+            name: name.to_string(),
+            is_encrypted,
+            iv: iv.map(|s| s.to_string()),
+            sha256_hash: hash.map(|s| s.to_string()),
+            is_trashed,
         }
     }
 
@@ -53,6 +73,9 @@ impl ParsedCaption {
         }
         if let Some(ref hash) = self.sha256_hash {
             parts.push(format!("hash:{}", encode_caption_val(hash)));
+        }
+        if self.is_trashed {
+            parts.push("trashed:1".to_string());
         }
 
         format!("{}{}", Self::PREFIX, parts.join(";"))
@@ -73,6 +96,7 @@ impl ParsedCaption {
         let mut is_encrypted = false;
         let mut iv = None;
         let mut sha256_hash = None;
+        let mut is_trashed = false;
 
         for field in payload.split(';') {
             let mut kv = field.splitn(2, ':');
@@ -84,6 +108,9 @@ impl ParsedCaption {
                     "enc" => is_encrypted = v.trim() == "1",
                     "iv" => iv = Some(decoded_v),
                     "hash" => sha256_hash = Some(decoded_v),
+                    "trash" | "trashed" => {
+                        is_trashed = v.trim() == "1" || v.trim().eq_ignore_ascii_case("true")
+                    }
                     _ => {}
                 }
             }
@@ -103,6 +130,7 @@ impl ParsedCaption {
             is_encrypted,
             iv,
             sha256_hash,
+            is_trashed,
         })
     }
 }
@@ -126,6 +154,26 @@ mod tests {
 
         let parsed = ParsedCaption::parse(&serialized).unwrap();
         assert_eq!(parsed, caption);
+        assert!(!parsed.is_trashed);
+    }
+
+    #[test]
+    fn test_caption_trashed_roundtrip() {
+        let caption = ParsedCaption::with_trashed(
+            "f_1789380506141_0",
+            "rustdesk-1.4.9-x86_64.exe",
+            false,
+            None,
+            Some("eaedeb0088e687bf46f7c46a9c6ea5493ce51f3134dfd6acbedb47b5b9136274"),
+            true,
+        );
+
+        let serialized = caption.serialize();
+        assert!(serialized.contains(";trashed:1"));
+
+        let parsed = ParsedCaption::parse(&serialized).unwrap();
+        assert_eq!(parsed, caption);
+        assert!(parsed.is_trashed);
     }
 
     #[test]

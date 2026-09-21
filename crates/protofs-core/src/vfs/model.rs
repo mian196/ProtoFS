@@ -70,6 +70,23 @@ pub enum VfsNode {
     File(FileNode),
 }
 
+impl FileNode {
+    pub fn build_caption(&self) -> crate::mtproto::ParsedCaption {
+        crate::mtproto::ParsedCaption::with_trashed(
+            &self.parent_id,
+            &self.name,
+            self.is_encrypted,
+            self.encryption_iv.as_deref(),
+            self.sha256_hash.as_deref(),
+            self.is_trashed,
+        )
+    }
+
+    pub fn build_caption_string(&self) -> String {
+        self.build_caption().serialize()
+    }
+}
+
 impl VfsNode {
     pub fn id(&self) -> &str {
         match self {

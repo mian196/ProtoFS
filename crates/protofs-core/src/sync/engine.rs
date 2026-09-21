@@ -184,7 +184,7 @@ impl<T: TelegramTransport> SyncEngine<T> {
                         encryption_iv: parsed.iv,
                         sha256_hash: parsed.sha256_hash,
                         is_pinned_offline: false,
-                        is_trashed: false,
+                        is_trashed: parsed.is_trashed,
                         version: 1,
                         history: Vec::new(),
                         created_at: msg.date,
@@ -326,71 +326,163 @@ impl<T: TelegramTransport> SyncEngine<T> {
         Ok(())
     }
 
-    pub async fn trash_node(&self, drive_id: &str, node_id: &str) -> Result<()> {
-        let mut trees = self.trees_by_drive.write().await;
-        let tree = trees
-            .get_mut(drive_id)
-            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
-        if let Some(VfsNode::File(mut file)) = tree.remove(node_id) {
-            file.is_trashed = true;
-            file.updated_at = chrono::Utc::now();
-            tree.insert(VfsNode::File(file));
-        } else if let Some(VfsNode::Folder(mut folder)) = tree.remove(node_id) {
-            folder.is_trashed = true;
-            folder.updated_at = chrono::Utc::now();
-            tree.insert(VfsNode::Folder(folder));
+    pub async fn trash_node(&self, drive_id: &str, node_id: &str, channel_id: i64) -> Result<()> {
+        let mut files_to_update = Vec::new();
+        {
+            let mut trees = self.trees_by_drive.write().await;
+            let tree = trees
+                .get_mut(drive_id)
+                .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+            if let Some(VfsNode::File(mut file)) = tree.remove(node_id) {
+                file.is_trashed = true;
+                file.updated_at = chrono::Utc::now();
+                files_to_update.push(file.clone());
+                tree.insert(VfsNode::File(file));
+            } else if let Some(VfsNode::Folder(mut folder)) = tree.remove(node_id) {
+                folder.is_trashed = true;
+                folder.updated_at = chrono::Utc::now();
+                tree.insert(VfsNode::Folder(folder));
+            }
         }
+        let _ = self.cache.trash_node_in_cache(drive_id, node_id, true);
+
+        if channel_id != 0 {
+            for file in files_to_update {
+                if file.telegram_message_id > 0 {
+                    let caption = file.build_caption_string();
+                    if let Err(e) = self
+                        .transport
+                        .edit_caption(channel_id, file.telegram_message_id, &caption)
+                        .await
+                    {
+                        warn!(
+                            "Failed to update Telegram caption for trashed message #{}: {}",
+                            file.telegram_message_id, e
+                        );
+                    }
+                }
+            }
+        }
+
         let mut dirty = self.is_dirty_by_drive.write().await;
         dirty.insert(drive_id.to_string(), true);
         Ok(())
     }
 
-    pub async fn restore_node(&self, drive_id: &str, node_id: &str) -> Result<()> {
-        let mut trees = self.trees_by_drive.write().await;
-        let tree = trees
-            .get_mut(drive_id)
-            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
-        if let Some(VfsNode::File(mut file)) = tree.remove(node_id) {
-            file.is_trashed = false;
-            file.updated_at = chrono::Utc::now();
-            tree.insert(VfsNode::File(file));
-        } else if let Some(VfsNode::Folder(mut folder)) = tree.remove(node_id) {
-            folder.is_trashed = false;
-            folder.updated_at = chrono::Utc::now();
-            tree.insert(VfsNode::Folder(folder));
+    pub async fn restore_node(&self, drive_id: &str, node_id: &str, channel_id: i64) -> Result<()> {
+        let mut files_to_update = Vec::new();
+        {
+            let mut trees = self.trees_by_drive.write().await;
+            let tree = trees
+                .get_mut(drive_id)
+                .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+            if let Some(VfsNode::File(mut file)) = tree.remove(node_id) {
+                file.is_trashed = false;
+                file.updated_at = chrono::Utc::now();
+                files_to_update.push(file.clone());
+                tree.insert(VfsNode::File(file));
+            } else if let Some(VfsNode::Folder(mut folder)) = tree.remove(node_id) {
+                folder.is_trashed = false;
+                folder.updated_at = chrono::Utc::now();
+                tree.insert(VfsNode::Folder(folder));
+            }
         }
+        let _ = self.cache.trash_node_in_cache(drive_id, node_id, false);
+
+        if channel_id != 0 {
+            for file in files_to_update {
+                if file.telegram_message_id > 0 {
+                    let caption = file.build_caption_string();
+                    if let Err(e) = self
+                        .transport
+                        .edit_caption(channel_id, file.telegram_message_id, &caption)
+                        .await
+                    {
+                        warn!(
+                            "Failed to update Telegram caption for restored message #{}: {}",
+                            file.telegram_message_id, e
+                        );
+                    }
+                }
+            }
+        }
+
         let mut dirty = self.is_dirty_by_drive.write().await;
         dirty.insert(drive_id.to_string(), true);
         Ok(())
     }
 
-    pub async fn delete_node(&self, drive_id: &str, node_id: &str) -> Result<()> {
-        let mut trees = self.trees_by_drive.write().await;
-        let tree = trees
-            .get_mut(drive_id)
-            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
-        tree.remove_recursive(node_id);
+    pub async fn delete_node(&self, drive_id: &str, node_id: &str, channel_id: i64) -> Result<()> {
+        let removed_nodes = {
+            let mut trees = self.trees_by_drive.write().await;
+            let tree = trees
+                .get_mut(drive_id)
+                .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+            tree.remove_recursive(node_id)
+        };
+
+        for node in &removed_nodes {
+            let _ = self.cache.delete_node_in_cache(drive_id, node.id());
+            if channel_id != 0
+                && let VfsNode::File(file) = node
+                && file.telegram_message_id > 0
+                && let Err(e) = self
+                    .transport
+                    .delete_message(channel_id, file.telegram_message_id)
+                    .await
+            {
+                warn!(
+                    "Failed to delete Telegram message #{}: {}",
+                    file.telegram_message_id, e
+                );
+            }
+        }
+
         let mut dirty = self.is_dirty_by_drive.write().await;
         dirty.insert(drive_id.to_string(), true);
         Ok(())
     }
 
-    pub async fn empty_trash(&self, drive_id: &str) -> Result<usize> {
-        let mut trees = self.trees_by_drive.write().await;
-        let tree = trees
-            .get_mut(drive_id)
-            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
-        let trashed_ids: Vec<String> = tree
-            .all_nodes()
-            .filter_map(|n| match n {
-                VfsNode::File(f) if f.is_trashed => Some(f.id.clone()),
-                _ => None,
-            })
-            .collect();
-        let count = trashed_ids.len();
-        for id in &trashed_ids {
-            tree.remove(id);
+    pub async fn empty_trash(&self, drive_id: &str, channel_id: i64) -> Result<usize> {
+        let mut trashed_files = Vec::new();
+        let count = {
+            let mut trees = self.trees_by_drive.write().await;
+            let tree = trees
+                .get_mut(drive_id)
+                .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+            let trashed_nodes: Vec<VfsNode> = tree
+                .all_nodes()
+                .filter(|n| n.is_trashed())
+                .cloned()
+                .collect();
+            let count = trashed_nodes.len();
+            for node in trashed_nodes {
+                if let VfsNode::File(ref f) = node {
+                    trashed_files.push(f.clone());
+                }
+                tree.remove(node.id());
+            }
+            count
+        };
+
+        let _ = self.cache.empty_trash_in_cache(drive_id);
+
+        if channel_id != 0 {
+            for file in trashed_files {
+                if file.telegram_message_id > 0
+                    && let Err(e) = self
+                        .transport
+                        .delete_message(channel_id, file.telegram_message_id)
+                        .await
+                {
+                    warn!(
+                        "Failed to delete Telegram message #{} during empty trash: {}",
+                        file.telegram_message_id, e
+                    );
+                }
+            }
         }
+
         let mut dirty = self.is_dirty_by_drive.write().await;
         dirty.insert(drive_id.to_string(), true);
         Ok(count)
@@ -411,12 +503,41 @@ impl<T: TelegramTransport> SyncEngine<T> {
         Ok(())
     }
 
-    pub async fn rename_node(&self, drive_id: &str, node_id: &str, new_name: &str) -> Result<()> {
-        let mut trees = self.trees_by_drive.write().await;
-        let tree = trees
-            .get_mut(drive_id)
-            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
-        tree.rename(node_id, new_name)?;
+    pub async fn rename_node(
+        &self,
+        drive_id: &str,
+        node_id: &str,
+        new_name: &str,
+        channel_id: i64,
+    ) -> Result<()> {
+        let updated_file = {
+            let mut trees = self.trees_by_drive.write().await;
+            let tree = trees
+                .get_mut(drive_id)
+                .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+            tree.rename(node_id, new_name)?;
+            tree.get_file(node_id).cloned()
+        };
+
+        let _ = self.cache.rename_node_in_cache(drive_id, node_id, new_name);
+
+        if channel_id != 0
+            && let Some(file) = updated_file
+            && file.telegram_message_id > 0
+        {
+            let caption = file.build_caption_string();
+            if let Err(e) = self
+                .transport
+                .edit_caption(channel_id, file.telegram_message_id, &caption)
+                .await
+            {
+                warn!(
+                    "Failed to update Telegram caption for renamed message #{}: {}",
+                    file.telegram_message_id, e
+                );
+            }
+        }
+
         let mut dirty = self.is_dirty_by_drive.write().await;
         dirty.insert(drive_id.to_string(), true);
         Ok(())
@@ -427,12 +548,38 @@ impl<T: TelegramTransport> SyncEngine<T> {
         drive_id: &str,
         node_id: &str,
         new_parent_id: &str,
+        channel_id: i64,
     ) -> Result<()> {
-        let mut trees = self.trees_by_drive.write().await;
-        let tree = trees
-            .get_mut(drive_id)
-            .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
-        tree.move_node(node_id, new_parent_id)?;
+        let updated_file = {
+            let mut trees = self.trees_by_drive.write().await;
+            let tree = trees
+                .get_mut(drive_id)
+                .ok_or_else(|| ProtoFsError::DriveNotFound(drive_id.to_string()))?;
+            tree.move_node(node_id, new_parent_id)?;
+            tree.get_file(node_id).cloned()
+        };
+
+        let _ = self
+            .cache
+            .move_node_in_cache(drive_id, node_id, new_parent_id);
+
+        if channel_id != 0
+            && let Some(file) = updated_file
+            && file.telegram_message_id > 0
+        {
+            let caption = file.build_caption_string();
+            if let Err(e) = self
+                .transport
+                .edit_caption(channel_id, file.telegram_message_id, &caption)
+                .await
+            {
+                warn!(
+                    "Failed to update Telegram caption for moved message #{}: {}",
+                    file.telegram_message_id, e
+                );
+            }
+        }
+
         let mut dirty = self.is_dirty_by_drive.write().await;
         dirty.insert(drive_id.to_string(), true);
         Ok(())

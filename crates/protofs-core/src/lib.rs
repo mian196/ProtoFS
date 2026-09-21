@@ -277,12 +277,20 @@ mod tests {
         async fn edit_caption(
             &self,
             _channel_id: i64,
-            _message_id: i32,
-            _new_caption: &str,
+            message_id: i32,
+            new_caption: &str,
         ) -> Result<()> {
+            let mut msgs = self.messages.lock().unwrap();
+            if let Some(msg) = msgs.iter_mut().find(|m| m.id == message_id) {
+                msg.caption = Some(new_caption.to_string());
+            }
             Ok(())
         }
-        async fn delete_message(&self, _channel_id: i64, _message_id: i32) -> Result<()> {
+        async fn delete_message(&self, _channel_id: i64, message_id: i32) -> Result<()> {
+            let mut msgs = self.messages.lock().unwrap();
+            msgs.retain(|m| m.id != message_id);
+            let mut pl = self.payloads.lock().unwrap();
+            pl.remove(&message_id);
             Ok(())
         }
         async fn send_text_message(&self, _channel_id: i64, _text: &str) -> Result<i32> {
@@ -345,6 +353,237 @@ mod tests {
 
         // 5. Test flush manifest
         engine.flush_manifest("personal", channel.id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_trash_and_restore_node_updates_telegram_caption_and_cache() {
+        use std::sync::Arc;
+
+        let transport = Arc::new(MockTestTransport::default());
+        let db = CacheDatabase::open_in_memory().unwrap();
+        let engine = SyncEngine::new(transport.clone(), db.clone());
+
+        let channel = transport
+            .create_channel("Test Trash Drive", "ProtoFS Root")
+            .await
+            .unwrap();
+
+        let uploaded_file = engine
+            .upload_file_data(
+                "drive_trash_test",
+                "f_1789380506141_0",
+                "rustdesk-1.4.9-x86_64.exe",
+                b"EXECUTABLE_BINARY_DATA",
+                false,
+                None,
+                channel.id,
+            )
+            .await
+            .unwrap();
+
+        // Initial manifest flush (populates cache and pinned manifest)
+        engine
+            .flush_manifest("drive_trash_test", channel.id)
+            .await
+            .unwrap();
+
+        // Check initial Telegram message caption
+        {
+            let msgs = transport.messages.lock().unwrap();
+            let msg = msgs
+                .iter()
+                .find(|m| m.id == uploaded_file.telegram_message_id)
+                .unwrap();
+            let cap = msg.caption.as_ref().unwrap();
+            assert!(cap.starts_with("protofs:v1;"));
+            assert!(cap.contains("name:rustdesk-1.4.9-x86_64.exe"));
+            assert!(!cap.contains("trashed:1"));
+        }
+
+        // Move to trash
+        engine
+            .trash_node("drive_trash_test", &uploaded_file.id, channel.id)
+            .await
+            .unwrap();
+
+        // 1. Verify Telegram message caption is updated with trashed:1
+        {
+            let msgs = transport.messages.lock().unwrap();
+            let msg = msgs
+                .iter()
+                .find(|m| m.id == uploaded_file.telegram_message_id)
+                .unwrap();
+            let cap = msg.caption.as_ref().unwrap();
+            assert!(
+                cap.contains("trashed:1"),
+                "Caption should contain trashed:1 after moving to trash: {}",
+                cap
+            );
+        }
+
+        // 2. Verify local cache is updated immediately
+        let cached_tree = db.load_tree("drive_trash_test").unwrap();
+        let cached_file = cached_tree.get_file(&uploaded_file.id).unwrap();
+        assert!(
+            cached_file.is_trashed,
+            "Cached file should be marked as is_trashed"
+        );
+
+        // 3. Flush manifest and verify pinned manifest has is_trashed = true
+        engine
+            .flush_manifest("drive_trash_test", channel.id)
+            .await
+            .unwrap();
+        let (_, manifest_bytes) = transport
+            .get_pinned_manifest(channel.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let manifest = ManifestSnapshot::from_compressed_bytes(&manifest_bytes).unwrap();
+        let mf_file = manifest
+            .files
+            .iter()
+            .find(|f| f.id == uploaded_file.id)
+            .unwrap();
+        assert!(
+            mf_file.is_trashed,
+            "Manifest file should be is_trashed = true"
+        );
+
+        // 4. Restore file
+        engine
+            .restore_node("drive_trash_test", &uploaded_file.id, channel.id)
+            .await
+            .unwrap();
+
+        // Verify Telegram caption has trashed:1 removed
+        {
+            let msgs = transport.messages.lock().unwrap();
+            let msg = msgs
+                .iter()
+                .find(|m| m.id == uploaded_file.telegram_message_id)
+                .unwrap();
+            let cap = msg.caption.as_ref().unwrap();
+            assert!(
+                !cap.contains("trashed:1"),
+                "Restored caption should not have trashed:1"
+            );
+        }
+
+        // Verify local cache is restored
+        let cached_tree_restored = db.load_tree("drive_trash_test").unwrap();
+        let restored_file = cached_tree_restored.get_file(&uploaded_file.id).unwrap();
+        assert!(
+            !restored_file.is_trashed,
+            "Restored file should have is_trashed = false"
+        );
+
+        // Flush manifest after restore and verify
+        engine
+            .flush_manifest("drive_trash_test", channel.id)
+            .await
+            .unwrap();
+        let (_, manifest_bytes_restored) = transport
+            .get_pinned_manifest(channel.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let manifest_restored =
+            ManifestSnapshot::from_compressed_bytes(&manifest_bytes_restored).unwrap();
+        let mf_file_restored = manifest_restored
+            .files
+            .iter()
+            .find(|f| f.id == uploaded_file.id)
+            .unwrap();
+        assert!(
+            !mf_file_restored.is_trashed,
+            "Manifest file should be is_trashed = false"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_permanent_delete_and_empty_trash_removes_from_telegram_and_cache() {
+        use std::sync::Arc;
+
+        let transport = Arc::new(MockTestTransport::default());
+        let db = CacheDatabase::open_in_memory().unwrap();
+        let engine = SyncEngine::new(transport.clone(), db.clone());
+
+        let channel = transport
+            .create_channel("Delete Test Drive", "ProtoFS Root")
+            .await
+            .unwrap();
+
+        let file1 = engine
+            .upload_file_data(
+                "drive_del_test",
+                "root",
+                "file1.txt",
+                b"file 1 data",
+                false,
+                None,
+                channel.id,
+            )
+            .await
+            .unwrap();
+
+        let file2 = engine
+            .upload_file_data(
+                "drive_del_test",
+                "root",
+                "file2.txt",
+                b"file 2 data",
+                false,
+                None,
+                channel.id,
+            )
+            .await
+            .unwrap();
+
+        // Permanently delete file2
+        engine
+            .delete_node("drive_del_test", &file2.id, channel.id)
+            .await
+            .unwrap();
+
+        // Verify file2 message is deleted from Telegram channel
+        {
+            let msgs = transport.messages.lock().unwrap();
+            assert!(msgs.iter().all(|m| m.id != file2.telegram_message_id));
+            assert!(msgs.iter().any(|m| m.id == file1.telegram_message_id));
+        }
+
+        // Trash file1 then empty trash
+        engine
+            .trash_node("drive_del_test", &file1.id, channel.id)
+            .await
+            .unwrap();
+
+        let deleted_count = engine
+            .empty_trash("drive_del_test", channel.id)
+            .await
+            .unwrap();
+        assert_eq!(deleted_count, 1);
+
+        // Verify file1 message is also deleted from Telegram channel
+        {
+            let msgs = transport.messages.lock().unwrap();
+            assert!(msgs.is_empty());
+        }
+
+        // Flush manifest and verify it's empty
+        engine
+            .flush_manifest("drive_del_test", channel.id)
+            .await
+            .unwrap();
+        let (_, manifest_bytes) = transport
+            .get_pinned_manifest(channel.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let manifest = ManifestSnapshot::from_compressed_bytes(&manifest_bytes).unwrap();
+        assert_eq!(manifest.header.file_count, 0);
+        assert!(manifest.files.is_empty());
     }
 
     #[tokio::test]
