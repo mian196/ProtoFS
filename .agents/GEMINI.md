@@ -109,6 +109,7 @@ This file defines the persistent instructions, architectural rules, code standar
 
 ### Rust Backend (`crates/`)
 - **Edition & Toolchain:** Rust 2024 edition, stable toolchain.
+- **Modularity & Sub-Modules:** Never write massive monolithic files with thousands of lines. Split large modules into dedicated sub-modules (e.g., `feature/mod.rs`, `feature/types.rs`, `feature/handlers.rs`, `feature/helpers.rs`) and re-export clean public APIs (`pub use`).
 - **Formatting:** Comply with `rustfmt.toml` (`max_width = 100`, `reorder_imports = true`).
 - **Linter:** `cargo clippy --workspace --all-targets -- -D warnings` must pass with zero warnings.
 - **Error Handling:** Use `thiserror` strongly-typed errors (`ProtoFsError`), avoid generic `.unwrap()` or `.expect()` in production paths.
@@ -116,10 +117,15 @@ This file defines the persistent instructions, architectural rules, code standar
 
 ### Frontend (`frontend/`)
 - **Framework & Language:** React 19, TypeScript strict mode (`es2023`, `moduleResolution: bundler`, `noEmit: true`).
+- **Component & Module Decomposition:** Keep files concise and modular. Break large components and monolithic files into smaller sub-components, custom hooks, focused store slices, and domain-scoped type modules rather than piling thousands of lines into single files.
 - **Styling:** Tailwind CSS v4 via `@tailwindcss/vite`.
 - **State Management:** Modular Zustand stores (e.g. `useTransferStore`, `useAuthStore`).
 - **Linting:** ESLint 10 + TypeScript ESLint (`npm run lint`).
 - **Logging:** Direct `console.log` is disallowed; use structured notifications (`sonner`) or IPC event streaming.
+
+### Architectural Modularity Invariants
+- **File Length & Granularity:** Keep modules focused on single responsibilities. When a file grows beyond a reasonable size (~300–400 lines), extract sub-routines, helpers, and types into sub-modules.
+- **Clean Interface Boundaries:** Sub-modules should expose distinct interfaces through their respective parent `mod.rs` (in Rust) or `index.ts` / barrel files (in React/TypeScript).
 
 ---
 
