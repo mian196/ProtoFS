@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Download, FileSpreadsheet, Trash2, Check, ShieldAlert } from 'lucide-react';
+import { toast } from 'sonner';
 import { useDriveStore } from '../../stores/useDriveStore';
+import { confirmDialog } from '../../stores/useConfirmStore';
 import type { DriveMetadata } from '../../types';
 
 interface DisasterRecoveryBannerProps {
@@ -37,12 +39,27 @@ export const DisasterRecoveryBanner: React.FC<DisasterRecoveryBannerProps> = ({ 
   };
 
   const handleUnlink = async () => {
-    if (
-      window.confirm(
-        `Are you sure you want to unlink and remove '${drive.name}' from ProtoFS?\n\nTip: Make sure you exported the file list first if you need a record of your files.`
-      )
-    ) {
-      await deleteDrive(drive.id);
+    const confirmed = await confirmDialog({
+      title: 'Unlink Inaccessible Drive',
+      message: `Are you sure you want to unlink and remove '${drive.name}' from ProtoFS? This will clear local mount and sync state for this drive.`,
+      tip: 'Make sure you exported the file list first if you need a record of your files.',
+      variant: 'danger',
+      icon: 'trash',
+      confirmText: 'Unlink Drive',
+      cancelText: 'Keep Drive',
+    });
+
+    if (confirmed) {
+      try {
+        await deleteDrive(drive.id);
+        toast.info('Drive Unlinked', {
+          description: `Successfully removed '${drive.name}' from ProtoFS.`,
+        });
+      } catch (err: any) {
+        toast.error('Failed to Unlink Drive', {
+          description: err?.message || 'An unexpected error occurred.',
+        });
+      }
     }
   };
 

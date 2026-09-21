@@ -17,6 +17,7 @@ import { RecoveryPhraseModal } from '../settings/modals/RecoveryPhraseModal';
 import { ClearCacheConfirmModal } from '../settings/modals/ClearCacheConfirmModal';
 import { ExportBackupModal } from '../settings/modals/ExportBackupModal';
 import { ImportBackupModal } from '../settings/modals/ImportBackupModal';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useModalStore } from '../../stores/useModalStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import type { ConflictState } from '../../hooks/useUploadManager';
@@ -110,6 +111,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
           onClose={() => conflictState.resolve('skip', false)}
         />
       )}
+      <ConfirmDialog />
     </>
   );
 };

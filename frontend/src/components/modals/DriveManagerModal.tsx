@@ -13,8 +13,10 @@ import {
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { toast } from 'sonner';
 import { api } from '../../api';
 import { useDriveStore } from '../../stores/useDriveStore';
+import { confirmDialog } from '../../stores/useConfirmStore';
 import { useVfsStore } from '../../stores/useVfsStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 
@@ -213,10 +215,27 @@ export const DriveManagerModal: React.FC<DriveManagerModalProps> = ({ isOpen, on
                       )}
                       <button
                         type="button"
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          if (confirm(`Unlink drive "${d.name}" from ProtoFS?`)) {
-                            deleteDrive(d.id);
+                          const confirmed = await confirmDialog({
+                            title: 'Unlink Drive',
+                            message: `Are you sure you want to unlink drive "${d.name}" from ProtoFS?`,
+                            variant: 'danger',
+                            icon: 'trash',
+                            confirmText: 'Unlink Drive',
+                            cancelText: 'Cancel',
+                          });
+                          if (confirmed) {
+                            try {
+                              await deleteDrive(d.id);
+                              toast.info('Drive Unlinked', {
+                                description: `Successfully unlinked drive "${d.name}".`,
+                              });
+                            } catch (err: any) {
+                              toast.error('Failed to Unlink Drive', {
+                                description: err?.message || 'An unexpected error occurred.',
+                              });
+                            }
                           }
                         }}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
