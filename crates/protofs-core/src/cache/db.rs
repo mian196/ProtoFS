@@ -201,12 +201,12 @@ impl CacheDatabase {
         {
             let mut stmt = tx.prepare(
                 r#"
-                INSERT INTO folders (id, drive_id, parent_id, name, is_trashed, created_at, updated_at)
+                INSERT OR REPLACE INTO folders (id, drive_id, parent_id, name, is_trashed, created_at, updated_at)
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                 "#,
             )?;
             let mut fts_stmt = tx.prepare(
-                "INSERT INTO fts_nodes (id, drive_id, name, kind, parent_id) VALUES (?1, ?2, ?3, 'folder', ?4)",
+                "INSERT OR REPLACE INTO fts_nodes (id, drive_id, name, kind, parent_id) VALUES (?1, ?2, ?3, 'folder', ?4)",
             )?;
 
             for folder in &manifest.folders {
@@ -232,7 +232,7 @@ impl CacheDatabase {
         {
             let mut stmt = tx.prepare(
                 r#"
-                INSERT INTO files (
+                INSERT OR REPLACE INTO files (
                     id, drive_id, parent_id, name, size_bytes, mime_type,
                     telegram_message_id, is_encrypted, encryption_iv, sha256_hash,
                     is_pinned_offline, is_trashed, version, history_json,
@@ -242,7 +242,7 @@ impl CacheDatabase {
                 "#,
             )?;
             let mut fts_stmt = tx.prepare(
-                "INSERT INTO fts_nodes (id, drive_id, name, kind, parent_id) VALUES (?1, ?2, ?3, 'file', ?4)",
+                "INSERT OR REPLACE INTO fts_nodes (id, drive_id, name, kind, parent_id) VALUES (?1, ?2, ?3, 'file', ?4)",
             )?;
 
             for file in &manifest.files {
