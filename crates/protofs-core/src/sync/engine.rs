@@ -130,6 +130,15 @@ impl<T: TelegramTransport> SyncEngine<T> {
         );
 
         let mut tree = VfsTree::new();
+        // Seed with any cached folders from local database so folder names are preserved
+        if let Ok(cached_tree) = self.cache.load_tree(drive_id) {
+            for node in cached_tree.all_nodes() {
+                if let VfsNode::Folder(f) = node {
+                    tree.insert(VfsNode::Folder(f.clone()));
+                }
+            }
+        }
+
         let mut min_id = 0;
         let mut total_scanned = 0;
 
@@ -151,12 +160,18 @@ impl<T: TelegramTransport> SyncEngine<T> {
                 {
                     // Synthesize intermediate parent folder if not yet in tree and not root
                     if parsed.parent_id != "root" && tree.get(&parsed.parent_id).is_none() {
-                        let folder_name = parsed
-                            .parent_id
-                            .trim_start_matches("folder_")
-                            .replace('_', " ");
-                        let clean_name = if folder_name.is_empty() {
-                            parsed.parent_id.clone()
+                        let folder_name = if parsed.parent_id.starts_with("folder_") {
+                            parsed
+                                .parent_id
+                                .trim_start_matches("folder_")
+                                .replace('_', " ")
+                        } else if parsed.parent_id.starts_with("f_") {
+                            "Folder".to_string()
+                        } else {
+                            parsed.parent_id.replace('_', " ")
+                        };
+                        let clean_name = if folder_name.trim().is_empty() {
+                            "Folder".to_string()
                         } else {
                             folder_name
                         };
@@ -320,9 +335,18 @@ impl<T: TelegramTransport> SyncEngine<T> {
     pub async fn add_node(&self, drive_id: &str, node: VfsNode) -> Result<()> {
         let mut trees = self.trees_by_drive.write().await;
         let tree = trees.entry(drive_id.to_string()).or_default();
-        tree.insert(node);
+        tree.insert(node.clone());
         let mut dirty = self.is_dirty_by_drive.write().await;
         dirty.insert(drive_id.to_string(), true);
+
+        match &node {
+            VfsNode::Folder(f) => {
+                let _ = self.cache.upsert_folder(f);
+            }
+            VfsNode::File(f) => {
+                let _ = self.cache.upsert_file(f);
+            }
+        }
         Ok(())
     }
 

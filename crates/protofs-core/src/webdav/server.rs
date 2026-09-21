@@ -311,6 +311,46 @@ async fn handle_webdav_connection<T: TelegramTransport + 'static>(
     Ok(())
 }
 
+fn get_drive_slug(d: &DriveMetadata) -> String {
+    let trimmed = d.name.trim();
+    if trimmed.is_empty() {
+        d.id.clone()
+    } else {
+        trimmed.replace(['/', '\\'], "_")
+    }
+}
+
+fn get_unique_drive_slugs(drives: &[DriveMetadata]) -> Vec<(String, &DriveMetadata)> {
+    let mut slugs = Vec::new();
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for d in drives {
+        let base_slug = get_drive_slug(d);
+        let count = counts.entry(base_slug.to_lowercase()).or_insert(0);
+        *count += 1;
+        let slug = if *count == 1 {
+            base_slug
+        } else {
+            format!("{}_{}", base_slug, count)
+        };
+        slugs.push((slug, d));
+    }
+    slugs
+}
+
+fn resolve_drive<'a>(drives: &'a [DriveMetadata], key: &str) -> Option<&'a DriveMetadata> {
+    let slugs = get_unique_drive_slugs(drives);
+    for (slug, d) in &slugs {
+        if slug.eq_ignore_ascii_case(key)
+            || d.name.eq_ignore_ascii_case(key)
+            || d.id == key
+            || d.name == key
+        {
+            return Some(*d);
+        }
+    }
+    None
+}
+
 async fn handle_propfind<T: TelegramTransport + 'static>(
     stream: &mut TcpStream,
     path: &str,
@@ -337,11 +377,17 @@ async fn handle_propfind<T: TelegramTransport + 'static>(
         });
 
         if depth != "0" {
-            for d in &drives {
+            let unique_slugs = get_unique_drive_slugs(&drives);
+            for (slug, d) in unique_slugs {
+                let display_name = if d.name.trim().is_empty() {
+                    d.id.clone()
+                } else {
+                    d.name.clone()
+                };
                 props.push(WebDavProp {
-                    href: format!("/{}", d.id),
+                    href: format!("/{}", urlencoding_encode(&slug)),
                     is_dir: true,
-                    display_name: d.name.clone(),
+                    display_name,
                     size_bytes: 0,
                     mime_type: "httpd/unix-directory".to_string(),
                     last_modified_rfc1123: d.updated_at.to_rfc2822(),
@@ -353,7 +399,13 @@ async fn handle_propfind<T: TelegramTransport + 'static>(
     } else {
         // Path inside a specific drive
         let parts: Vec<&str> = clean.split('/').filter(|p| !p.is_empty()).collect();
-        let drive_id = parts[0];
+        let drive_segment = parts[0];
+        let matched_drive = resolve_drive(&drives, drive_segment);
+        let (drive_id, drive_display_name) = match matched_drive {
+            Some(d) => (d.id.as_str(), d.name.as_str()),
+            None => (drive_segment, drive_segment),
+        };
+
         let subpath = if parts.len() > 1 {
             parts[1..].join("/")
         } else {
@@ -361,19 +413,14 @@ async fn handle_propfind<T: TelegramTransport + 'static>(
         };
 
         let tree = engine.get_or_create_tree(drive_id).await;
+        let drive_encoded_href = format!("/{}", urlencoding_encode(drive_segment));
 
         if subpath.is_empty() {
             // Drive root folder
-            let drive_name = drives
-                .iter()
-                .find(|d| d.id == drive_id)
-                .map(|d| d.name.clone())
-                .unwrap_or_else(|| drive_id.to_string());
-
             props.push(WebDavProp {
-                href: format!("/{}", drive_id),
+                href: drive_encoded_href.clone(),
                 is_dir: true,
-                display_name: drive_name,
+                display_name: drive_display_name.to_string(),
                 size_bytes: 0,
                 mime_type: "httpd/unix-directory".to_string(),
                 last_modified_rfc1123: now_rfc1123.clone(),
@@ -386,11 +433,18 @@ async fn handle_propfind<T: TelegramTransport + 'static>(
                     if node.is_trashed() {
                         continue;
                     }
-                    props.push(vfs_node_to_prop(&format!("/{}", drive_id), node));
+                    props.push(vfs_node_to_prop(&drive_encoded_href, node));
                 }
             }
         } else if let Some(target_node) = tree.find_by_path(&subpath) {
-            let parent_href = format!("/{}", clean);
+            let parent_href = format!(
+                "/{}",
+                parts
+                    .iter()
+                    .map(|p| urlencoding_encode(p))
+                    .collect::<Vec<_>>()
+                    .join("/")
+            );
             props.push(vfs_node_to_prop_exact(&parent_href, target_node));
 
             if depth != "0"
@@ -450,9 +504,17 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
         return Ok(());
     }
 
-    let drive_id = parts[0];
+    let drive_segment = parts[0];
+    let (drive_id, channel_id) = {
+        let drives_guard = drives.read().await;
+        match resolve_drive(&drives_guard, drive_segment) {
+            Some(d) => (d.id.clone(), d.channel_id),
+            None => (drive_segment.to_string(), 0),
+        }
+    };
+
     let file_subpath = parts[1..].join("/");
-    let tree = engine.get_or_create_tree(drive_id).await;
+    let tree = engine.get_or_create_tree(&drive_id).await;
 
     let file_node = match tree.find_by_path(&file_subpath) {
         Some(VfsNode::File(f)) => f.clone(),
@@ -529,18 +591,9 @@ async fn handle_get_or_head<T: TelegramTransport + 'static>(
         return Ok(());
     }
 
-    let channel_id = {
-        let drives_guard = drives.read().await;
-        drives_guard
-            .iter()
-            .find(|d| d.id == drive_id)
-            .map(|d| d.channel_id)
-            .unwrap_or(0)
-    };
-
     // Read and decrypt file data on-demand
     if let Ok((_node, data)) = engine
-        .download_file_data(drive_id, &file_node.id, None, channel_id)
+        .download_file_data(&drive_id, &file_node.id, None, channel_id)
         .await
     {
         let start = start_byte as usize;
@@ -558,7 +611,7 @@ async fn handle_mkcol<T: TelegramTransport + 'static>(
     stream: &mut TcpStream,
     path: &str,
     engine: &SyncEngine<T>,
-    _drives: &RwLock<Vec<DriveMetadata>>,
+    drives: &RwLock<Vec<DriveMetadata>>,
 ) -> Result<()> {
     let clean = path.trim_matches('/');
     let parts: Vec<&str> = clean.split('/').filter(|p| !p.is_empty()).collect();
@@ -571,11 +624,19 @@ async fn handle_mkcol<T: TelegramTransport + 'static>(
         return Ok(());
     }
 
-    let drive_id = parts[0];
+    let drive_segment = parts[0];
+    let (drive_id, channel_id) = {
+        let drives_guard = drives.read().await;
+        match resolve_drive(&drives_guard, drive_segment) {
+            Some(d) => (d.id.clone(), d.channel_id),
+            None => (drive_segment.to_string(), 0),
+        }
+    };
+
     let folder_name = parts.last().unwrap().to_string();
     let parent_subpath = parts[1..parts.len() - 1].join("/");
 
-    let mut tree = engine.get_or_create_tree(drive_id).await;
+    let tree = engine.get_or_create_tree(&drive_id).await;
     let parent_id = if parent_subpath.is_empty() {
         ROOT_PARENT_ID.to_string()
     } else if let Some(VfsNode::Folder(f)) = tree.find_by_path(&parent_subpath) {
@@ -591,7 +652,7 @@ async fn handle_mkcol<T: TelegramTransport + 'static>(
 
     let new_folder = FolderNode {
         id: format!("f_{}", Utc::now().timestamp_millis()),
-        drive_id: drive_id.to_string(),
+        drive_id: drive_id.clone(),
         parent_id,
         name: folder_name,
         is_trashed: false,
@@ -599,7 +660,12 @@ async fn handle_mkcol<T: TelegramTransport + 'static>(
         updated_at: Utc::now(),
     };
 
-    tree.insert(VfsNode::Folder(new_folder));
+    let _ = engine
+        .add_node(&drive_id, VfsNode::Folder(new_folder))
+        .await;
+    if channel_id != 0 {
+        let _ = engine.debounced_flush_manifest(&drive_id, channel_id).await;
+    }
 
     let response = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     stream
@@ -613,7 +679,7 @@ async fn handle_delete<T: TelegramTransport + 'static>(
     stream: &mut TcpStream,
     path: &str,
     engine: &SyncEngine<T>,
-    _drives: &RwLock<Vec<DriveMetadata>>,
+    drives: &RwLock<Vec<DriveMetadata>>,
 ) -> Result<()> {
     let clean = path.trim_matches('/');
     let parts: Vec<&str> = clean.split('/').filter(|p| !p.is_empty()).collect();
@@ -626,12 +692,22 @@ async fn handle_delete<T: TelegramTransport + 'static>(
         return Ok(());
     }
 
-    let drive_id = parts[0];
+    let drive_segment = parts[0];
+    let (drive_id, channel_id) = {
+        let drives_guard = drives.read().await;
+        match resolve_drive(&drives_guard, drive_segment) {
+            Some(d) => (d.id.clone(), d.channel_id),
+            None => (drive_segment.to_string(), 0),
+        }
+    };
     let subpath = parts[1..].join("/");
 
-    let mut tree = engine.get_or_create_tree(drive_id).await;
+    let tree = engine.get_or_create_tree(&drive_id).await;
     if let Some(node) = tree.find_by_path(&subpath).cloned() {
-        tree.remove_recursive(node.id());
+        let _ = engine.delete_node(&drive_id, node.id(), channel_id).await;
+        if channel_id != 0 {
+            let _ = engine.debounced_flush_manifest(&drive_id, channel_id).await;
+        }
         let response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
         stream
             .write_all(response.as_bytes())
@@ -653,7 +729,7 @@ async fn handle_move<T: TelegramTransport + 'static>(
     source_path: &str,
     destination_header: &str,
     engine: &SyncEngine<T>,
-    _drives: &RwLock<Vec<DriveMetadata>>,
+    drives: &RwLock<Vec<DriveMetadata>>,
 ) -> Result<()> {
     let dest_url = urlencoding_decode(destination_header);
     let dest_path = if let Some(idx) = dest_url.find("://") {
@@ -681,13 +757,23 @@ async fn handle_move<T: TelegramTransport + 'static>(
         return Ok(());
     }
 
-    let drive_id = src_parts[0];
+    let drive_segment = src_parts[0];
+    let (drive_id, channel_id) = {
+        let drives_guard = drives.read().await;
+        match resolve_drive(&drives_guard, drive_segment) {
+            Some(d) => (d.id.clone(), d.channel_id),
+            None => (drive_segment.to_string(), 0),
+        }
+    };
     let src_subpath = src_parts[1..].join("/");
     let dest_new_name = dest_parts.last().unwrap().to_string();
 
-    let mut tree = engine.get_or_create_tree(drive_id).await;
+    let mut tree = engine.get_or_create_tree(&drive_id).await;
     if let Some(node) = tree.find_by_path(&src_subpath).cloned() {
         let _ = tree.rename(node.id(), &dest_new_name);
+        if channel_id != 0 {
+            let _ = engine.debounced_flush_manifest(&drive_id, channel_id).await;
+        }
         let response = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
         stream
             .write_all(response.as_bytes())
@@ -706,7 +792,7 @@ async fn handle_move<T: TelegramTransport + 'static>(
 
 fn vfs_node_to_prop(parent_href: &str, node: &VfsNode) -> WebDavProp {
     let clean_parent = parent_href.trim_end_matches('/');
-    let href = format!("{}/{}", clean_parent, node.name());
+    let href = format!("{}/{}", clean_parent, urlencoding_encode(node.name()));
     vfs_node_to_prop_exact(&href, node)
 }
 
@@ -738,7 +824,22 @@ fn vfs_node_to_prop_exact(href: &str, node: &VfsNode) -> WebDavProp {
     }
 }
 
-fn urlencoding_decode(input: &str) -> String {
+pub fn urlencoding_encode(input: &str) -> String {
+    let mut encoded = String::with_capacity(input.len());
+    for b in input.bytes() {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(b as char);
+            }
+            _ => {
+                encoded.push_str(&format!("%{:02X}", b));
+            }
+        }
+    }
+    encoded
+}
+
+pub fn urlencoding_decode(input: &str) -> String {
     let mut decoded = Vec::new();
     let bytes = input.as_bytes();
     let mut i = 0;

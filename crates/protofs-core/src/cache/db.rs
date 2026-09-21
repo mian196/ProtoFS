@@ -277,6 +277,92 @@ impl CacheDatabase {
         Ok(())
     }
 
+    pub fn upsert_folder(&self, folder: &FolderNode) -> Result<()> {
+        let conn = self.lock_conn()?;
+        conn.execute(
+            r#"
+            INSERT INTO folders (id, drive_id, parent_id, name, is_trashed, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            ON CONFLICT(id) DO UPDATE SET
+                parent_id = excluded.parent_id,
+                name = excluded.name,
+                is_trashed = excluded.is_trashed,
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                folder.id,
+                folder.drive_id,
+                folder.parent_id,
+                folder.name,
+                if folder.is_trashed { 1 } else { 0 },
+                folder.created_at.to_rfc3339(),
+                folder.updated_at.to_rfc3339(),
+            ],
+        )?;
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO fts_nodes (id, drive_id, name, kind, parent_id) VALUES (?1, ?2, ?3, 'folder', ?4)",
+            params![folder.id, folder.drive_id, folder.name, folder.parent_id],
+        );
+        Ok(())
+    }
+
+    pub fn upsert_file(&self, file: &FileNode) -> Result<()> {
+        let conn = self.lock_conn()?;
+        let history_json = if file.history.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&file.history).unwrap_or_default())
+        };
+        conn.execute(
+            r#"
+            INSERT INTO files (
+                id, drive_id, parent_id, name, size_bytes, mime_type,
+                telegram_message_id, is_encrypted, encryption_iv, sha256_hash,
+                is_pinned_offline, is_trashed, version, history_json,
+                created_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+            ON CONFLICT(id) DO UPDATE SET
+                parent_id = excluded.parent_id,
+                name = excluded.name,
+                size_bytes = excluded.size_bytes,
+                mime_type = excluded.mime_type,
+                telegram_message_id = excluded.telegram_message_id,
+                is_encrypted = excluded.is_encrypted,
+                encryption_iv = excluded.encryption_iv,
+                sha256_hash = excluded.sha256_hash,
+                is_pinned_offline = excluded.is_pinned_offline,
+                is_trashed = excluded.is_trashed,
+                version = excluded.version,
+                history_json = excluded.history_json,
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                file.id,
+                file.drive_id,
+                file.parent_id,
+                file.name,
+                file.size_bytes as i64,
+                file.mime_type,
+                file.telegram_message_id,
+                if file.is_encrypted { 1 } else { 0 },
+                file.encryption_iv,
+                file.sha256_hash,
+                if file.is_pinned_offline { 1 } else { 0 },
+                if file.is_trashed { 1 } else { 0 },
+                file.version as i64,
+                history_json,
+                file.created_at.to_rfc3339(),
+                file.updated_at.to_rfc3339(),
+            ],
+        )?;
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO fts_nodes (id, drive_id, name, kind, parent_id) VALUES (?1, ?2, ?3, 'file', ?4)",
+            params![file.id, file.drive_id, file.name, file.parent_id],
+        );
+        Ok(())
+    }
+
     pub fn search(&self, drive_id: &str, query: &str) -> Result<Vec<SearchResult>> {
         let conn = self.lock_conn()?;
         let formatted_query = format!("\"{}\"*", query.replace('"', "\"\""));
