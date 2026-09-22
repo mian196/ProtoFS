@@ -10,6 +10,7 @@ import { useThemeStore } from '../../stores/useThemeStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { api } from '../../api';
 import type { UpdateInfo } from '../../types';
+import { getAppVersion } from '../../utils/version';
 import { toast } from 'sonner';
 
 export const GeneralTab: React.FC = () => {
@@ -113,7 +114,7 @@ export const GeneralTab: React.FC = () => {
               Software Updates
             </h4>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-normal">
-              ProtoFS v{updateInfo?.current_version || '0.3.0'} • Stable Release Channel
+              ProtoFS v{updateInfo?.current_version || getAppVersion()} • {updateInfo?.package_type || 'Desktop App'} • {updateInfo?.channel || 'Stable Channel'}
             </p>
           </div>
           <Button

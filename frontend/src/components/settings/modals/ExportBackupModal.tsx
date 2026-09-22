@@ -8,6 +8,7 @@ import { useDriveStore } from '../../../stores/useDriveStore';
 import { useAuthStore } from '../../../stores/useAuthStore';
 import { api } from '../../../api';
 import { toast } from 'sonner';
+import { getAppVersion } from '../../../utils/version';
 
 export interface ExportBackupModalProps {
   isOpen: boolean;
@@ -63,7 +64,7 @@ export const ExportBackupModal: React.FC<ExportBackupModalProps> = ({ isOpen, on
     setIsExporting(true);
     try {
       const backupData = {
-        version: '0.3.0',
+        version: getAppVersion(),
         exported_at: new Date().toISOString(),
         theme,
         drives,

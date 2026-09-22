@@ -1,6 +1,7 @@
 import { invokeCommand, isTauri } from './client';
 import { mockStorage } from './mock';
 import type { PurgeCacheResult, ShellIntegrationStatus, UpdateInfo } from '../types';
+import { getAppVersion } from '../utils/version';
 
 export async function getStorageUsage(driveId: string): Promise<{
   total_bytes: number;
@@ -72,15 +73,17 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
     }
   }
 
+  const ver = getAppVersion();
   return {
-    current_version: '0.3.0',
-    latest_version: '0.3.0',
+    current_version: ver,
+    latest_version: ver,
     update_available: false,
-    release_notes: `### ProtoFS v0.3.0 Release Highlights:\n\n- P2P Direct Sharing\n- Native Virtual Drive Mount\n- Android DocumentsProvider & WorkManager`,
-    release_date: '2026-09-07',
-    download_url: 'https://github.com/mian196/ProtoFS/releases/tag/v0.3.0',
+    release_notes: `### ProtoFS v${ver}\n\n- Latest release version running.`,
+    release_date: '2026-09-22',
+    download_url: 'https://github.com/mian196/ProtoFS/releases',
     signature_verified: true,
     channel: 'Stable (GitHub Releases)',
+    package_type: 'Desktop Binary',
   };
 }
 

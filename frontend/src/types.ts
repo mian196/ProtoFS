@@ -159,6 +159,9 @@ export interface UpdateInfo {
   download_url: string;
   signature_verified: boolean;
   channel: string;
+  package_type?: string;
+  asset_name?: string;
+  asset_size_bytes?: number;
 }
 
 export interface ShellIntegrationStatus {
