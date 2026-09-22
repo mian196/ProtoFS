@@ -7,7 +7,7 @@ use ctr::Ctr128BE;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use super::http::http_connect_handshake;
 use super::model::{MtprotoSecret, ProxyConfig, ProxyError};
@@ -173,6 +173,10 @@ async fn handle_socks5_client(
         }
     };
 
+    trace!(
+        "LocalProxyBridge handle_socks5_client: dst_host={}, dst_port={}",
+        dst_host, dst_port
+    );
     match &*proxy {
         ProxyConfig::Mtproto { host, port, secret } => {
             let upstream_addr = format!("{}:{}", host, port);
@@ -293,10 +297,10 @@ fn resolve_dc_id(dst_host: &str) -> i16 {
         3
     } else if dst_host.contains("149.154.167.91")
         || dst_host.contains("149.154.167.92")
-        || dst_host.contains("91.108.56")
+        || dst_host.contains("91.108.56.143")
     {
         4
-    } else if dst_host.contains("91.108.56.165") {
+    } else if dst_host.contains("91.108.56.165") || dst_host.contains("91.108.56") {
         5
     } else {
         2
@@ -374,6 +378,37 @@ fn wrap_tls_record(data: &[u8]) -> Vec<u8> {
     record
 }
 
+fn calculate_crc32(data: &[u8]) -> u32 {
+    let mut hasher = crc32fast::Hasher::new();
+    hasher.update(data);
+    hasher.finalize()
+}
+
+fn strip_mtproto_padding(payload: &[u8]) -> &[u8] {
+    if payload.len() < 8 {
+        return payload;
+    }
+    let auth_key_id = u64::from_le_bytes(payload[0..8].try_into().unwrap());
+    if auth_key_id == 0 {
+        // Unencrypted MTProto message: [auth_key_id (8)] [msg_id (8)] [msg_len (4)] [data (msg_len)]
+        if payload.len() >= 20 {
+            let msg_len = u32::from_le_bytes(payload[16..20].try_into().unwrap()) as usize;
+            let real_len = 20 + msg_len;
+            if real_len <= payload.len() {
+                return &payload[..real_len];
+            }
+        }
+    } else {
+        // Encrypted MTProto message: [auth_key_id (8)] [msg_key (16)] [ciphertext (multiple of 16)]
+        if payload.len() >= 24 {
+            let pad_len = (payload.len() - 8) % 16;
+            let real_len = payload.len() - pad_len;
+            return &payload[..real_len];
+        }
+    }
+    payload
+}
+
 async fn handle_mtproto_tunnel(
     client: TcpStream,
     mut upstream: TcpStream,
@@ -406,51 +441,79 @@ async fn handle_mtproto_tunnel(
     let (mut client_read, mut client_write) = client.into_split();
     let (mut up_read, mut up_write) = upstream.into_split();
 
-    // Client -> Upstream task
+    // Client (Grammers Full Transport) -> Upstream (MTProxy Intermediate Transport)
     let client_to_up = async move {
-        let mut buf = vec![0u8; 8192];
         loop {
-            let n = match client_read.read(&mut buf).await {
-                Ok(0) => break,
-                Ok(n) => n,
-                Err(e) => {
-                    debug!("Client read EOF/err: {}", e);
-                    break;
-                }
-            };
-            tx_cipher.apply_keystream(&mut buf[..n]);
+            // Read 4-byte Full transport length header
+            let mut len_buf = [0u8; 4];
+            if let Err(e) = client_read.read_exact(&mut len_buf).await {
+                debug!("Client read EOF/err on len: {}", e);
+                break;
+            }
+            let full_len = u32::from_le_bytes(len_buf) as usize;
+            if !(12..=16 * 1024 * 1024).contains(&full_len) {
+                warn!("Invalid Full transport length from client: {}", full_len);
+                break;
+            }
+
+            // Read the rest of the Full transport frame: [seq_no (4)] [payload (full_len - 12)] [crc32 (4)]
+            let rest_len = full_len - 4;
+            let mut frame_buf = vec![0u8; rest_len];
+            if let Err(e) = client_read.read_exact(&mut frame_buf).await {
+                debug!("Client read EOF/err on frame body: {}", e);
+                break;
+            }
+
+            // frame_buf[0..4] is seq_no
+            // frame_buf[4..rest_len-4] is payload
+            // frame_buf[rest_len-4..rest_len] is crc32
+            let payload = &frame_buf[4..rest_len - 4];
+            let payload_len = payload.len();
+
+            // Wrap in Intermediate transport for MTProxy: [inter_len (4 bytes = payload_len)] [payload]
+            let inter_len = payload_len as u32;
+            let mut out_frame = Vec::with_capacity(4 + payload_len);
+            out_frame.extend_from_slice(&inter_len.to_le_bytes());
+            out_frame.extend_from_slice(payload);
+
+            tx_cipher.apply_keystream(&mut out_frame);
+
             if is_fake_tls {
                 let mut offset = 0;
-                while offset < n {
-                    let chunk_len = (n - offset).min(16384);
-                    let record = wrap_tls_record(&buf[offset..offset + chunk_len]);
+                let n_out = out_frame.len();
+                while offset < n_out {
+                    let chunk_len = (n_out - offset).min(16384);
+                    let record = wrap_tls_record(&out_frame[offset..offset + chunk_len]);
                     if let Err(e) = up_write.write_all(&record).await {
-                        debug!("Upstream write err: {}", e);
+                        warn!("Upstream TLS write err: {}", e);
                         return;
                     }
                     offset += chunk_len;
                 }
                 if let Err(e) = up_write.flush().await {
-                    debug!("Upstream flush err: {}", e);
+                    warn!("Upstream TLS flush err: {}", e);
                     return;
                 }
             } else {
-                if let Err(e) = up_write.write_all(&buf[..n]).await {
-                    debug!("Upstream write err: {}", e);
+                if let Err(e) = up_write.write_all(&out_frame).await {
+                    warn!("Upstream write err: {}", e);
                     return;
                 }
                 if let Err(e) = up_write.flush().await {
-                    debug!("Upstream flush err: {}", e);
+                    warn!("Upstream flush err: {}", e);
                     return;
                 }
             }
         }
     };
 
-    // Upstream -> Client task
+    // Upstream (MTProxy Intermediate Transport) -> Client (Grammers Full Transport)
     let up_to_client = async move {
+        let mut server_seq_no: u32 = 0;
         if is_fake_tls {
+            let mut rx_stream_buf = Vec::new();
             loop {
+                // Read from TLS record stream and parse Intermediate frames
                 let mut hdr = [0u8; 5];
                 if let Err(e) = up_read.read_exact(&mut hdr).await {
                     debug!("Upstream TLS header read EOF/err: {}", e);
@@ -462,47 +525,130 @@ async fn handle_mtproto_tunnel(
                     warn!("TLS record too large: {}", payload_len);
                     break;
                 }
-                let mut payload = vec![0u8; payload_len];
-                if let Err(e) = up_read.read_exact(&mut payload).await {
+                let mut tls_payload = vec![0u8; payload_len];
+                if let Err(e) = up_read.read_exact(&mut tls_payload).await {
                     debug!("Upstream TLS payload read EOF/err: {}", e);
                     break;
                 }
 
-                // If ChangeCipherSpec (0x14) or Handshake (0x16), skip
                 if content_type == 0x14 || content_type == 0x16 {
                     continue;
                 }
 
-                // If ApplicationData (0x17):
-                rx_cipher.apply_keystream(&mut payload);
-                if let Err(e) = client_write.write_all(&payload).await {
-                    debug!("Client write err: {}", e);
-                    break;
-                }
-                if let Err(e) = client_write.flush().await {
-                    debug!("Client flush err: {}", e);
-                    break;
+                rx_cipher.apply_keystream(&mut tls_payload);
+                rx_stream_buf.extend_from_slice(&tls_payload);
+
+                // Process Intermediate frames in rx_stream_buf
+                while rx_stream_buf.len() >= 4 {
+                    let inter_len = u32::from_le_bytes([
+                        rx_stream_buf[0],
+                        rx_stream_buf[1],
+                        rx_stream_buf[2],
+                        rx_stream_buf[3],
+                    ]) as usize;
+
+                    if inter_len == 0 || inter_len > 16 * 1024 * 1024 {
+                        warn!("Invalid Intermediate length from upstream: {}", inter_len);
+                        return;
+                    }
+
+                    let total_frame_len = 4 + inter_len;
+                    if rx_stream_buf.len() < total_frame_len {
+                        break; // Wait for complete frame
+                    }
+
+                    let raw_payload = &rx_stream_buf[4..total_frame_len];
+                    let payload = strip_mtproto_padding(raw_payload);
+                    let payload_len = payload.len();
+
+                    // Convert to Full Transport frame for Grammers:
+                    // [full_len: 4] [server_seq_no: 4] [payload: payload_len] [crc32: 4]
+                    let full_len = (payload_len + 12) as u32;
+                    let mut full_frame = Vec::with_capacity(4 + 4 + payload_len + 4);
+                    full_frame.extend_from_slice(&full_len.to_le_bytes());
+                    full_frame.extend_from_slice(&server_seq_no.to_le_bytes());
+                    full_frame.extend_from_slice(payload);
+                    let crc = calculate_crc32(&full_frame);
+                    full_frame.extend_from_slice(&crc.to_le_bytes());
+
+                    server_seq_no += 1;
+
+                    if let Err(e) = client_write.write_all(&full_frame).await {
+                        warn!("Client write err: {}", e);
+                        return;
+                    }
+                    if let Err(e) = client_write.flush().await {
+                        warn!("Client flush err: {}", e);
+                        return;
+                    }
+
+                    rx_stream_buf.drain(..total_frame_len);
                 }
             }
         } else {
-            let mut buf = vec![0u8; 8192];
+            let mut rx_stream_buf = Vec::new();
+            let mut read_buf = vec![0u8; 8192];
             loop {
-                let n = match up_read.read(&mut buf).await {
-                    Ok(0) => break,
+                let n = match up_read.read(&mut read_buf).await {
+                    Ok(0) => {
+                        debug!("Upstream MTProxy closed connection (EOF)");
+                        break;
+                    }
                     Ok(n) => n,
                     Err(e) => {
-                        debug!("Upstream read EOF/err: {}", e);
+                        debug!("Upstream read err: {}", e);
                         break;
                     }
                 };
-                rx_cipher.apply_keystream(&mut buf[..n]);
-                if let Err(e) = client_write.write_all(&buf[..n]).await {
-                    debug!("Client write err: {}", e);
-                    break;
-                }
-                if let Err(e) = client_write.flush().await {
-                    debug!("Client flush err: {}", e);
-                    break;
+
+                rx_cipher.apply_keystream(&mut read_buf[..n]);
+                rx_stream_buf.extend_from_slice(&read_buf[..n]);
+
+                // Process Intermediate frames in rx_stream_buf
+                while rx_stream_buf.len() >= 4 {
+                    let inter_len = u32::from_le_bytes([
+                        rx_stream_buf[0],
+                        rx_stream_buf[1],
+                        rx_stream_buf[2],
+                        rx_stream_buf[3],
+                    ]) as usize;
+
+                    if inter_len == 0 || inter_len > 16 * 1024 * 1024 {
+                        warn!("Invalid Intermediate length from upstream: {}", inter_len);
+                        return;
+                    }
+
+                    let total_frame_len = 4 + inter_len;
+                    if rx_stream_buf.len() < total_frame_len {
+                        break; // Wait for complete frame
+                    }
+
+                    let raw_payload = &rx_stream_buf[4..total_frame_len];
+                    let payload = strip_mtproto_padding(raw_payload);
+                    let payload_len = payload.len();
+
+                    // Convert to Full Transport frame for Grammers:
+                    // [full_len: 4] [server_seq_no: 4] [payload: payload_len] [crc32: 4]
+                    let full_len = (payload_len + 12) as u32;
+                    let mut full_frame = Vec::with_capacity(4 + 4 + payload_len + 4);
+                    full_frame.extend_from_slice(&full_len.to_le_bytes());
+                    full_frame.extend_from_slice(&server_seq_no.to_le_bytes());
+                    full_frame.extend_from_slice(payload);
+                    let crc = calculate_crc32(&full_frame);
+                    full_frame.extend_from_slice(&crc.to_le_bytes());
+
+                    server_seq_no += 1;
+
+                    if let Err(e) = client_write.write_all(&full_frame).await {
+                        warn!("Client write err: {}", e);
+                        return;
+                    }
+                    if let Err(e) = client_write.flush().await {
+                        warn!("Client flush err: {}", e);
+                        return;
+                    }
+
+                    rx_stream_buf.drain(..total_frame_len);
                 }
             }
         }

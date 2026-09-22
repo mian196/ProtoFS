@@ -213,14 +213,22 @@ async fn test_local_proxy_bridge_mtproto_tunnel() {
         let tx_iv = &init_rev[40..56];
         let mut tx_cipher = Ctr128BE::<Aes256>::new_from_slices(tx_key.as_ref(), tx_iv).unwrap();
 
-        // Read subsequent MTProto payload from client
-        let mut client_msg = [0u8; 8];
+        // Read subsequent MTProto payload from client (Intermediate format: [len (4)] [payload])
+        let mut len_buf = [0u8; 4];
+        socket.read_exact(&mut len_buf).await.unwrap();
+        rx_cipher.apply_keystream(&mut len_buf);
+        let inter_len = u32::from_le_bytes(len_buf) as usize;
+        assert_eq!(inter_len, 8); // b"PING_REQ".len()
+
+        let mut client_msg = vec![0u8; inter_len];
         socket.read_exact(&mut client_msg).await.unwrap();
         rx_cipher.apply_keystream(&mut client_msg);
         assert_eq!(&client_msg, b"PING_REQ");
 
-        // Send encrypted response back to client
-        let mut response = *b"PONG_RES";
+        // Send encrypted response back in Intermediate format: [len (4)] [payload]
+        let mut response = Vec::new();
+        response.extend_from_slice(&8u32.to_le_bytes());
+        response.extend_from_slice(b"PONG_RES");
         tx_cipher.apply_keystream(&mut response);
         socket.write_all(&response).await.unwrap();
     });
@@ -253,11 +261,29 @@ async fn test_local_proxy_bridge_mtproto_tunnel() {
     client.read_exact(&mut conn_resp).await.unwrap();
     assert_eq!(conn_resp[0..4], [0x05, 0x00, 0x00, 0x01]);
 
-    // Send payload
-    client.write_all(b"PING_REQ").await.unwrap();
-    let mut resp = [0u8; 8];
-    client.read_exact(&mut resp).await.unwrap();
-    assert_eq!(&resp, b"PONG_RES");
+    // Send Full Transport frame: [full_len: 4 (8 + 12 = 20)] [seq_no: 4 (0)] [payload: 8] [crc32: 4]
+    let mut full_frame = Vec::new();
+    full_frame.extend_from_slice(&20u32.to_le_bytes());
+    full_frame.extend_from_slice(&0u32.to_le_bytes());
+    full_frame.extend_from_slice(b"PING_REQ");
+    let mut hasher = crc32fast::Hasher::new();
+    hasher.update(&full_frame);
+    let crc = hasher.finalize();
+    full_frame.extend_from_slice(&crc.to_le_bytes());
+
+    client.write_all(&full_frame).await.unwrap();
+
+    // Read Full Transport frame response: [full_len: 4] [seq_no: 4] [payload: 8] [crc32: 4]
+    let mut resp_len_buf = [0u8; 4];
+    client.read_exact(&mut resp_len_buf).await.unwrap();
+    let resp_full_len = u32::from_le_bytes(resp_len_buf) as usize;
+    assert_eq!(resp_full_len, 20);
+
+    let mut resp_rest = vec![0u8; resp_full_len - 4];
+    client.read_exact(&mut resp_rest).await.unwrap();
+    let resp_seq = u32::from_le_bytes(resp_rest[0..4].try_into().unwrap());
+    assert_eq!(resp_seq, 0);
+    assert_eq!(&resp_rest[4..12], b"PONG_RES");
 
     server_task.await.unwrap();
 }

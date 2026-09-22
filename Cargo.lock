@@ -3350,6 +3350,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "cipher",
+ "crc32fast",
  "ctr",
  "futures",
  "grammers-client",

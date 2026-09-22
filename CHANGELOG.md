@@ -19,10 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced `scripts/bump-version.js` to automatically verify and synchronize `frontend/src/utils/version.ts` alongside root `package.json`, `Cargo.toml`, `frontend/package.json`, and `tauri.conf.json`.
 
 ### 🐛 Fixed
-- **MTProto Obfuscated2 Encryption & Fake-TLS Record Handling in LocalProxyBridge**:
-  - Fixed an issue where the proxy indicator badge displayed active latency (ms) while the sidebar connection remained stuck in `"Connecting..."` / offline.
-  - Corrected AES-256-CTR keystream offset advancement across the initial 64-byte Obfuscated2 header in [`LocalProxyBridge`](crates/protofs-core/src/mtproto/proxy/bridge.rs#L306-L365), ensuring the upstream MTProto proxy correctly decodes protocol tags and Data Center IDs.
-  - Hardened Fake-TLS tunnel stream handling to skip non-application TLS handshake records (`0x14` ChangeCipherSpec and `0x16` Handshake) before passing decrypted MTProto payload frames to the client.
+- **MTProto Transport Framing Translation & Padding Stripping in LocalProxyBridge**:
+  - Resolved the persistent `"Connecting..."` status where MTProto proxies connected successfully at the TCP/TLS level with active ping latency, but Telegram authentication and session requests never completed.
+  - Implemented bidirectional transport framing translation between Grammers' TCP Full transport format (`[full_len (4)] [seq_no (4)] [payload] [crc32 (4)]`) and upstream MTProxy Intermediate / Padded Intermediate format (`[inter_len (4)] [payload]`).
+  - Added dynamic MTProto padding stripper in [`LocalProxyBridge`](crates/protofs-core/src/mtproto/proxy/bridge.rs#L484-L525) to strip upstream random padding (0–15 bytes) from Padded Intermediate responses before returning Full transport frames, preventing AES-IGE decryption failures in Grammers.
+  - Aligned AES-256-CTR keystream offsets across the initial 64-byte Obfuscated2 header and ensured correct transport protocol tag selection (`0xdddddddd` vs `0xeeeeeeee`) based on the proxy secret format.
 - **End-to-End MTProto & Telegram Client Proxy Routing**:
   - Implemented in-process local proxy bridge ([LocalProxyBridge](crates/protofs-core/src/mtproto/proxy/bridge.rs)) and configured `grammers-mtsender` proxy parameters to route all active MTProto sessions, authentication handshakes, QR logins, channel queries, and background sync traffic through active MTProto (Fake-TLS / DD), HTTP CONNECT, and SOCKS5 proxies.
 - **Automatic Startup Proxy Latency Measurement**:

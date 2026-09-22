@@ -43,6 +43,7 @@ base64 = "0.22"
 aes = "0.9"
 ctr = "0.10"
 cipher = "0.5"
+crc32fast = "1.4"
 
 # Telegram MTProto (Real Client via Codeberg)
 grammers-client = { git = "https://codeberg.org/Lonami/grammers.git", rev = "5e16253b2ff8cbea94e8fffdfeccc109217ba762" }
