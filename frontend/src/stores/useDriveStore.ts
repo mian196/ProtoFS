@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api';
+import { useAuthStore } from './useAuthStore';
 import type { DriveMetadata, OwnedChannel, DriveHealthStatus } from '../types';
 
 interface DriveState {
@@ -89,6 +90,23 @@ export const useDriveStore = create<DriveState>((set, get) => ({
   },
 
   checkDriveHealth: async (drive: DriveMetadata) => {
+    // Only flag drive inaccessibility when authenticated and actively connected to Telegram
+    const authStatus = useAuthStore.getState().connectionStatus;
+    if (authStatus !== 'connected') {
+      set((state) => ({
+        isDriveAccessible: true,
+        driveAccessibility: {
+          ...state.driveAccessibility,
+          [drive.id]: true,
+        },
+      }));
+      return {
+        drive_id: drive.id,
+        channel_id: drive.channel_id,
+        is_accessible: true,
+      };
+    }
+
     try {
       const health = await api.checkDriveHealth(drive.id, drive.channel_id);
       const isAccessible = health.is_accessible;

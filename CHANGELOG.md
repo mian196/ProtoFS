@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced `scripts/bump-version.js` to automatically verify and synchronize `frontend/src/utils/version.ts` alongside root `package.json`, `Cargo.toml`, `frontend/package.json`, and `tauri.conf.json`.
 
 ### 🐛 Fixed
+- **Disaster Recovery False Positive on Connection Loss**:
+  - Prevented Disaster Recovery mode and channel deleted warnings from triggering when offline, disconnected, or experiencing network/proxy restrictions. Channel inaccessibility checks now only execute when authenticated and actively connected to Telegram.
 - **Dynamic Application Version in Sidebar**:
   - Fixed hardcoded `v0.3` badge in the sidebar header to dynamically read the application version (`v0.4.1`) via `getAppVersion()`.
 

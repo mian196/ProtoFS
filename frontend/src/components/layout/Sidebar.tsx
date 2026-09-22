@@ -135,7 +135,7 @@ export const Sidebar: React.FC = () => {
           >
             {drives.map((d) => (
               <option key={d.id} value={d.id}>
-                {driveAccessibility[d.id] === false ? '⚠️ [Recovery] ' : ''}{d.name} ({d.id})
+                {driveAccessibility[d.id] === false && isOnline ? '⚠️ [Recovery] ' : ''}{d.name} ({d.id})
               </option>
             ))}
           </select>

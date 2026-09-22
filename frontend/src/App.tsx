@@ -34,7 +34,8 @@ import { toast, Toaster } from 'sonner';
 export const App: React.FC = () => {
   const { theme } = useThemeStore();
   useTransferListener();
-  const { session, initSession } = useAuthStore();
+  const { session, initSession, connectionStatus } = useAuthStore();
+  const isOnline = connectionStatus === 'connected';
   const { activeDrive, isDriveAccessible, loadDrives } = useDriveStore();
   const {
     currentParentId,
@@ -367,7 +368,7 @@ export const App: React.FC = () => {
             }
           }}
         >
-          {activeDrive && !isDriveAccessible && (
+          {activeDrive && !isDriveAccessible && isOnline && (
             <DisasterRecoveryBanner drive={activeDrive} />
           )}
 

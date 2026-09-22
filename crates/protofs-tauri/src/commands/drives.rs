@@ -555,6 +555,15 @@ pub async fn check_drive_health_command(
         }));
     }
 
+    if state.session.read().await.is_none() {
+        return Ok(CommandResponse::ok(DriveHealthStatus {
+            drive_id,
+            channel_id: target_channel_id,
+            is_accessible: true,
+            error: Some("Telegram session not authenticated or offline".to_string()),
+        }));
+    }
+
     match state.transport.list_owned_channels().await {
         Ok(owned) => {
             let exists = owned.into_iter().any(|c| {
@@ -588,12 +597,19 @@ pub async fn check_drive_health_command(
                 }))
             }
         }
-        Err(e) => Ok(CommandResponse::ok(DriveHealthStatus {
-            drive_id,
-            channel_id: target_channel_id,
-            is_accessible: false,
-            error: Some(e.to_string()),
-        })),
+        Err(e) => {
+            tracing::warn!(
+                "Cannot check channel accessibility for drive {} due to connection error: {}",
+                drive_id,
+                e
+            );
+            Ok(CommandResponse::ok(DriveHealthStatus {
+                drive_id,
+                channel_id: target_channel_id,
+                is_accessible: true,
+                error: Some(format!("Telegram offline or unreachable: {}", e)),
+            }))
+        }
     }
 }
 
