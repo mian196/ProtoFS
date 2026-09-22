@@ -79,6 +79,11 @@ export const useProxyStore = create<ProxyState & ProxyActions>((set, get) => ({
         proxies: listRes,
         isLoading: false,
       });
+
+      // Auto-measure latency for the active proxy on startup / initial load
+      if (statusRes.is_enabled && activeId) {
+        void get().testProxy(null, activeId);
+      }
     } catch (err) {
       console.error('Failed to load proxy settings:', err);
       set({ isLoading: false });

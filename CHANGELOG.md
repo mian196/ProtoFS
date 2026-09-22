@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced `scripts/bump-version.js` to automatically verify and synchronize `frontend/src/utils/version.ts` alongside root `package.json`, `Cargo.toml`, `frontend/package.json`, and `tauri.conf.json`.
 
 ### 🐛 Fixed
+- **Automatic Startup Proxy Latency Measurement**:
+  - Automatically measured and displayed active proxy round-trip latency (`ms`) in the header badge and auth modal upon opening the application without requiring a manual "Test Connection" button click.
 - **Active Proxy Propagation for Session Reconnections**:
   - Fixed account connection check and session restoration failing under proxy environments. MTProto session reconnections (`check_telegram_connection_command`, startup, and account switches) now consistently route through the active proxy configuration with a fail-fast 5–10s timeout instead of attempting direct connection.
 - **Proxy Diagnostic Draft Deserialization**:
