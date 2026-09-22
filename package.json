@@ -2,6 +2,7 @@
   "name": "protofs-workspace",
   "version": "0.3.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "npx --prefix frontend tauri dev",
     "start": "npx --prefix frontend tauri dev",
@@ -9,6 +10,8 @@
     "build:installer": "npx --prefix frontend tauri build",
     "build:portable": "npm --prefix frontend run build && cargo build --release -p protofs-tauri",
     "build:cli": "cargo build --release -p protofs-cli",
+    "version:check": "node scripts/bump-version.js",
+    "version:bump": "node scripts/bump-version.js",
     "test": "cargo test --workspace && npm --prefix frontend run lint"
   }
 }
