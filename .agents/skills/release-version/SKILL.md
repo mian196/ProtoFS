@@ -43,11 +43,19 @@ When releasing version `<VERSION>` (e.g. `0.4.0`):
 ```
 3. Keep existing release sections unchanged (dated releases are immutable).
 
-### Step 3: Update Version in All Project Configs
-Update all the configuration files listed in the **Target Version Files** table to `<VERSION>`.
+### Step 3: Synchronously Bump Version Across All Manifests
+Execute the SSOT version synchronization script:
+```bash
+npm run version:bump <VERSION>
+```
+Verify that all workspace manifests are in sync:
+```bash
+npm run version:check
+```
+This automatically updates `Cargo.toml`, `package.json`, `frontend/package.json`, `crates/protofs-tauri/tauri.conf.json`, and `crates/protofs-tauri/package.json` simultaneously.
 
-### Step 4: Refresh Cargo.lock and Frontend Typecheck
-Run the following to ensure dependencies and workspace locks are in sync:
+### Step 4: Refresh Cargo.lock and Workspace Quality Gates
+Run the following to ensure dependencies, workspace locks, and frontend builds are clean:
 ```bash
 cargo check --workspace
 npm --prefix frontend run build
