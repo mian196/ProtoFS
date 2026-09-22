@@ -1,6 +1,7 @@
 # Local documentation and design prototypes
 local-docs/
 research-repos/
+.planning/
 
 # Build artifacts and caches
 target*/
