@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { isTauri } from '../api/client';
 import { proxyApi } from '../api/proxy';
 import { parseProxyLink } from '../utils/proxyLinkParser';
+import { useAuthStore } from './useAuthStore';
 import type {
   ParsedProxyResult,
   ProxyConfig,
@@ -127,6 +128,9 @@ export const useProxyStore = create<ProxyState & ProxyActions>((set, get) => ({
     try {
       await proxyApi.saveProxy(profile);
       toast.success(`Proxy "${profile.label}" saved successfully`);
+      if (profile.is_active) {
+        void useAuthStore.getState().checkConnection();
+      }
       return true;
     } catch (err) {
       // Rollback on failure
@@ -175,6 +179,7 @@ export const useProxyStore = create<ProxyState & ProxyActions>((set, get) => ({
 
     try {
       await proxyApi.setActiveProxy(id);
+      void useAuthStore.getState().checkConnection();
       return true;
     } catch (err) {
       // Rollback on failure
@@ -193,6 +198,7 @@ export const useProxyStore = create<ProxyState & ProxyActions>((set, get) => ({
 
     try {
       await proxyApi.toggleProxyEnabled(enabled);
+      void useAuthStore.getState().checkConnection();
       return true;
     } catch (err) {
       // Rollback on failure
@@ -325,6 +331,7 @@ export const useProxyStore = create<ProxyState & ProxyActions>((set, get) => ({
             is_active: p.id === payload.active_proxy_id,
           })),
         }));
+        void useAuthStore.getState().checkConnection();
       });
 
       return unlisten;

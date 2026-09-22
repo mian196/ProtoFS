@@ -127,6 +127,40 @@ pub(crate) async fn sync_transport_proxy(
         tracing::info!("Dynamic transport set to direct connection (proxy disabled or unset)");
     }
 
+    // If an account is logged in, reconnect the MTProto session with the updated proxy configuration
+    let registry = super::auth::load_account_registry(app);
+    if let Some(active_id) = registry.active_user_id
+        && let Some(account) = registry
+            .accounts
+            .iter()
+            .find(|a| a.user_id == active_id)
+            .cloned()
+        && let Some(session_bytes) =
+            super::auth::load_real_telegram_session_for_user(app, active_id)
+        && let Ok(api_id_int) = account.api_id.trim().parse::<i32>()
+    {
+        let proxy_cfg = state.auth_client.get_proxy().await;
+        match protofs_core::mtproto::TelegramAuthClient::reconnect_from_session_with_proxy(
+            api_id_int,
+            account.api_hash.trim(),
+            &session_bytes,
+            proxy_cfg,
+        )
+        .await
+        {
+            Ok(real) => {
+                state.transport.switch_to_real(real).await;
+                tracing::info!("Reconnected MTProto session with updated proxy configuration");
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to reconnect MTProto session with updated proxy: {}",
+                    e
+                );
+            }
+        }
+    }
+
     let payload = ProxyStateChangedPayload {
         is_enabled,
         active_proxy_id: active_id,

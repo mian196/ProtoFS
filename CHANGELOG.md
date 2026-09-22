@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced `scripts/bump-version.js` to automatically verify and synchronize `frontend/src/utils/version.ts` alongside root `package.json`, `Cargo.toml`, `frontend/package.json`, and `tauri.conf.json`.
 
 ### 🐛 Fixed
+- **Active Proxy Propagation for Session Reconnections**:
+  - Fixed account connection check and session restoration failing under proxy environments. MTProto session reconnections (`check_telegram_connection_command`, startup, and account switches) now consistently route through the active proxy configuration with a fail-fast 5–10s timeout instead of attempting direct connection.
 - **Proxy Diagnostic Draft Deserialization**:
   - Resolved `missing field 'type'` error when running proxy connection diagnostics by adding `DraftProxyConfig` to [crates/protofs-tauri/src/commands/proxy.rs](crates/protofs-tauri/src/commands/proxy.rs) and mapping frontend proxy drafts into core `ProxyConfig` instances safely.
 - **Disaster Recovery False Positive on Connection Loss**:

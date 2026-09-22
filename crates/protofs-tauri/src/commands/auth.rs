@@ -528,12 +528,14 @@ pub async fn get_session_status(
             .find(|a| a.user_id == active_id)
             .cloned()
     {
+        let proxy = state.auth_client.get_proxy().await;
         if let Some(session_bytes) = load_real_telegram_session_for_user(&app, active_id)
             && let Ok(api_id_int) = account.api_id.trim().parse::<i32>()
-            && let Ok(real) = TelegramAuthClient::reconnect_from_session(
+            && let Ok(real) = TelegramAuthClient::reconnect_from_session_with_proxy(
                 api_id_int,
                 account.api_hash.trim(),
                 &session_bytes,
+                proxy,
             )
             .await
         {
@@ -581,12 +583,14 @@ pub async fn switch_account_command(
     registry.active_user_id = Some(user_id);
     save_account_registry(&app, &registry);
 
+    let proxy = state.auth_client.get_proxy().await;
     if let Some(session_bytes) = load_real_telegram_session_for_user(&app, user_id)
         && let Ok(api_id_int) = target_account.api_id.trim().parse::<i32>()
-        && let Ok(real) = TelegramAuthClient::reconnect_from_session(
+        && let Ok(real) = TelegramAuthClient::reconnect_from_session_with_proxy(
             api_id_int,
             target_account.api_hash.trim(),
             &session_bytes,
+            proxy,
         )
         .await
     {
@@ -630,12 +634,14 @@ pub async fn remove_account_command(
             registry.active_user_id = Some(next_acc.user_id);
             save_account_registry(&app, &registry);
 
+            let proxy = state.auth_client.get_proxy().await;
             if let Some(session_bytes) = load_real_telegram_session_for_user(&app, next_acc.user_id)
                 && let Ok(api_id_int) = next_acc.api_id.trim().parse::<i32>()
-                && let Ok(real) = TelegramAuthClient::reconnect_from_session(
+                && let Ok(real) = TelegramAuthClient::reconnect_from_session_with_proxy(
                     api_id_int,
                     next_acc.api_hash.trim(),
                     &session_bytes,
+                    proxy,
                 )
                 .await
             {
@@ -681,16 +687,20 @@ pub async fn check_telegram_connection_command(
 ) -> Result<CommandResponse<bool>, String> {
     let state = app.state::<AppState>();
 
-    // 1. If currently connected to a real MTProto transport, ping with get_me
+    // 1. If currently connected to a real MTProto transport, ping with get_me (5s timeout)
     if state.transport.is_real().await {
-        if state.transport.get_me().await.is_ok() {
+        let me_res =
+            tokio::time::timeout(std::time::Duration::from_secs(5), state.transport.get_me()).await;
+
+        if let Ok(Ok(_)) = me_res {
             return Ok(CommandResponse::ok(true));
         }
         // Connection lost or blocked
         state.transport.disconnect().await;
     }
 
-    // 2. If not connected, attempt reconnecting using saved MTProto session
+    // 2. If not connected, attempt reconnecting using saved MTProto session with active proxy
+    let proxy = state.auth_client.get_proxy().await;
     let registry = load_account_registry(&app);
     if let Some(active_id) = registry.active_user_id
         && let Some(account) = registry
@@ -701,16 +711,19 @@ pub async fn check_telegram_connection_command(
         && let Some(session_bytes) = load_real_telegram_session_for_user(&app, active_id)
         && let Ok(api_id_int) = account.api_id.trim().parse::<i32>()
     {
-        match TelegramAuthClient::reconnect_from_session(
+        match TelegramAuthClient::reconnect_from_session_with_proxy(
             api_id_int,
             account.api_hash.trim(),
             &session_bytes,
+            proxy,
         )
         .await
         {
             Ok(real) => {
-                let is_ok = real.get_me().await.is_ok();
-                if is_ok {
+                let me_check =
+                    tokio::time::timeout(std::time::Duration::from_secs(5), real.get_me()).await;
+
+                if let Ok(Ok(_)) = me_check {
                     state.transport.switch_to_real(real).await;
                     return Ok(CommandResponse::ok(true));
                 }

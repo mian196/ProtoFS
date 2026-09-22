@@ -74,6 +74,19 @@ impl TelegramAuthClient {
         }
     }
 
+    pub fn with_proxy(proxy: Option<ProxyConfig>) -> Self {
+        Self {
+            pending: Mutex::new(None),
+            proxy: Mutex::new(proxy),
+        }
+    }
+
+    pub fn set_proxy_sync(&self, proxy: Option<ProxyConfig>) {
+        if let Ok(mut lock) = self.proxy.try_lock() {
+            *lock = proxy;
+        }
+    }
+
     pub async fn set_proxy(&self, proxy: Option<ProxyConfig>) {
         let mut lock = self.proxy.lock().await;
         *lock = proxy;
@@ -282,7 +295,16 @@ impl TelegramAuthClient {
         let session = Arc::new(MemorySession::from(session_data));
         let client = init_grammers_client(Arc::clone(&session), api_id, proxy.clone());
 
-        if !client.is_authorized().await.map_err(|e| {
+        let is_auth_res =
+            tokio::time::timeout(std::time::Duration::from_secs(10), client.is_authorized())
+                .await
+                .map_err(|_| {
+                    ProtoFsError::Mtproto(
+                        "Connection timed out while checking session authorization".to_string(),
+                    )
+                })?;
+
+        if !is_auth_res.map_err(|e| {
             ProtoFsError::Mtproto(format!("Failed to check session authorization: {}", e))
         })? {
             return Err(ProtoFsError::Mtproto(

@@ -123,6 +123,7 @@ pub fn run() {
             {
                 match active_proxy.to_proxy_config() {
                     Ok(cfg) => {
+                        app_state.auth_client.set_proxy_sync(Some(cfg.clone()));
                         let t_clone = app_state.transport.clone();
                         let a_clone = app_state.auth_client.clone();
                         let label = active_proxy.label.clone();
