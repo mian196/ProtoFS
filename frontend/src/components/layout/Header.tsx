@@ -8,6 +8,8 @@ import {
   Moon,
   Sun,
   X,
+  ShieldCheck,
+  ShieldOff,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { BreadcrumbBar } from '../explorer/BreadcrumbBar';
@@ -15,6 +17,7 @@ import { useVfsStore } from '../../stores/useVfsStore';
 import { useThemeStore } from '../../stores/useThemeStore';
 import { useModalStore } from '../../stores/useModalStore';
 import { useDriveStore } from '../../stores/useDriveStore';
+import { useProxyStore } from '../../stores/useProxyStore';
 
 export interface HeaderProps {
   onUploadClick: () => void;
@@ -26,6 +29,10 @@ export const Header: React.FC<HeaderProps> = ({ onUploadClick }) => {
   const { theme, toggleTheme } = useThemeStore();
   const { openModal } = useModalStore();
   const { activeDrive, isDriveAccessible } = useDriveStore();
+  const { isEnabled, activeProxyId, proxies, testResults } = useProxyStore();
+
+  const activeProxy = proxies.find((p) => p.id === activeProxyId);
+  const activeResult = activeProxyId ? testResults[activeProxyId] : null;
 
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -164,6 +171,33 @@ export const Header: React.FC<HeaderProps> = ({ onUploadClick }) => {
               <Sun className="w-3.5 h-3.5 text-amber-400" />
             ) : (
               <Moon className="w-3.5 h-3.5 text-slate-700" />
+            )}
+          </button>
+
+          {/* Live Proxy Status Badge (D-05, UI-03) */}
+          <button
+            type="button"
+            onClick={() => openModal('settings', { defaultTab: 'proxy' })}
+            title="Click to configure Telegram MTProto / SOCKS5 Proxy"
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-mono transition-all shadow-sm cursor-pointer ${
+              isEnabled && activeProxy
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20'
+                : 'bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-700'
+            }`}
+          >
+            {isEnabled && activeProxy ? (
+              <>
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span>
+                  {activeProxy.proxy_type.toUpperCase()}
+                  {activeResult?.latency_ms ? ` • ${activeResult.latency_ms}ms` : ' • Active'}
+                </span>
+              </>
+            ) : (
+              <>
+                <ShieldOff className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>Direct</span>
+              </>
             )}
           </button>
 

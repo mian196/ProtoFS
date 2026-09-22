@@ -1,4 +1,4 @@
-import { test, describe, beforeEach } from 'node:test';
+import { it as test, describe, beforeEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { useConfirmStore, confirmDialog } from '../useConfirmStore';
 

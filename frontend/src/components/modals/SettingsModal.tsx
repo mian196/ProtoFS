@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sun, HardDrive, FolderSync, ShieldCheck, Globe, Layers } from 'lucide-react';
+import { Sun, HardDrive, FolderSync, ShieldCheck, Globe, Layers, Radio } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { GeneralTab } from '../settings/GeneralTab';
@@ -8,6 +8,7 @@ import { SyncTab } from '../settings/SyncTab';
 import { SecurityTab } from '../settings/SecurityTab';
 import { WebDavTab } from '../settings/WebDavTab';
 import { AdvancedTab } from '../settings/AdvancedTab';
+import { ProxyTab } from '../settings/ProxyTab';
 import { useModalStore, type SettingsTabId } from '../../stores/useModalStore';
 
 interface SettingsModalProps {
@@ -21,6 +22,7 @@ const TABS: { id: SettingsTabId; label: string; icon: React.ReactNode }[] = [
   { id: 'sync', label: 'Folder Sync', icon: <FolderSync className="w-4 h-4" /> },
   { id: 'security', label: 'Security & Keys', icon: <ShieldCheck className="w-4 h-4" /> },
   { id: 'webdav', label: 'WebDAV Drive', icon: <Globe className="w-4 h-4" /> },
+  { id: 'proxy', label: 'Proxy', icon: <Radio className="w-4 h-4" /> },
   { id: 'advanced', label: 'Advanced & Cache', icon: <Layers className="w-4 h-4" /> },
 ];
 
@@ -86,6 +88,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           {activeTab === 'sync' && <SyncTab />}
           {activeTab === 'security' && <SecurityTab />}
           {activeTab === 'webdav' && <WebDavTab />}
+          {activeTab === 'proxy' && <ProxyTab />}
           {activeTab === 'advanced' && <AdvancedTab />}
         </div>
       </div>

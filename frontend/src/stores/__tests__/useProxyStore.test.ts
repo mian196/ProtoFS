@@ -1,4 +1,4 @@
-import { beforeEach, describe, it } from 'node:test';
+import { beforeEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { useProxyStore } from '../useProxyStore';
 import type { ProxyProfile, ProxyProfileSummary } from '../../types';

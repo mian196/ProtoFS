@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QrCode, Phone, KeyRound, Loader2, RefreshCw, Key } from 'lucide-react';
+import { toast } from 'sonner';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { api } from '../../api';
 import { useAuthStore } from '../../stores/useAuthStore';
+import { useProxyStore } from '../../stores/useProxyStore';
+import { useModalStore } from '../../stores/useModalStore';
 import QRCode from 'qrcode';
 
 interface AuthModalProps {
@@ -17,12 +20,20 @@ const DEFAULT_API_HASH = 'b18441a1ff607e10a989891a5462e627';
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const { setSession, requires2fa, setRequires2fa, setPhoneCodeHash } = useAuthStore();
+  const { isEnabled, activeProxyId, proxies, testResults } = useProxyStore();
+  const { openModal } = useModalStore();
+
+  const activeProxy = proxies.find((p) => p.id === activeProxyId);
+  const activeResult = activeProxyId ? testResults[activeProxyId] : null;
 
   const [mode, setMode] = useState<'qr' | 'phone'>('qr');
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrTimeLeft, setQrTimeLeft] = useState<number>(0);
   const [qrLoading, setQrLoading] = useState<boolean>(false);
   const [retryCount, setRetryCount] = useState<number>(0);
+
+  // Dynamic QR refresh effect with loop guard
+  const prevProxyState = useRef({ isEnabled, activeProxyId });
 
   // API Credentials
   const [apiId, setApiId] = useState('');
@@ -112,6 +123,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     };
   }, [isOpen, mode, requires2fa, retryCount, generateQr, apiId, apiHash, setRequires2fa, setSession, onClose]);
 
+  // Dynamic QR code regeneration when proxy configuration changes while modal is open in QR mode
+  useEffect(() => {
+    const isChanged =
+      prevProxyState.current.isEnabled !== isEnabled ||
+      prevProxyState.current.activeProxyId !== activeProxyId;
+
+    prevProxyState.current = { isEnabled, activeProxyId };
+
+    if (isChanged && isOpen && mode === 'qr' && !requires2fa) {
+      generateQr();
+      toast.info('Proxy Updated', {
+        description: 'Refreshed Telegram login QR code for new proxy connection.',
+      });
+    }
+  }, [isEnabled, activeProxyId, isOpen, mode, requires2fa, generateQr]);
+
   // Countdown timer for QR expiration
   useEffect(() => {
     if (qrTimeLeft <= 0) return;
@@ -178,6 +205,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
+  const renderProxyHeaderAction = () => {
+    if (isEnabled && activeProxy) {
+      return (
+        <button
+          type="button"
+          onClick={() => openModal('settings', { defaultTab: 'proxy' })}
+          title="Configure MTProto / SOCKS5 proxy before login"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-all cursor-pointer shadow-sm"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>
+            Proxy: {activeProxy.proxy_type.toUpperCase()}
+            {activeResult?.latency_ms ? ` • ${activeResult.latency_ms}ms` : ''}
+          </span>
+        </button>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => openModal('settings', { defaultTab: 'proxy' })}
+        title="Configure MTProto / SOCKS5 proxy before login"
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer shadow-sm"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500" />
+        <span>Proxy: Direct</span>
+      </button>
+    );
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -185,6 +243,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       title="Telegram MTProto Authentication"
       subtitle="Connect your account to access client-side encrypted cloud drives"
       maxWidth="md"
+      headerAction={renderProxyHeaderAction()}
     >
       {/* 2FA Form */}
       {requires2fa ? (

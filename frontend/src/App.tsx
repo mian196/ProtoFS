@@ -18,6 +18,7 @@ import { useVfsStore } from './stores/useVfsStore';
 import { useTransferStore } from './stores/useTransferStore';
 import { useNativeStore } from './stores/useNativeStore';
 import { useModalStore } from './stores/useModalStore';
+import { useProxyStore } from './stores/useProxyStore';
 import { confirmDialog } from './stores/useConfirmStore';
 import { useTransferListener } from './hooks/useTransferListener';
 import { useUploadManager } from './hooks/useUploadManager';
@@ -72,6 +73,11 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     initSession();
+    useProxyStore.getState().loadProxies();
+    const unlistenPromise = useProxyStore.getState().initEventListener();
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
   }, [initSession]);
 
   useEffect(() => {

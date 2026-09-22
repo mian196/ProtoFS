@@ -7,7 +7,8 @@ export type SettingsTabId =
   | 'sync'
   | 'security'
   | 'webdav'
-  | 'advanced';
+  | 'advanced'
+  | 'proxy';
 
 export type ModalType =
   | 'auth'

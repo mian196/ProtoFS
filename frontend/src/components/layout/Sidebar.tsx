@@ -23,6 +23,7 @@ import { useDriveStore } from '../../stores/useDriveStore';
 import { useVfsStore, type FilterType } from '../../stores/useVfsStore';
 import { useNativeStore } from '../../stores/useNativeStore';
 import { useModalStore } from '../../stores/useModalStore';
+import { useProxyStore } from '../../stores/useProxyStore';
 
 export const Sidebar: React.FC = () => {
   const { session, connectionStatus, checkConnection } = useAuthStore();
@@ -30,6 +31,8 @@ export const Sidebar: React.FC = () => {
   const { filterType, setFilterType } = useVfsStore();
   const { virtualDrive, mountVirtualDrive, unmountVirtualDrive } = useNativeStore();
   const { openModal } = useModalStore();
+  const { isEnabled, activeProxyId, proxies } = useProxyStore();
+  const activeProxy = proxies.find((p) => p.id === activeProxyId);
   const [isMounting, setIsMounting] = useState(false);
 
   const handleWebDavRowClick = async () => {
@@ -280,7 +283,11 @@ export const Sidebar: React.FC = () => {
                     connectionStatus === 'checking'
                       ? 'Checking MTProto connection...'
                       : isOnline
-                      ? 'Online (MTProto Connected)'
+                      ? isEnabled && activeProxy
+                        ? `Online (${activeProxy.proxy_type.toUpperCase()} Proxy)`
+                        : 'Online (MTProto Connected)'
+                      : isEnabled
+                      ? 'Offline (Proxy)'
                       : 'Offline (VPN Required)'
                   }
                 />
@@ -304,7 +311,11 @@ export const Sidebar: React.FC = () => {
                     {connectionStatus === 'checking'
                       ? 'Testing...'
                       : isOnline
-                      ? 'Online'
+                      ? isEnabled && activeProxy
+                        ? `Online (${activeProxy.proxy_type.toUpperCase()})`
+                        : 'Online'
+                      : isEnabled
+                      ? 'Offline (Proxy)'
                       : 'Offline (VPN)'}
                   </span>
                 </p>
