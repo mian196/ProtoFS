@@ -1,10 +1,65 @@
 use chrono::Utc;
 use protofs_core::cache::{ProxyProfile, ProxyProfileSummary};
-use protofs_core::mtproto::proxy::{ProxyConfig, ProxyDiagnosticResult, run_proxy_diagnostic};
+use protofs_core::mtproto::proxy::{
+    MtprotoSecret, ProxyAuth, ProxyConfig, ProxyDiagnosticResult, ProxyError, ProxyType,
+    run_proxy_diagnostic,
+};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
 use super::{AppState, CommandResponse};
+
+/// Draft configuration payload received from the frontend proxy editor / diagnostic tester.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DraftProxyConfig {
+    pub proxy_type: ProxyType,
+    pub host: String,
+    pub port: u16,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub secret: Option<String>,
+}
+
+impl DraftProxyConfig {
+    pub fn to_proxy_config(&self) -> Result<ProxyConfig, ProxyError> {
+        match self.proxy_type {
+            ProxyType::Direct => Ok(ProxyConfig::Direct),
+            ProxyType::Socks5 => {
+                let auth = self.username.as_ref().map(|user| ProxyAuth {
+                    username: user.clone(),
+                    password: self.password.clone().unwrap_or_default(),
+                });
+                Ok(ProxyConfig::Socks5 {
+                    host: self.host.clone(),
+                    port: self.port,
+                    auth,
+                })
+            }
+            ProxyType::Http => {
+                let auth = self.username.as_ref().map(|user| ProxyAuth {
+                    username: user.clone(),
+                    password: self.password.clone().unwrap_or_default(),
+                });
+                Ok(ProxyConfig::Http {
+                    host: self.host.clone(),
+                    port: self.port,
+                    auth,
+                })
+            }
+            ProxyType::Mtproto => {
+                let raw_secret = self.secret.as_deref().ok_or_else(|| {
+                    ProxyError::InvalidSecret("Missing MTProto secret".to_string())
+                })?;
+                let secret = MtprotoSecret::parse(raw_secret)?;
+                Ok(ProxyConfig::Mtproto {
+                    host: self.host.clone(),
+                    port: self.port,
+                    secret,
+                })
+            }
+        }
+    }
+}
 
 /// Aggregate status response for UI indicators and status bars.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -87,13 +142,27 @@ pub(crate) async fn sync_transport_proxy(
 #[tauri::command]
 pub async fn test_proxy_connection_command(
     app: tauri::AppHandle,
-    draft_config: Option<ProxyConfig>,
+    draft_config: Option<DraftProxyConfig>,
     target_dc: Option<u8>,
 ) -> Result<CommandResponse<ProxyDiagnosticResult>, String> {
     let state = app.state::<AppState>();
 
-    let config_to_test = if let Some(draft) = draft_config {
-        Some(draft)
+    let config_to_test = if let Some(ref draft) = draft_config {
+        match draft.to_proxy_config() {
+            Ok(cfg) => Some(cfg),
+            Err(e) => {
+                let dc_id = target_dc.unwrap_or(2);
+                let target_endpoint = format!("{}:{}", draft.host, draft.port);
+                return Ok(CommandResponse::ok(ProxyDiagnosticResult {
+                    is_connected: false,
+                    latency_ms: None,
+                    target_dc: dc_id,
+                    target_endpoint,
+                    error_code: Some("INVALID_CONFIG".to_string()),
+                    message: format!("Invalid proxy configuration: {}", e),
+                }));
+            }
+        }
     } else {
         // Fallback to active proxy configuration in database
         match state.cache.get_active_proxy() {
@@ -276,6 +345,50 @@ mod tests {
         let json = serde_json::to_string(&resp).unwrap();
         let parsed: ProxyStatusResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(resp, parsed);
+    }
+
+    #[test]
+    fn test_draft_proxy_config_serde_and_conversion() {
+        // Test MTProto draft deserialization from frontend JSON format
+        let mtproto_json = r#"{
+            "proxy_type": "mtproto",
+            "host": "proxy.example.com",
+            "port": 443,
+            "secret": "0123456789abcdef0123456789abcdef"
+        }"#;
+        let draft: DraftProxyConfig = serde_json::from_str(mtproto_json).unwrap();
+        assert_eq!(draft.proxy_type, ProxyType::Mtproto);
+        assert_eq!(draft.host, "proxy.example.com");
+        assert_eq!(draft.port, 443);
+
+        let cfg = draft.to_proxy_config().unwrap();
+        match cfg {
+            ProxyConfig::Mtproto { host, port, .. } => {
+                assert_eq!(host, "proxy.example.com");
+                assert_eq!(port, 443);
+            }
+            _ => panic!("Expected Mtproto proxy config"),
+        }
+
+        // Test SOCKS5 draft
+        let socks5_json = r#"{
+            "proxy_type": "socks5",
+            "host": "127.0.0.1",
+            "port": 1080,
+            "username": "user",
+            "password": "pwd"
+        }"#;
+        let draft: DraftProxyConfig = serde_json::from_str(socks5_json).unwrap();
+        let cfg = draft.to_proxy_config().unwrap();
+        match cfg {
+            ProxyConfig::Socks5 { host, port, auth } => {
+                assert_eq!(host, "127.0.0.1");
+                assert_eq!(port, 1080);
+                assert_eq!(auth.as_ref().unwrap().username, "user");
+                assert_eq!(auth.as_ref().unwrap().password, "pwd");
+            }
+            _ => panic!("Expected Socks5 proxy config"),
+        }
     }
 
     #[test]
