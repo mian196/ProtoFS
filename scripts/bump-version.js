@@ -49,6 +49,16 @@ const filesToSync = [
     type: 'json',
     field: 'version',
   },
+  {
+    path: path.join(rootDir, 'frontend', 'src', 'utils', 'version.ts'),
+    type: 'ts',
+    replace: (content, version) =>
+      content.replace(/(return\s+)'[^']+'(;?)/m, `$1'${version}'$2`),
+    extract: (content) => {
+      const match = content.match(/return\s+'([^']+)'/m);
+      return match ? match[1] : null;
+    },
+  },
 ];
 
 const targetVersion = process.argv[2];
@@ -64,7 +74,7 @@ if (!targetVersion) {
     if (file.type === 'json') {
       const json = JSON.parse(raw);
       ver = json[file.field];
-    } else if (file.type === 'toml') {
+    } else if (file.type === 'toml' || file.type === 'ts') {
       ver = file.extract(raw);
     }
     const rel = path.relative(rootDir, file.path);
@@ -101,7 +111,7 @@ for (const file of filesToSync) {
     const json = JSON.parse(raw);
     json[file.field] = cleanVersion;
     updated = JSON.stringify(json, null, 2) + '\n';
-  } else if (file.type === 'toml') {
+  } else if (file.type === 'toml' || file.type === 'ts') {
     updated = file.replace(raw, cleanVersion);
   }
 

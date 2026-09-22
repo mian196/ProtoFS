@@ -24,6 +24,7 @@ import { useVfsStore, type FilterType } from '../../stores/useVfsStore';
 import { useNativeStore } from '../../stores/useNativeStore';
 import { useModalStore } from '../../stores/useModalStore';
 import { useProxyStore } from '../../stores/useProxyStore';
+import { getAppVersion } from '../../utils/version';
 
 export const Sidebar: React.FC = () => {
   const { session, connectionStatus, checkConnection } = useAuthStore();
@@ -101,7 +102,7 @@ export const Sidebar: React.FC = () => {
               <h1 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-1.5">
                 <span>ProtoFS</span>
                 <span className="text-[10px] font-mono text-sky-600 dark:text-sky-400 font-normal px-1.5 py-0.2 rounded bg-sky-500/10 border border-sky-500/20">
-                  v0.3
+                  v{getAppVersion()}
                 </span>
               </h1>
               <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">Telegram Cloud Drive</p>
@@ -281,7 +282,7 @@ export const Sidebar: React.FC = () => {
                   }`}
                   title={
                     connectionStatus === 'checking'
-                      ? 'Checking MTProto connection...'
+                      ? 'Connecting to MTProto...'
                       : isOnline
                       ? isEnabled && activeProxy
                         ? `Online (${activeProxy.proxy_type.toUpperCase()} Proxy)`
@@ -309,7 +310,7 @@ export const Sidebar: React.FC = () => {
                   />
                   <span>
                     {connectionStatus === 'checking'
-                      ? 'Testing...'
+                      ? 'Connecting...'
                       : isOnline
                       ? isEnabled && activeProxy
                         ? `Online (${activeProxy.proxy_type.toUpperCase()})`

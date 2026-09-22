@@ -32,17 +32,14 @@ jobs:
             os: windows-latest
             cli_bin: protofs-cli.exe
             gui_bin: protofs-tauri.exe
-            archive_ext: zip
           - platform: 'linux-x86_64'
             os: ubuntu-latest
             cli_bin: protofs-cli
             gui_bin: protofs-tauri
-            archive_ext: tar.gz
           - platform: 'macos-x86_64'
             os: macos-latest
             cli_bin: protofs-cli
             gui_bin: protofs-tauri
-            archive_ext: tar.gz
 
     steps:
       - name: Checkout repository
@@ -89,6 +86,13 @@ jobs:
       - name: Run Workspace Tests
         run: cargo test --workspace --verbose
 
+      - name: Extract App Version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Build Release Binaries (CLI & GUI)
         run: |
           cargo build --release -p protofs-cli
@@ -98,32 +102,27 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path "dist-cli" -Force
-          Copy-Item "target/release/${{ matrix.cli_bin }}" -Destination "dist-cli/protofs-cli.exe"
-          Compress-Archive -Path "dist-cli/*" -DestinationPath "protofs-cli-${{ matrix.platform }}.zip"
+          Copy-Item "target/release/${{ matrix.cli_bin }}" -Destination "protofs-cli-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.exe"
 
       - name: Package CLI Binary (Unix)
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist-cli
           cp "target/release/${{ matrix.cli_bin }}" dist-cli/protofs-cli
-          tar -czf "protofs-cli-${{ matrix.platform }}.tar.gz" -C dist-cli protofs-cli
+          tar -czf "protofs-cli-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.tar.gz" -C dist-cli protofs-cli
 
       - name: Package Portable GUI Binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path "dist-gui" -Force
-          Copy-Item "target/release/${{ matrix.gui_bin }}" -Destination "dist-gui/ProtoFS.exe"
-          Compress-Archive -Path "dist-gui/*" -DestinationPath "protofs-portable-${{ matrix.platform }}.zip"
-          Copy-Item "dist-gui/ProtoFS.exe" -Destination "protofs-portable-${{ matrix.platform }}.exe"
+          Copy-Item "target/release/${{ matrix.gui_bin }}" -Destination "protofs-portable-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.exe"
 
       - name: Package Portable GUI Binary (Unix)
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist-gui
           cp "target/release/${{ matrix.gui_bin }}" dist-gui/protofs
-          tar -czf "protofs-portable-${{ matrix.platform }}.tar.gz" -C dist-gui protofs
+          tar -czf "protofs-portable-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.tar.gz" -C dist-gui protofs
 
       - name: Build Tauri Installers
         run: npx --prefix frontend tauri build
@@ -153,14 +152,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: protofs-cli-${{ matrix.platform }}
-          path: protofs-cli-${{ matrix.platform }}.${{ matrix.archive_ext }}
+          path: protofs-cli-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.*
           if-no-files-found: error
 
       - name: Upload Portable GUI Artifact
         uses: actions/upload-artifact@v4
         with:
           name: protofs-portable-${{ matrix.platform }}
-          path: protofs-portable-${{ matrix.platform }}.*
+          path: protofs-portable-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.*
           if-no-files-found: error
 
       - name: Upload Installer Artifacts
@@ -250,6 +249,12 @@ jobs:
               print("File not found: " + gradle_path)
           '
 
+      - name: Extract App Version
+        id: app_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Build Android Debug APK
         run: ./frontend/node_modules/.bin/tauri android build --debug --apk --verbose
         env:
@@ -259,7 +264,7 @@ jobs:
       - name: Collect APK Artifacts
         run: |
           mkdir -p dist-apk
-          find . -name "*.apk" -not -path "*/node_modules/*" -exec cp {} dist-apk/ \;
+          find . -name "*.apk" -not -path "*/node_modules/*" -exec cp {} "dist-apk/ProtoFS_v${{ steps.app_version.outputs.version }}_android.apk" \;
           echo "--- APKs found ---"
           ls -lh dist-apk/ || echo "No APKs found"
 
@@ -267,7 +272,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: protofs-android-apk
-          path: dist-apk/
+          path: dist-apk/*
           if-no-files-found: warn
 
   publish-release:

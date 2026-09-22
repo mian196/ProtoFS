@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔧 Changed
+- **User-Friendly Account Connection Label**:
+  - Changed the account button status display in the sidebar from `"Testing..."` to `"Connecting..."` while MTProto connection checks are in progress.
+- **Versioned Release CI Asset Packaging**:
+  - Configured release workflow to inject the dynamic version string into binary and APK artifact filenames (e.g., `protofs-cli-v0.4.1-windows-x86_64.exe`, `protofs-portable-v0.4.1-windows-x86_64.exe`, `ProtoFS_v0.4.1_android.apk`).
+  - Published Windows CLI, Portable GUI, and NSIS/MSI installers (`.exe` / `.msi`) directly as standalone assets without zip archive wrapping.
+- **SSOT Version Bump Synchronization**:
+  - Enhanced `scripts/bump-version.js` to automatically verify and synchronize `frontend/src/utils/version.ts` alongside root `package.json`, `Cargo.toml`, `frontend/package.json`, and `tauri.conf.json`.
+
+### 🐛 Fixed
+- **Dynamic Application Version in Sidebar**:
+  - Fixed hardcoded `v0.3` badge in the sidebar header to dynamically read the application version (`v0.4.1`) via `getAppVersion()`.
+
 ---
 
 ## [0.4.1] - 2026-09-22

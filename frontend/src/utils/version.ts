@@ -8,5 +8,5 @@ export function getAppVersion(): string {
   if (typeof __APP_VERSION__ !== 'undefined' && __APP_VERSION__) {
     return __APP_VERSION__;
   }
-  return '0.4.0';
+  return '0.4.1';
 }
