@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### ✨ Added
+- **Windows NSIS Installer Bundle**:
+  - Full NSIS desktop installer configuration in `tauri.conf.json` with support for both current-user and per-machine installation modes.
+  - Automatic Start Menu and Desktop shortcut generation with clean uninstaller integration.
+- **Dual-Artifact Build Scripts**:
+  - Added `npm run build:installer` (`tauri build`) for packaging native `.exe` setup installers.
+  - Added `npm run build:portable` for building standalone single-file executables.
+  - Added `npm run build:cli` for building the CLI tool binary.
+- **Enhanced Release CI Workflow**:
+  - Configured `.github/workflows/release.yml` to automatically build, package, and upload both portable binaries (`.zip` / `.exe`) and setup installers (`.exe` / `.msi` / `.AppImage` / `.deb` / `.dmg` / `.apk`) across all supported platforms.
+
+---
+
 ## [0.4.0] - 2026-09-22
 
 ### 🚀 Highlights & Major Capabilities

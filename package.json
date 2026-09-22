@@ -6,6 +6,9 @@
     "dev": "npx --prefix frontend tauri dev",
     "start": "npx --prefix frontend tauri dev",
     "build": "npm --prefix frontend run build && cargo build --release",
+    "build:installer": "npx --prefix frontend tauri build",
+    "build:portable": "npm --prefix frontend run build && cargo build --release -p protofs-tauri",
+    "build:cli": "cargo build --release -p protofs-cli",
     "test": "cargo test --workspace && npm --prefix frontend run lint"
   }
 }

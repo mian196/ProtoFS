@@ -37,6 +37,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "windows": {
+      "nsis": {
+        "installMode": "both"
+      }
+    },
+    "shortDescription": "ProtoFS - Cloud file system backed by Telegram MTProto",
+    "longDescription": "High-performance, encrypted, and decentralized virtual file system utilizing Telegram cloud infrastructure as an infinite storage backend.",
+    "copyright": "Copyright © 2025-2026 ProtoFS Contributors",
+    "category": "Utility",
     "android": {
       "minSdkVersion": 26
     }
