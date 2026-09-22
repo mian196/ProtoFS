@@ -11,6 +11,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import { api } from '../../api';
 import type { UpdateInfo } from '../../types';
 import { getAppVersion } from '../../utils/version';
+import { UpdateModal } from './modals/UpdateModal';
 import { toast } from 'sonner';
 
 export const GeneralTab: React.FC = () => {
@@ -26,25 +27,14 @@ export const GeneralTab: React.FC = () => {
 
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   const handleCheckUpdates = async () => {
     setCheckingUpdate(true);
     try {
       const info = await api.checkForUpdates();
       setUpdateInfo(info);
-      if (info.update_available) {
-        toast.info('Software Update Available', {
-          description: `ProtoFS v${info.latest_version} is available for download.`,
-          action: {
-            label: 'View Release',
-            onClick: () => window.open(info.download_url, '_blank'),
-          },
-        });
-      } else {
-        toast.success('ProtoFS is Up to Date', {
-          description: `Current version v${info.current_version} is the latest release.`,
-        });
-      }
+      setShowUpdateModal(true);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       toast.error('Update Check Failed', { description: message });
@@ -220,6 +210,12 @@ export const GeneralTab: React.FC = () => {
           </label>
         </div>
       </div>
+
+      <UpdateModal
+        isOpen={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+        updateInfo={updateInfo}
+      />
     </div>
   );
 };

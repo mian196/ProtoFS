@@ -19,13 +19,15 @@ import { useTransferStore } from './stores/useTransferStore';
 import { useNativeStore } from './stores/useNativeStore';
 import { useModalStore } from './stores/useModalStore';
 import { useProxyStore } from './stores/useProxyStore';
+import { useSettingsStore } from './stores/useSettingsStore';
 import { confirmDialog } from './stores/useConfirmStore';
 import { useTransferListener } from './hooks/useTransferListener';
 import { useUploadManager } from './hooks/useUploadManager';
 import { useThemeStore } from './stores/useThemeStore';
+import { UpdateModal } from './components/settings/modals/UpdateModal';
 import { api } from './api';
 import { isTauri } from './api/client';
-import type { FileNode, FolderNode, VfsNode } from './types';
+import type { FileNode, FolderNode, VfsNode, UpdateInfo } from './types';
 import { Loader2, Trash2, RotateCcw } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
 
@@ -71,12 +73,41 @@ export const App: React.FC = () => {
     },
   });
 
+  const [startupUpdateInfo, setStartupUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [showStartupUpdateModal, setShowStartupUpdateModal] = useState(false);
+
   useEffect(() => {
     initSession();
     useProxyStore.getState().loadProxies();
     const unlistenPromise = useProxyStore.getState().initEventListener();
+
+    // D-38: Startup auto-check for software updates (silent when up-to-date)
+    const autoCheck = useSettingsStore.getState().autoCheckUpdates;
+    let updateTimer: ReturnType<typeof setTimeout> | null = null;
+    if (autoCheck) {
+      updateTimer = setTimeout(async () => {
+        try {
+          const info = await api.checkForUpdates();
+          if (info && info.update_available) {
+            setStartupUpdateInfo(info);
+            toast.info('Software Update Available', {
+              description: `ProtoFS v${info.latest_version} is available. Click to review.`,
+              duration: 8000,
+              action: {
+                label: 'View Update',
+                onClick: () => setShowStartupUpdateModal(true),
+              },
+            });
+          }
+        } catch {
+          // Silently ignore startup background check errors
+        }
+      }, 4000);
+    }
+
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
+      if (updateTimer) clearTimeout(updateTimer);
     };
   }, [initSession]);
 
@@ -466,6 +497,12 @@ export const App: React.FC = () => {
       <AppModals
         onDownloadFile={handleDownloadFile}
         conflictState={conflictState}
+      />
+
+      <UpdateModal
+        isOpen={showStartupUpdateModal}
+        onClose={() => setShowStartupUpdateModal(false)}
+        updateInfo={startupUpdateInfo}
       />
 
       <Toaster
