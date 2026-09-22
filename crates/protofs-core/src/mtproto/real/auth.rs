@@ -10,20 +10,52 @@ use tokio::sync::Mutex;
 use super::RealTelegramTransport;
 use super::session::{ExportedSession, export_session_bytes};
 use crate::error::{ProtoFsError, Result};
-use crate::mtproto::proxy::ProxyConfig;
+use crate::mtproto::proxy::{LocalProxyBridge, ProxyConfig};
 use crate::mtproto::transport::TelegramUser;
 
-pub(crate) fn init_grammers_client(
+pub(crate) async fn init_grammers_client(
     session: Arc<MemorySession>,
     api_id: i32,
-    _proxy: Option<ProxyConfig>,
-) -> Client {
-    let pool = SenderPool::new(session, api_id);
+    proxy: Option<ProxyConfig>,
+) -> (Client, Option<Arc<LocalProxyBridge>>) {
+    let mut params = grammers_mtsender::ConnectionParams::default();
+    let mut bridge_ref = None;
+
+    if let Some(proxy_cfg) = proxy {
+        match proxy_cfg {
+            ProxyConfig::Direct => {
+                params.proxy_url = None;
+            }
+            ProxyConfig::Socks5 { host, port, auth } => {
+                let url = match auth {
+                    Some(a) if !a.username.is_empty() => {
+                        format!("socks5://{}:{}@{}:{}", a.username, a.password, host, port)
+                    }
+                    _ => format!("socks5://{}:{}", host, port),
+                };
+                params.proxy_url = Some(url);
+            }
+            ProxyConfig::Http { .. } | ProxyConfig::Mtproto { .. } => {
+                match LocalProxyBridge::start(proxy_cfg).await {
+                    Ok(bridge) => {
+                        let local_url = format!("socks5://127.0.0.1:{}", bridge.local_port);
+                        params.proxy_url = Some(local_url);
+                        bridge_ref = Some(Arc::new(bridge));
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to start LocalProxyBridge: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    let pool = SenderPool::with_configuration(session, api_id, params);
     let runner = pool.runner;
     tokio::spawn(async move {
         let _ = runner.run().await;
     });
-    Client::new(pool.handle)
+    (Client::new(pool.handle), bridge_ref)
 }
 
 pub enum VerifyOutcome {
@@ -46,6 +78,7 @@ pub(crate) enum PendingAuth {
         api_id: i32,
         api_hash: String,
         proxy: Option<ProxyConfig>,
+        bridge: Option<Arc<LocalProxyBridge>>,
         pwd_token: Option<PasswordToken>,
     },
     Qr {
@@ -56,6 +89,7 @@ pub(crate) enum PendingAuth {
         token_bytes: Vec<u8>,
         expires_at: i64,
         proxy: Option<ProxyConfig>,
+        bridge: Option<Arc<LocalProxyBridge>>,
         pwd_token: Option<PasswordToken>,
     },
 }
@@ -112,7 +146,8 @@ impl TelegramAuthClient {
     pub async fn send_code(&self, phone: &str, api_id: i32, api_hash: &str) -> Result<String> {
         let session = Arc::new(MemorySession::default());
         let proxy = self.get_proxy().await;
-        let client = init_grammers_client(Arc::clone(&session), api_id, proxy.clone());
+        let (client, bridge) =
+            init_grammers_client(Arc::clone(&session), api_id, proxy.clone()).await;
         let token = client
             .request_login_code(phone, api_hash)
             .await
@@ -127,6 +162,7 @@ impl TelegramAuthClient {
             api_id,
             api_hash: api_hash.to_string(),
             proxy,
+            bridge,
             pwd_token: None,
         });
         Ok("code_sent".to_string())
@@ -158,6 +194,7 @@ impl TelegramAuthClient {
                 api_id,
                 api_hash,
                 proxy,
+                bridge,
                 pwd_token,
             } => match client.sign_in(token, code).await {
                 Ok(user) => {
@@ -168,12 +205,13 @@ impl TelegramAuthClient {
                         phone: Some(phone.clone()),
                     };
                     let session_bytes = export_session_bytes(session).await?;
-                    let transport = RealTelegramTransport::with_proxy(
+                    let transport = RealTelegramTransport::with_proxy_and_bridge(
                         client.clone(),
                         Arc::clone(session),
                         *api_id,
                         api_hash.clone(),
                         proxy.clone(),
+                        bridge.clone(),
                     );
                     let _ = lock.take();
                     Ok(VerifyOutcome::Success {
@@ -221,6 +259,7 @@ impl TelegramAuthClient {
                 api_id,
                 api_hash,
                 proxy,
+                bridge,
                 pwd_token,
                 ..
             } => {
@@ -233,6 +272,7 @@ impl TelegramAuthClient {
                     *api_id,
                     api_hash,
                     proxy.clone(),
+                    bridge.clone(),
                 )
                 .await;
                 let take = res.is_ok();
@@ -244,6 +284,7 @@ impl TelegramAuthClient {
                 api_id,
                 api_hash,
                 proxy,
+                bridge,
                 pwd_token,
                 ..
             } => {
@@ -256,6 +297,7 @@ impl TelegramAuthClient {
                     *api_id,
                     api_hash,
                     proxy.clone(),
+                    bridge.clone(),
                 )
                 .await;
                 let take = res.is_ok();
@@ -293,7 +335,8 @@ impl TelegramAuthClient {
             .map_err(|e| ProtoFsError::Mtproto(format!("Corrupted session data: {}", e)))?;
         let session_data: SessionData = exported.into();
         let session = Arc::new(MemorySession::from(session_data));
-        let client = init_grammers_client(Arc::clone(&session), api_id, proxy.clone());
+        let (client, bridge) =
+            init_grammers_client(Arc::clone(&session), api_id, proxy.clone()).await;
 
         let is_auth_res =
             tokio::time::timeout(std::time::Duration::from_secs(10), client.is_authorized())
@@ -312,12 +355,13 @@ impl TelegramAuthClient {
             ));
         }
 
-        Ok(RealTelegramTransport::with_proxy(
+        Ok(RealTelegramTransport::with_proxy_and_bridge(
             client,
             session,
             api_id,
             api_hash.to_string(),
             proxy,
+            bridge,
         ))
     }
 }
@@ -332,6 +376,7 @@ async fn check_2fa(
     api_id: i32,
     api_hash: &str,
     proxy: Option<ProxyConfig>,
+    bridge: Option<Arc<LocalProxyBridge>>,
 ) -> Result<(RealTelegramTransport, TelegramUser, Vec<u8>)> {
     let pt = pwd_token
         .take()
@@ -358,12 +403,13 @@ async fn check_2fa(
         phone,
     };
     let session_bytes = export_session_bytes(session).await?;
-    let transport = RealTelegramTransport::with_proxy(
+    let transport = RealTelegramTransport::with_proxy_and_bridge(
         client.clone(),
         Arc::clone(session),
         api_id,
         api_hash.to_string(),
         proxy,
+        bridge,
     );
     Ok((transport, tg_user, session_bytes))
 }

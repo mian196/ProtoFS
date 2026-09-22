@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced `scripts/bump-version.js` to automatically verify and synchronize `frontend/src/utils/version.ts` alongside root `package.json`, `Cargo.toml`, `frontend/package.json`, and `tauri.conf.json`.
 
 ### 🐛 Fixed
+- **MTProto Obfuscated2 Encryption & Fake-TLS Record Handling in LocalProxyBridge**:
+  - Fixed an issue where the proxy indicator badge displayed active latency (ms) while the sidebar connection remained stuck in `"Connecting..."` / offline.
+  - Corrected AES-256-CTR keystream offset advancement across the initial 64-byte Obfuscated2 header in [`LocalProxyBridge`](crates/protofs-core/src/mtproto/proxy/bridge.rs#L306-L365), ensuring the upstream MTProto proxy correctly decodes protocol tags and Data Center IDs.
+  - Hardened Fake-TLS tunnel stream handling to skip non-application TLS handshake records (`0x14` ChangeCipherSpec and `0x16` Handshake) before passing decrypted MTProto payload frames to the client.
+- **End-to-End MTProto & Telegram Client Proxy Routing**:
+  - Implemented in-process local proxy bridge ([LocalProxyBridge](crates/protofs-core/src/mtproto/proxy/bridge.rs)) and configured `grammers-mtsender` proxy parameters to route all active MTProto sessions, authentication handshakes, QR logins, channel queries, and background sync traffic through active MTProto (Fake-TLS / DD), HTTP CONNECT, and SOCKS5 proxies.
 - **Automatic Startup Proxy Latency Measurement**:
   - Automatically measured and displayed active proxy round-trip latency (`ms`) in the header badge and auth modal upon opening the application without requiring a manual "Test Connection" button click.
 - **Active Proxy Propagation for Session Reconnections**:

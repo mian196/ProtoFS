@@ -163,3 +163,101 @@ async fn test_connector_and_ping_flow() {
 
     server_task.await.unwrap();
 }
+
+#[tokio::test]
+async fn test_local_proxy_bridge_mtproto_tunnel() {
+    use aes::Aes256;
+    use cipher::{KeyIvInit, StreamCipher};
+    use ctr::Ctr128BE;
+    use protofs_core::mtproto::proxy::LocalProxyBridge;
+    use tokio::net::TcpStream;
+
+    // 1. Mock upstream MTProxy server
+    let upstream_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let upstream_port = upstream_listener.local_addr().unwrap().port();
+
+    let secret = MtprotoSecret::parse("0123456789abcdef0123456789abcdef").unwrap();
+    let secret_bytes = secret.secret_bytes;
+
+    let server_task = tokio::spawn(async move {
+        let (mut socket, _) = upstream_listener.accept().await.unwrap();
+
+        // Read 64-byte Obfuscated2 header
+        let mut init_buf = [0u8; 64];
+        socket.read_exact(&mut init_buf).await.unwrap();
+
+        // Server derives RX key/iv from init_buf[8..40] and init_buf[40..56]
+        let mut rx_key_data = Vec::with_capacity(32 + 16);
+        rx_key_data.extend_from_slice(&init_buf[8..40]);
+        rx_key_data.extend_from_slice(&secret_bytes);
+        let rx_key = ring::digest::digest(&ring::digest::SHA256, &rx_key_data);
+        let rx_iv = &init_buf[40..56];
+        let mut rx_cipher = Ctr128BE::<Aes256>::new_from_slices(rx_key.as_ref(), rx_iv).unwrap();
+
+        // Decrypt the 64-byte header
+        let mut decrypted_init = init_buf;
+        rx_cipher.apply_keystream(&mut decrypted_init);
+
+        // Verify protocol tag (0xeeeeeeee) and DC ID (2)
+        assert_eq!(&decrypted_init[56..60], &[0xee, 0xee, 0xee, 0xee]);
+        let dc_id = i16::from_le_bytes([decrypted_init[60], decrypted_init[61]]);
+        assert_eq!(dc_id, 2);
+
+        // Server derives TX key/iv from reversed init_buf
+        let mut init_rev = init_buf;
+        init_rev.reverse();
+        let mut tx_key_data = Vec::with_capacity(32 + 16);
+        tx_key_data.extend_from_slice(&init_rev[8..40]);
+        tx_key_data.extend_from_slice(&secret_bytes);
+        let tx_key = ring::digest::digest(&ring::digest::SHA256, &tx_key_data);
+        let tx_iv = &init_rev[40..56];
+        let mut tx_cipher = Ctr128BE::<Aes256>::new_from_slices(tx_key.as_ref(), tx_iv).unwrap();
+
+        // Read subsequent MTProto payload from client
+        let mut client_msg = [0u8; 8];
+        socket.read_exact(&mut client_msg).await.unwrap();
+        rx_cipher.apply_keystream(&mut client_msg);
+        assert_eq!(&client_msg, b"PING_REQ");
+
+        // Send encrypted response back to client
+        let mut response = *b"PONG_RES";
+        tx_cipher.apply_keystream(&mut response);
+        socket.write_all(&response).await.unwrap();
+    });
+
+    // 2. Start LocalProxyBridge pointing to mock upstream MTProxy
+    let proxy_cfg = ProxyConfig::Mtproto {
+        host: "127.0.0.1".to_string(),
+        port: upstream_port,
+        secret,
+    };
+    let bridge = LocalProxyBridge::start(proxy_cfg).await.unwrap();
+
+    // 3. Client connects via SOCKS5 to LocalProxyBridge
+    let mut client = TcpStream::connect(format!("127.0.0.1:{}", bridge.local_port))
+        .await
+        .unwrap();
+
+    // SOCKS5 greeting [0x05, 1 method, NO_AUTH (0x00)]
+    client.write_all(&[0x05, 0x01, 0x00]).await.unwrap();
+    let mut greet_resp = [0u8; 2];
+    client.read_exact(&mut greet_resp).await.unwrap();
+    assert_eq!(greet_resp, [0x05, 0x00]);
+
+    // SOCKS5 CONNECT to DC 2 (149.154.167.50:443)
+    client
+        .write_all(&[0x05, 0x01, 0x00, 0x01, 149, 154, 167, 50, 0x01, 0xbb])
+        .await
+        .unwrap();
+    let mut conn_resp = [0u8; 10];
+    client.read_exact(&mut conn_resp).await.unwrap();
+    assert_eq!(conn_resp[0..4], [0x05, 0x00, 0x00, 0x01]);
+
+    // Send payload
+    client.write_all(b"PING_REQ").await.unwrap();
+    let mut resp = [0u8; 8];
+    client.read_exact(&mut resp).await.unwrap();
+    assert_eq!(&resp, b"PONG_RES");
+
+    server_task.await.unwrap();
+}

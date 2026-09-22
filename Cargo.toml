@@ -40,12 +40,15 @@ rand = "0.8"
 subtle = "2.6"
 zeroize = { version = "1.8", features = ["derive"] }
 base64 = "0.22"
+aes = "0.9"
+ctr = "0.10"
+cipher = "0.5"
 
 # Telegram MTProto (Real Client via Codeberg)
 grammers-client = { git = "https://codeberg.org/Lonami/grammers.git", rev = "5e16253b2ff8cbea94e8fffdfeccc109217ba762" }
 grammers-session = { git = "https://codeberg.org/Lonami/grammers.git", rev = "5e16253b2ff8cbea94e8fffdfeccc109217ba762", default-features = false, features = ["serde"] }
 grammers-tl-types = { git = "https://codeberg.org/Lonami/grammers.git", rev = "5e16253b2ff8cbea94e8fffdfeccc109217ba762" }
-grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers.git", rev = "5e16253b2ff8cbea94e8fffdfeccc109217ba762" }
+grammers-mtsender = { git = "https://codeberg.org/Lonami/grammers.git", rev = "5e16253b2ff8cbea94e8fffdfeccc109217ba762", features = ["proxy"] }
 
 # Internal workspace crates
 protofs-core = { path = "crates/protofs-core" }

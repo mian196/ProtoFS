@@ -24,7 +24,7 @@ pub use qr::*;
 pub use session::*;
 pub use transfers::*;
 
-use crate::mtproto::proxy::ProxyConfig;
+use crate::mtproto::proxy::{LocalProxyBridge, ProxyConfig};
 
 pub struct RealTelegramTransport {
     pub(crate) client: Client,
@@ -34,13 +34,15 @@ pub struct RealTelegramTransport {
     #[allow(dead_code)]
     pub(crate) api_hash: String,
     pub(crate) proxy: Arc<RwLock<Option<ProxyConfig>>>,
+    #[allow(dead_code)]
+    pub(crate) bridge: Arc<RwLock<Option<Arc<LocalProxyBridge>>>>,
     pub(crate) channel_hashes: Arc<RwLock<HashMap<i64, i64>>>,
     pub(crate) transfer_semaphore: Arc<Semaphore>,
 }
 
 impl RealTelegramTransport {
     pub fn new(client: Client, session: Arc<MemorySession>, api_id: i32, api_hash: String) -> Self {
-        Self::with_proxy(client, session, api_id, api_hash, None)
+        Self::with_proxy_and_bridge(client, session, api_id, api_hash, None, None)
     }
 
     pub fn with_proxy(
@@ -50,12 +52,24 @@ impl RealTelegramTransport {
         api_hash: String,
         proxy: Option<ProxyConfig>,
     ) -> Self {
+        Self::with_proxy_and_bridge(client, session, api_id, api_hash, proxy, None)
+    }
+
+    pub fn with_proxy_and_bridge(
+        client: Client,
+        session: Arc<MemorySession>,
+        api_id: i32,
+        api_hash: String,
+        proxy: Option<ProxyConfig>,
+        bridge: Option<Arc<LocalProxyBridge>>,
+    ) -> Self {
         Self {
             client,
             session,
             api_id,
             api_hash,
             proxy: Arc::new(RwLock::new(proxy)),
+            bridge: Arc::new(RwLock::new(bridge)),
             channel_hashes: Arc::new(RwLock::new(HashMap::new())),
             transfer_semaphore: Arc::new(Semaphore::new(4)),
         }

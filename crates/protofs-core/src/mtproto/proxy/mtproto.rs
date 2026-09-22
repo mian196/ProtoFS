@@ -159,7 +159,7 @@ pub fn build_fake_tls_client_hello(secret: &MtprotoSecret) -> Vec<u8> {
     record
 }
 
-async fn fake_tls_handshake<S>(stream: &mut S, secret: &MtprotoSecret) -> Result<(), ProxyError>
+pub async fn fake_tls_handshake<S>(stream: &mut S, secret: &MtprotoSecret) -> Result<(), ProxyError>
 where
     S: AsyncReadExt + AsyncWriteExt + Unpin,
 {
