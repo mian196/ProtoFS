@@ -9,11 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.4.1] - 2026-09-22
+
 ### ✨ Added
 - **Live Update Checking Engine & Packaging Detection (`crates/protofs-tauri`)**:
   - Direct integration with GitHub Releases API (`https://api.github.com/repos/mian196/ProtoFS/releases/latest`) with semver comparison and asset matching.
   - Runtime packaging detector (`detect_package_type`) identifying Portable `.exe`, NSIS Installer, MSI, AppImage, Deb, and macOS bundles.
   - Automatic download URL resolution matching the running package type and operating system.
+- **Single Source of Truth (SSOT) Versioning & Automation**:
+  - Injected dynamic application version from `package.json` into Vite (`__APP_VERSION__`) and frontend runtime (`getAppVersion()`).
+  - Added synchronized `npm run version:bump` and `npm run version:check` automation script updating `Cargo.toml`, `package.json`, `frontend/package.json`, and `tauri.conf.json`.
+- **In-App Update Modal & Silent Startup Auto-Check**:
+  - Added modern `UpdateModal` dialog displaying version transition badges, packaging indicators, release notes, asset metadata, and one-click direct download.
+  - Silent startup auto-check that triggers only when an update is available without annoying up-to-date popups on boot.
 - **Windows NSIS Installer Bundle**:
   - Full NSIS desktop installer configuration in `tauri.conf.json` with support for both current-user and per-machine installation modes.
   - Automatic Start Menu and Desktop shortcut generation with clean uninstaller integration.
