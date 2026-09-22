@@ -131,28 +131,9 @@ pub async fn delete_secure_secret_command(
 
 #[tauri::command]
 pub async fn check_for_updates_command() -> Result<CommandResponse<UpdateInfo>, String> {
-    let current_version = env!("CARGO_PKG_VERSION").to_string();
-    let latest_version = env!("CARGO_PKG_VERSION").to_string();
-    let update_available = latest_version != current_version;
-
-    let release_notes = "### ProtoFS Release Highlights:\n\n\
-- In-App Office Document Previewers: Full interactive support for docx, xlsx, pptx, and high-fidelity audio streams.\n\
-- Full Drive Local Export: One-click directory tree reconstruction to disk with root manifest portability.\n\
-- File Version History: Non-destructive overwrite tracking with up to 10 versions and one-click restore.\n\
-- Multi-Account Support: Instant switching between multiple linked Telegram accounts.\n\
-- Stream Encryption: Hardened 64KB AES-256-GCM chunk verification with Argon2id."
-        .to_string();
-
-    Ok(CommandResponse::ok(UpdateInfo {
-        current_version,
-        latest_version,
-        update_available,
-        release_notes,
-        release_date: env!("CARGO_PKG_VERSION").to_string(),
-        download_url: "https://github.com/mian196/ProtoFS/releases".to_string(),
-        signature_verified: false,
-        channel: "Stable (GitHub Releases)".to_string(),
-    }))
+    let current_version = env!("CARGO_PKG_VERSION");
+    let update_info = super::updater::fetch_latest_release(current_version).await;
+    Ok(CommandResponse::ok(update_info))
 }
 
 /// Purges local temporary chunks and cache safely (D-28, D-29).

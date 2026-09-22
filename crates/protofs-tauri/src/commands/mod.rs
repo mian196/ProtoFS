@@ -7,6 +7,7 @@ pub mod sharing;
 pub mod sync;
 pub mod transfer_controls;
 pub mod transfers;
+pub mod updater;
 pub mod vault;
 pub mod versions;
 pub mod vfs;
@@ -20,6 +21,7 @@ pub use sharing::*;
 pub use sync::*;
 pub use transfer_controls::*;
 pub use transfers::*;
+pub use updater::*;
 pub use vault::*;
 pub use versions::*;
 pub use vfs::*;
@@ -147,6 +149,9 @@ pub struct UpdateInfo {
     pub download_url: String,
     pub signature_verified: bool,
     pub channel: String,
+    pub package_type: String,
+    pub asset_name: Option<String>,
+    pub asset_size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

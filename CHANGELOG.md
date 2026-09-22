@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### ✨ Added
+- **Live Update Checking Engine & Packaging Detection (`crates/protofs-tauri`)**:
+  - Direct integration with GitHub Releases API (`https://api.github.com/repos/mian196/ProtoFS/releases/latest`) with semver comparison and asset matching.
+  - Runtime packaging detector (`detect_package_type`) identifying Portable `.exe`, NSIS Installer, MSI, AppImage, Deb, and macOS bundles.
+  - Automatic download URL resolution matching the running package type and operating system.
 - **Windows NSIS Installer Bundle**:
   - Full NSIS desktop installer configuration in `tauri.conf.json` with support for both current-user and per-machine installation modes.
   - Automatic Start Menu and Desktop shortcut generation with clean uninstaller integration.
