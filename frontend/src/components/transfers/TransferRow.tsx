@@ -1,5 +1,5 @@
 import React from 'react';
-import { Upload, Download, CheckCircle2, Pause, X, Play, RefreshCw, AlertCircle } from 'lucide-react';
+import { Upload, Download, CheckCircle2, Pause, X, Play, RefreshCw, AlertCircle, Clock } from 'lucide-react';
 import { ProgressBar } from '../ui/ProgressBar';
 import { formatBytes } from '../../api/mock';
 import type { TransferItem } from '../../types';
@@ -17,6 +17,7 @@ export const TransferRow: React.FC<TransferRowProps> = ({
   onTogglePause,
   onRetry,
 }) => {
+  const isQueued = item.status === 'queued';
   const isUpload = item.status === 'uploading';
   const isDownload = item.status === 'downloading';
   const isCompleted = item.status === 'completed';
@@ -49,6 +50,8 @@ export const TransferRow: React.FC<TransferRowProps> = ({
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
             ) : isPaused ? (
               <Pause className="w-3.5 h-3.5 text-amber-400" />
+            ) : isQueued ? (
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
             ) : (
               <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
             )}
@@ -98,9 +101,11 @@ export const TransferRow: React.FC<TransferRowProps> = ({
             ? 'Done • 100%'
             : isPaused
               ? 'Paused by user'
-              : isFailed
-                ? <span className="text-rose-400">{item.error || 'Failed. Click retry.'}</span>
-                : `${item.speed}${item.eta ? ` • ETA ${item.eta}` : ''} • ${Math.round(item.progress)}%`}
+              : isQueued
+                ? 'In queue'
+                : isFailed
+                  ? <span className="text-rose-400">{item.error || 'Failed. Click retry.'}</span>
+                  : `${item.speed}${item.eta ? ` • ETA ${item.eta}` : ''} • ${Math.round(item.progress)}%`}
         </span>
       </div>
     </div>

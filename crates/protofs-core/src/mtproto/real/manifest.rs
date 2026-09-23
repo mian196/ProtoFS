@@ -46,7 +46,13 @@ async fn fetch_candidate_messages(
         .await
         .map(unpack_messages)
         .unwrap_or_default();
-    if msgs.is_empty() {
+
+    let has_manifest = msgs.iter().any(|m| match m {
+        tl::enums::Message::Message(msg) => is_manifest_message(msg),
+        _ => false,
+    });
+
+    if !has_manifest {
         let s_req = tl::functions::messages::Search {
             peer: peer.clone(),
             q: "#protofs_manifest_v1".to_string(),
@@ -65,7 +71,10 @@ async fn fetch_candidate_messages(
             saved_reaction: None,
         };
         if let Ok(res) = client.invoke(&s_req).await {
-            msgs = unpack_messages(res);
+            let search_msgs = unpack_messages(res);
+            if !search_msgs.is_empty() {
+                msgs.extend(search_msgs);
+            }
         }
     }
     msgs
@@ -158,8 +167,10 @@ impl RealTelegramTransport {
                 existing_ids.push(m.id);
             }
         }
+        existing_ids.sort_unstable();
+        existing_ids.dedup();
 
-        if let Some(&primary_id) = existing_ids.first() {
+        if let Some(&primary_id) = existing_ids.last() {
             let edit_req = tl::functions::messages::EditMessage {
                 no_webpage: true,
                 invert_media: false,
@@ -174,21 +185,32 @@ impl RealTelegramTransport {
                 rich_message: None,
                 schedule_repeat_period: None,
             };
-            if self.client.invoke(&edit_req).await.is_ok() {
-                let _ = self
-                    .client
-                    .invoke(&tl::functions::messages::UpdatePinnedMessage {
-                        silent: true,
-                        unpin: false,
-                        pm_oneside: false,
-                        peer: input_peer.clone(),
-                        id: primary_id,
-                    })
-                    .await;
-                for &dup_id in existing_ids.iter().skip(1) {
-                    let _ = self.do_delete_message(channel_id, dup_id).await;
+            match self.client.invoke(&edit_req).await {
+                Ok(_) => {
+                    let _ = self
+                        .client
+                        .invoke(&tl::functions::messages::UpdatePinnedMessage {
+                            silent: true,
+                            unpin: false,
+                            pm_oneside: false,
+                            peer: input_peer.clone(),
+                            id: primary_id,
+                        })
+                        .await;
+                    for &dup_id in &existing_ids {
+                        if dup_id != primary_id {
+                            let _ = self.do_delete_message(channel_id, dup_id).await;
+                        }
+                    }
+                    return Ok(primary_id);
                 }
-                return Ok(primary_id);
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to edit existing pinned manifest #{}: {}. Falling back to sending new message.",
+                        primary_id,
+                        e
+                    );
+                }
             }
         }
 

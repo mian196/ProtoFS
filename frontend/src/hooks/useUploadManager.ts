@@ -6,6 +6,7 @@ import { useTransferStore } from '../stores/useTransferStore';
 import type { DriveMetadata, FileNode } from '../types';
 
 export interface UploadQueueItem {
+  id: string;
   name: string;
   size: number;
   file?: File;
@@ -66,15 +67,28 @@ export function useUploadManager({
   const queueRef = useRef<UploadQueueItem[]>([]);
   const activeCountRef = useRef(0);
   const batchChoiceRef = useRef<'replace' | 'rename' | 'skip' | null>(null);
+  const hasUploadedInBatchRef = useRef(false);
   const { addTransfer, updateTransfer } = useTransferStore();
 
   const MAX_CONCURRENCY = 2; // D-07: Concurrency limit to prevent FLOOD_WAIT
 
+  const checkBatchComplete = useCallback(async () => {
+    if (activeCountRef.current === 0 && queueRef.current.length === 0) {
+      batchChoiceRef.current = null;
+      if (hasUploadedInBatchRef.current && activeDrive?.id) {
+        hasUploadedInBatchRef.current = false;
+        try {
+          await api.flushManifest(activeDrive.id, activeDrive.channel_id);
+        } catch (e) {
+          console.warn('Batch manifest flush error:', e);
+        }
+      }
+    }
+  }, [activeDrive]);
+
   const processNext = useCallback(async () => {
     if (!activeDrive || activeCountRef.current >= MAX_CONCURRENCY || queueRef.current.length === 0) {
-      if (activeCountRef.current === 0 && queueRef.current.length === 0) {
-        batchChoiceRef.current = null;
-      }
+      checkBatchComplete();
       return;
     }
 
@@ -123,6 +137,7 @@ export function useUploadManager({
       }
 
       if (resolvedAction === 'skip') {
+        updateTransfer(item.id, 100, '0 B/s', 'completed');
         processNext();
         return;
       } else if (resolvedAction === 'rename') {
@@ -134,22 +149,10 @@ export function useUploadManager({
     }
 
     activeCountRef.current += 1;
-    const transferId = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-    addTransfer({
-      id: transferId,
+    updateTransfer(item.id, {
       name: item.name,
-      size: formatBytes(item.size),
-      size_bytes: item.size,
-      total_bytes: item.size,
-      bytes_transferred: 0,
-      progress: 0,
-      speed: 'Starting...',
-      speed_bytes_sec: 0,
       status: 'uploading',
-      file_path: item.path,
-      drive_id: activeDrive.id,
-      parent_id: currentParentId,
+      speed: 'Starting...',
     });
 
     try {
@@ -166,54 +169,92 @@ export function useUploadManager({
         undefined,
         nativePath,
         base64Data,
-        item.conflictAction
+        item.conflictAction,
+        item.id
       );
 
-      if (!isTauri()) {
-        updateTransfer(transferId, 100, '0 B/s', 'completed');
-      }
+      hasUploadedInBatchRef.current = true;
+      updateTransfer(item.id, 100, '0 B/s', 'completed');
       await onUploadSuccess();
     } catch (err: any) {
-      updateTransfer(transferId, {
+      updateTransfer(item.id, {
         status: 'failed',
         error: err?.message || 'Upload failed',
       });
     } finally {
       activeCountRef.current -= 1;
+      checkBatchComplete();
       processNext();
     }
-  }, [activeDrive, currentParentId, files, addTransfer, updateTransfer, onUploadSuccess]);
+  }, [activeDrive, currentParentId, files, addTransfer, updateTransfer, onUploadSuccess, checkBatchComplete]);
 
   const enqueueFiles = useCallback(
     (newFiles: FileList | File[]) => {
       for (let i = 0; i < newFiles.length; i++) {
         const f = newFiles[i];
         const nativePath = (f as any).path as string | undefined;
+        const transferId = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${i}`;
         queueRef.current.push({
+          id: transferId,
           name: f.name,
           size: f.size,
           file: f,
           path: nativePath,
         });
-      }
-      processNext();
-    },
-    [processNext]
-  );
 
-  const enqueuePaths = useCallback(
-    (paths: string[]) => {
-      for (const p of paths) {
-        const name = p.split(/[\\/]/).pop() || 'file.bin';
-        queueRef.current.push({
-          name,
-          size: 0,
-          path: p,
+        addTransfer({
+          id: transferId,
+          name: f.name,
+          size: formatBytes(f.size),
+          size_bytes: f.size,
+          total_bytes: f.size,
+          bytes_transferred: 0,
+          progress: 0,
+          speed: 'In queue',
+          speed_bytes_sec: 0,
+          status: 'queued',
+          file_path: nativePath,
+          drive_id: activeDrive?.id,
+          parent_id: currentParentId,
         });
       }
       processNext();
     },
-    [processNext]
+    [activeDrive, currentParentId, addTransfer, processNext]
+  );
+
+  const enqueuePaths = useCallback(
+    (paths: string[]) => {
+      for (let i = 0; i < paths.length; i++) {
+        const p = paths[i];
+        const name = p.split(/[\\/]/).pop() || 'file.bin';
+        const transferId = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${i}`;
+        queueRef.current.push({
+          id: transferId,
+          name,
+          size: 0,
+          path: p,
+        });
+
+        addTransfer({
+          id: transferId,
+          name,
+          size: 'Calculating...',
+          size_bytes: 0,
+          total_bytes: 0,
+          bytes_transferred: 0,
+          progress: 0,
+          speed: 'In queue',
+          speed_bytes_sec: 0,
+          status: 'queued',
+          file_path: p,
+          drive_id: activeDrive?.id,
+          parent_id: currentParentId,
+        });
+      }
+      processNext();
+    },
+    [activeDrive, currentParentId, addTransfer, processNext]
   );
 
   // Native drag & drop event listener for desktop Tauri mode (D-05)

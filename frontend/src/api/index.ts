@@ -61,8 +61,9 @@ export class ProtoFsApi {
     fileBytes?: number[] | Uint8Array,
     filePath?: string,
     fileBase64?: string,
-    conflictAction?: 'replace' | 'rename' | 'skip'
-  ) => filesApi.uploadFile(driveIdOrOptions, parentId, name, sizeBytes, isEncrypted, fileBytes, filePath, fileBase64, conflictAction);
+    conflictAction?: 'replace' | 'rename' | 'skip',
+    transferId?: string
+  ) => filesApi.uploadFile(driveIdOrOptions, parentId, name, sizeBytes, isEncrypted, fileBytes, filePath, fileBase64, conflictAction, transferId);
   downloadFile = filesApi.downloadFile;
   getFilePreview = filesApi.getFilePreview;
   getFileVersions = filesApi.getFileVersions;
@@ -78,6 +79,7 @@ export class ProtoFsApi {
   generateShareLink = filesApi.generateShareLink;
   parseShareLink = filesApi.parseShareLink;
   importSharedLink = filesApi.importSharedLink;
+  flushManifest = filesApi.flushManifest;
   cancelTransfer = filesApi.cancelTransfer;
   pauseTransfer = filesApi.pauseTransfer;
   resumeTransfer = filesApi.resumeTransfer;

@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced `scripts/bump-version.js` to automatically verify and synchronize `frontend/src/utils/version.ts` alongside root `package.json`, `Cargo.toml`, `frontend/package.json`, and `tauri.conf.json`.
 
 ### 🐛 Fixed
+- **Real-Time Transfer Queue Tracking & Live Preview Synchronization**:
+  - Fixed upload popup getting permanently stuck in `"uploading"` by synchronizing `transferId` across frontend [`useUploadManager.ts`](frontend/src/hooks/useUploadManager.ts) and Tauri backend [`transfers.rs`](crates/protofs-tauri/src/commands/transfers.rs).
+  - Resolved event matching in [`useTransferListener.ts`](frontend/src/hooks/useTransferListener.ts) so completed and in-flight transfer progress events accurately match the active item by ID and name.
+  - Added full queued items visibility (`status: 'queued'`) so all batch files appear immediately in the transfer queue drawer with accurate overall queue progress and remaining item counts.
+- **Batch Upload Completion Flush & Pinned Manifest In-Place Editing**:
+  - Resolved intermediate manifest uploads during large batch uploads (e.g. 1k+ files) by updating in-memory `VfsTree` and SQLite cache in real-time and deferring the remote manifest upload to a single final flush upon queue completion (`useUploadManager.ts`).
+  - Fixed candidate message resolution in [`manifest.rs`](crates/protofs-core/src/mtproto/real/manifest.rs) by searching for `#protofs_manifest_v1` across channel history when recent message history consists of uploaded files.
+  - Ensured `do_update_pinned_manifest` edits the existing pinned manifest message in-place with `messages.EditMessage` and automatically deletes any duplicate manifest messages, preventing channel clutter.
 - **MTProto Transport Framing Translation & Padding Stripping in LocalProxyBridge**:
   - Resolved the persistent `"Connecting..."` status where MTProto proxies connected successfully at the TCP/TLS level with active ping latency, but Telegram authentication and session requests never completed.
   - Implemented bidirectional transport framing translation between Grammers' TCP Full transport format (`[full_len (4)] [seq_no (4)] [payload] [crc32 (4)]`) and upstream MTProxy Intermediate / Padded Intermediate format (`[inter_len (4)] [payload]`).

@@ -52,9 +52,7 @@ export function useTransferListener() {
       const existing = store.transfers.find(
         (t) =>
           t.id === payload.transfer_id ||
-          (t.name === payload.name &&
-            ((payload.status === 'uploading' && t.status === 'uploading') ||
-              (payload.status === 'downloading' && t.status === 'downloading')))
+          (t.name === payload.name && (t.status === 'uploading' || t.status === 'queued' || t.status === 'downloading'))
       );
 
       const targetId = existing ? existing.id : payload.transfer_id;
@@ -77,7 +75,6 @@ export function useTransferListener() {
         });
       } else {
         store.updateTransfer(targetId, {
-          id: payload.transfer_id,
           file_id: payload.file_id || existing.file_id,
           bytes_transferred: payload.bytes_transferred,
           total_bytes: payload.total_bytes || existing.total_bytes,

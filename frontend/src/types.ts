@@ -132,7 +132,7 @@ export interface TransferItem {
   speed_bytes_sec?: number;
   eta?: string;
   eta_secs?: number | null;
-  status: 'uploading' | 'downloading' | 'completed' | 'failed' | 'paused';
+  status: 'queued' | 'uploading' | 'downloading' | 'completed' | 'failed' | 'paused';
   error?: string;
   file_path?: string;
   drive_id?: string;
@@ -350,6 +350,7 @@ export interface UploadFileOptions {
   fileBytes?: Uint8Array;
   fileBase64?: string;
   conflictAction?: 'replace' | 'rename' | 'skip';
+  transferId?: string;
 }
 
 export type ProxyType = 'mtproto' | 'socks5' | 'http';

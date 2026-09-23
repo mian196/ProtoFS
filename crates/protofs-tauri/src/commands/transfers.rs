@@ -20,9 +20,11 @@ pub async fn upload_file_command(
     file_bytes: Option<Vec<u8>>,
     file_base64: Option<String>,
     file_path: Option<String>,
+    transfer_id: Option<String>,
 ) -> Result<CommandResponse<FileNode>, String> {
     let state = app.state::<AppState>();
-    let transfer_id = format!("upload_{}_{}", Utc::now().timestamp_millis(), name);
+    let transfer_id =
+        transfer_id.unwrap_or_else(|| format!("upload_{}_{}", Utc::now().timestamp_millis(), name));
     let mut rx = register_transfer(&state, &transfer_id).await;
 
     let total_upload_size = if let Some(ref path_str) = file_path {
@@ -144,14 +146,6 @@ pub async fn upload_file_command(
             .await
         {
             Ok(file_node) => {
-                if let Err(e) = state
-                    .engine
-                    .debounced_flush_manifest(&drive_id, channel_id)
-                    .await
-                {
-                    tracing::warn!("Debounced manifest flush failed: {}", e);
-                }
-
                 emitter.finish();
                 unregister_transfer(&state, &transfer_id).await;
                 return Ok(CommandResponse::ok(file_node));

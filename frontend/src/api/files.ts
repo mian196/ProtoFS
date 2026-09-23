@@ -72,10 +72,11 @@ export async function uploadFile(
   name?: string,
   sizeBytes?: number,
   isEncrypted?: boolean,
-  fileBytes?: number[] | Uint8Array,
+  fileBytes?: Uint8Array | number[],
   filePath?: string,
   fileBase64?: string,
-  conflictAction?: 'replace' | 'rename' | 'skip'
+  conflictAction?: 'replace' | 'rename' | 'skip',
+  transferId?: string
 ): Promise<FileNode> {
   const opts: UploadFileOptions = typeof driveIdOrOptions === 'object'
     ? driveIdOrOptions
@@ -89,6 +90,7 @@ export async function uploadFile(
         filePath,
         fileBase64,
         conflictAction,
+        transferId,
       };
 
   if (isTauri()) {
@@ -103,6 +105,7 @@ export async function uploadFile(
       fileBase64: opts.fileBase64 || null,
       filePath: opts.filePath || null,
       conflictAction: opts.conflictAction || null,
+      transferId: opts.transferId || null,
     });
     return {
       ...item,
@@ -327,6 +330,16 @@ export async function resumeTransfer(transferId: string): Promise<boolean> {
   return true;
 }
 
+export async function flushManifest(driveId: string, channelId: number = 0): Promise<void> {
+  if (isTauri()) {
+    try {
+      await invokeCommand<void>('flush_manifest_command', { driveId, channelId });
+    } catch (err) {
+      console.warn('flushManifest error:', err);
+    }
+  }
+}
+
 export const filesApi = {
   loadDrive,
   createFolder,
@@ -349,4 +362,5 @@ export const filesApi = {
   cancelTransfer,
   pauseTransfer,
   resumeTransfer,
+  flushManifest,
 };

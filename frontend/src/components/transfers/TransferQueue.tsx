@@ -19,7 +19,7 @@ export const TransferQueue: React.FC = () => {
   } = useTransferStore();
 
   const stats = getAggregateStats();
-  const { activeCount, completedCount, failedCount, pausedCount, overallPercent, aggregateSpeedBytesSec } = stats;
+  const { activeCount, queuedCount, completedCount, failedCount, pausedCount, overallPercent, aggregateSpeedBytesSec } = stats;
 
   if (transfers.length === 0) return null;
 
@@ -50,10 +50,12 @@ export const TransferQueue: React.FC = () => {
     : isRateLimited
       ? 'Rate limited: Cooling down...'
       : activeCount > 0
-        ? `${activeCount} active • ${formatBytes(aggregateSpeedBytesSec)}/s`
-        : failedCount > 0
-          ? `${failedCount} failed`
-          : `${completedCount} completed`;
+        ? `${activeCount} active${queuedCount > 0 ? ` • ${queuedCount} queued` : ''} • ${formatBytes(aggregateSpeedBytesSec)}/s`
+        : queuedCount > 0
+          ? `${queuedCount} in queue`
+          : failedCount > 0
+            ? `${failedCount} failed`
+            : `${completedCount} completed`;
 
   return (
     <div className="fixed bottom-4 right-4 z-40 w-80 sm:w-96 rounded-3xl p-1.5 bg-white/[0.04] border border-white/10 backdrop-blur-2xl shadow-2xl transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] animate-in fade-in slide-in-from-bottom-3">
@@ -76,7 +78,9 @@ export const TransferQueue: React.FC = () => {
                       ? 'bg-rose-500'
                       : activeCount > 0
                         ? 'bg-sky-500'
-                        : 'bg-emerald-500'
+                        : queuedCount > 0
+                          ? 'bg-amber-400'
+                          : 'bg-emerald-500'
                 }`}
               />
             </span>
@@ -126,7 +130,7 @@ export const TransferQueue: React.FC = () => {
         </div>
 
         {/* Aggregate Queue Progress Bar (D-13) */}
-        {activeCount > 0 && (
+        {(activeCount > 0 || queuedCount > 0) && (
           <div className="px-4 py-1.5 bg-white/[0.02] border-b border-white/5">
             <ProgressBar progress={overallPercent} height="sm" color={failedCount > 0 ? 'rose' : pausedCount > 0 ? 'amber' : 'sky'} />
           </div>

@@ -3,6 +3,7 @@ import type { TransferItem } from '../types';
 
 export interface AggregateTransferStats {
   activeCount: number;
+  queuedCount: number;
   completedCount: number;
   failedCount: number;
   pausedCount: number;
@@ -54,7 +55,7 @@ export const useTransferStore = create<TransferState>((set, get) => ({
         transfers: state.transfers.map((t) => {
           if (t.id !== id) return t;
           const merged = { ...t, ...updates };
-          if (merged.progress >= 100 && merged.status !== 'failed' && merged.status !== 'paused') {
+          if (merged.progress >= 100 && merged.status !== 'failed' && merged.status !== 'paused' && merged.status !== 'queued') {
             merged.status = 'completed';
           }
           return merged;
@@ -78,6 +79,7 @@ export const useTransferStore = create<TransferState>((set, get) => ({
   getAggregateStats: () => {
     const { transfers } = get();
     let activeCount = 0;
+    let queuedCount = 0;
     let completedCount = 0;
     let failedCount = 0;
     let pausedCount = 0;
@@ -89,6 +91,8 @@ export const useTransferStore = create<TransferState>((set, get) => ({
       if (t.status === 'uploading' || t.status === 'downloading') {
         activeCount++;
         aggregateSpeedBytesSec += t.speed_bytes_sec || 0;
+      } else if (t.status === 'queued') {
+        queuedCount++;
       } else if (t.status === 'completed') {
         completedCount++;
       } else if (t.status === 'failed') {
@@ -104,12 +108,13 @@ export const useTransferStore = create<TransferState>((set, get) => ({
     const overallPercent =
       totalQueueBytes > 0
         ? Math.min(100, Math.round((totalBytesTransferred / totalQueueBytes) * 100))
-        : completedCount > 0 && activeCount === 0
+        : completedCount > 0 && activeCount === 0 && queuedCount === 0
           ? 100
           : 0;
 
     return {
       activeCount,
+      queuedCount,
       completedCount,
       failedCount,
       pausedCount,
