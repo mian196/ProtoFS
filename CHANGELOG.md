@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 📝 Documentation & Community
+- **Comprehensive README & Feature Reference**:
+  - Updated [`README.md`](README.md) with comprehensive architecture overview, embedded WebDAV drive mounting (`ProtoFS (X:)`), Master Key Vault / BIP-39 mnemonic recovery, pre-auth proxy subsystem with `LocalProxyBridge`, and updated CLI references.
+  - Added clear Telegram non-affiliation disclaimer and terms of service notice.
+- **Contributor & Security Guidelines**:
+  - Added [`CONTRIBUTING.md`](CONTRIBUTING.md) detailing development setup, code standards, modularity rules, and PR workflow.
+  - Added [`SECURITY.md`](SECURITY.md) establishing supported version policy, private vulnerability reporting workflow, response SLAs, and core cryptographic invariants.
+
 ---
 
 ## [0.4.2] - 2026-09-24
