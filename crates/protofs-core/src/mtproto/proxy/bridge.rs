@@ -44,7 +44,7 @@ impl LocalProxyBridge {
                                 let proxy_clone = Arc::clone(&proxy);
                                 tokio::spawn(async move {
                                     if let Err(e) = handle_socks5_client(client_stream, proxy_clone).await {
-                                        debug!("LocalProxyBridge client handler: {}", e);
+                                        warn!("LocalProxyBridge client handler error: {}", e);
                                     }
                                 });
                             }

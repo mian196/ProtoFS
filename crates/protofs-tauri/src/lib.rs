@@ -8,16 +8,37 @@ use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
 
+#[cfg(target_os = "android")]
+struct AndroidLogWriter;
+
+#[cfg(target_os = "android")]
+impl std::io::Write for AndroidLogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let Ok(msg) = std::str::from_utf8(buf) {
+            let c_tag = std::ffi::CString::new("ProtoFS_Rust").unwrap_or_default();
+            let c_msg = std::ffi::CString::new(msg.trim_end()).unwrap_or_default();
+            let c_fmt = std::ffi::CString::new("%s").unwrap_or_default();
+            unsafe {
+                extern "C" {
+                    fn __android_log_print(
+                        prio: i32,
+                        tag: *const std::ffi::c_char,
+                        fmt: *const std::ffi::c_char,
+                        ...
+                    ) -> i32;
+                }
+                __android_log_print(3, c_tag.as_ptr(), c_fmt.as_ptr(), c_msg.as_ptr());
+            }
+        }
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let appdata_dir = std::env::var("APPDATA")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir())
-        .join("ProtoFS");
-    let logs_dir = appdata_dir.join("logs");
-    let _ = std::fs::create_dir_all(&logs_dir);
-    let log_file_path = logs_dir.join("protofs.log");
-
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
 
@@ -25,28 +46,49 @@ pub fn run() {
         tracing_subscriber::EnvFilter::new("protofs_core=debug,protofs_tauri=debug,info")
     });
 
-    if let Ok(file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_file_path)
+    #[cfg(target_os = "android")]
     {
-        let file_layer = tracing_subscriber::fmt::layer()
+        let android_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)
-            .with_writer(std::sync::Arc::new(file));
-        let stdout_layer = tracing_subscriber::fmt::layer();
+            .with_writer(|| AndroidLogWriter);
         let _ = tracing_subscriber::registry()
             .with(filter)
-            .with(stdout_layer)
-            .with(file_layer)
-            .try_init();
-    } else {
-        let _ = tracing_subscriber::registry()
-            .with(filter)
-            .with(tracing_subscriber::fmt::layer())
+            .with(android_layer)
             .try_init();
     }
 
-    tracing::info!("ProtoFS starting up. Log file: {}", log_file_path.display());
+    #[cfg(not(target_os = "android"))]
+    {
+        let appdata_dir = std::env::var("APPDATA")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::env::temp_dir())
+            .join("ProtoFS");
+        let logs_dir = appdata_dir.join("logs");
+        let _ = std::fs::create_dir_all(&logs_dir);
+        let log_file_path = logs_dir.join("protofs.log");
+
+        if let Ok(file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_file_path)
+        {
+            let file_layer = tracing_subscriber::fmt::layer()
+                .with_ansi(false)
+                .with_writer(std::sync::Arc::new(file));
+            let stdout_layer = tracing_subscriber::fmt::layer();
+            let _ = tracing_subscriber::registry()
+                .with(filter)
+                .with(stdout_layer)
+                .with(file_layer)
+                .try_init();
+        } else {
+            let _ = tracing_subscriber::registry()
+                .with(filter)
+                .with(tracing_subscriber::fmt::layer())
+                .try_init();
+        }
+    }
+    tracing::info!("ProtoFS starting up");
 
     tauri::Builder::default()
         .setup(|app| {

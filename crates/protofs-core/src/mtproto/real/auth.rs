@@ -53,7 +53,9 @@ pub(crate) async fn init_grammers_client(
     let pool = SenderPool::with_configuration(session, api_id, params);
     let runner = pool.runner;
     tokio::spawn(async move {
-        let _ = runner.run().await;
+        tracing::debug!("Starting Grammers MTProto runner loop");
+        runner.run().await;
+        tracing::warn!("Grammers MTProto runner loop terminated");
     });
     (Client::new(pool.handle), bridge_ref)
 }
