@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.4.2] - 2026-09-24
+
 ### 🔧 Changed
 - **User-Friendly Account Connection Label**:
   - Changed the account button status display in the sidebar from `"Testing..."` to `"Connecting..."` while MTProto connection checks are in progress.

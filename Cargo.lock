@@ -3334,7 +3334,7 @@ dependencies = [
 
 [[package]]
 name = "protofs-cli"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "clap",
  "protofs-core",
@@ -3342,7 +3342,7 @@ dependencies = [
 
 [[package]]
 name = "protofs-core"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "aes",
  "argon2",
@@ -3375,7 +3375,7 @@ dependencies = [
 
 [[package]]
 name = "protofs-tauri"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "base64 0.22.1",
  "chrono",
