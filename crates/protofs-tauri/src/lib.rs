@@ -19,7 +19,7 @@ impl std::io::Write for AndroidLogWriter {
             let c_msg = std::ffi::CString::new(msg.trim_end()).unwrap_or_default();
             let c_fmt = std::ffi::CString::new("%s").unwrap_or_default();
             unsafe {
-                extern "C" {
+                unsafe extern "C" {
                     fn __android_log_print(
                         prio: i32,
                         tag: *const std::ffi::c_char,
