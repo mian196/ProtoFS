@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.2] - 2026-09-24
 
+### 🚀 Added
+- **Automated Changelog Extraction in Release CI**:
+  - Added [`.github/scripts/generate_release_notes.py`](.github/scripts/generate_release_notes.py) to automatically extract matching version sections directly from [`CHANGELOG.md`](CHANGELOG.md) upon publishing releases in [`.github/workflows/release.yml`](.github/workflows/release.yml).
+
 ### 🔧 Changed
 - **User-Friendly Account Connection Label**:
   - Changed the account button status display in the sidebar from `"Testing..."` to `"Connecting..."` while MTProto connection checks are in progress.

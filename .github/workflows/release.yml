@@ -244,20 +244,20 @@ jobs:
           VERSION="${{ steps.app_version.outputs.version }}"
           echo "Discovered APKs in build directory:"
           find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk"
-          
+
           # Copy universal APK to standard Android release name and universal tag
           UNIVERSAL_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*universal*.apk" | head -n 1)
           if [ -n "$UNIVERSAL_APK" ] && [ -f "$UNIVERSAL_APK" ]; then
             cp "$UNIVERSAL_APK" "dist-apk/ProtoFS_v${VERSION}_universal.apk"
             cp "$UNIVERSAL_APK" "dist-apk/ProtoFS_v${VERSION}_android.apk"
           fi
-          
+
           # Copy architecture-specific APKs
           ARM64_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*arm64*.apk" | head -n 1)
           if [ -n "$ARM64_APK" ] && [ -f "$ARM64_APK" ]; then
             cp "$ARM64_APK" "dist-apk/ProtoFS_v${VERSION}_arm64-v8a.apk"
           fi
-          
+
           ARM_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f \( -name "*arm-*.apk" -o -name "*armeabi*.apk" \) | head -n 1)
           if [ -n "$ARM_APK" ] && [ -f "$ARM_APK" ]; then
             cp "$ARM_APK" "dist-apk/ProtoFS_v${VERSION}_armeabi-v7a.apk"
@@ -293,6 +293,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
       - name: Download all built artifacts
         uses: actions/download-artifact@v4
@@ -315,6 +322,11 @@ jobs:
           fi
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
 
+      - name: Extract Release Notes from CHANGELOG
+        env:
+          VERSION: ${{ steps.release_info.outputs.tag_name }}
+        run: python .github/scripts/generate_release_notes.py
+
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         env:
@@ -324,5 +336,6 @@ jobs:
           name: ProtoFS ${{ steps.release_info.outputs.tag_name }}
           draft: ${{ github.event.inputs.draft || false }}
           prerelease: ${{ github.event.inputs.prerelease || false }}
-          generate_release_notes: true
+          body_path: ${{ hashFiles('release_notes.md') != '' && 'release_notes.md' || '' }}
+          generate_release_notes: ${{ hashFiles('release_notes.md') == '' }}
           files: release-dist/*
