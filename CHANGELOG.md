@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added [`SECURITY.md`](SECURITY.md) establishing supported version policy, private vulnerability reporting workflow, response SLAs, and core cryptographic invariants.
 
 ### 🚀 Added
+- **Multi-ABI Android APK Release Artifacts**:
+  - Configured Android build and release workflows to build and publish dedicated `arm64-v8a`, `armv7` (`armeabi-v7a`), and `universal` APKs (`ProtoFS_v0.4.2_arm64-v8a.apk`, `ProtoFS_v0.4.2_armv7.apk`, `ProtoFS_v0.4.2_universal.apk`).
 - **Automated Changelog Extraction in Release CI**:
   - Added [`.github/scripts/generate_release_notes.py`](.github/scripts/generate_release_notes.py) to automatically extract matching version sections directly from [`CHANGELOG.md`](CHANGELOG.md) upon publishing releases in [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
