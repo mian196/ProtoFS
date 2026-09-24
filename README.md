@@ -6,8 +6,18 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-38B2AC?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-0.4.2-emerald.svg)](CHANGELOG.md)
+[![Status](https://img.shields.io/badge/Status-Work%20In%20Progress%20(WIP)-yellow.svg)](https://github.com/mian196/ProtoFS/issues)
 
 **ProtoFS** is a high-performance, cross-platform virtual file system and encrypted cloud storage client backed by Telegram MTProto channels. It provides zero-knowledge authenticated encryption, local SQLite WAL caching, fast-path Zstandard manifests, embedded WebDAV drive mounting, pre-auth proxy routing, bidirectional folder sync, and a modern Tauri 2.0 desktop & mobile interface.
+
+> [!IMPORTANT]
+> **Project Status: Early Alpha / Work In Progress (WIP)**
+>
+> ProtoFS is in active, early-stage development. While the core architecture (MTProto engine, VFS, WebDAV, encryption, and sync) is functional, features and interfaces are actively evolving.
+>
+> - 🐛 **Found a bug?** Please [open a Bug Report](https://github.com/mian196/ProtoFS/issues/new?template=bug_report.yml) with reproduction steps and logs.
+> - 💡 **Have a feature idea?** [Feature Requests](https://github.com/mian196/ProtoFS/issues/new?template=feature_request.yml) and enhancements are very welcome!
+> - 🤝 **Want to contribute?** Pull requests of any size are welcomed. Check out our [Contributing Guide](CONTRIBUTING.md) to get started.
 
 > [!WARNING]
 > **Disclaimer**: ProtoFS is an independent, open-source project and is in **no way affiliated, associated, authorized, endorsed by, or in any way officially connected with Telegram FZ-LLC, Telegram Messenger Inc., or any of its subsidiaries or affiliates**. The official Telegram website can be found at [https://telegram.org](https://telegram.org).
@@ -146,9 +156,14 @@ For our complete security policy and responsible disclosure guidelines, see [SEC
 
 ---
 
-## Contributing
+## Contributing & Community
 
-We welcome contributions! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, code standards, and pull request guidelines.
+ProtoFS is open source and community-driven. We actively welcome contributions, bug reports, feature discussions, and pull requests!
+
+- **🐛 Report Bugs**: Found a bug or crash? Open a [Bug Report](https://github.com/mian196/ProtoFS/issues/new?template=bug_report.yml) with steps to reproduce and logs.
+- **💡 Suggest Features**: Have an idea for a feature, UI enhancement, or new platform integration? Open a [Feature Request](https://github.com/mian196/ProtoFS/issues/new?template=feature_request.yml).
+- **🛠️ Submit Pull Requests**: Fork the repository, create a branch (`feat/xyz` or `fix/xyz`), and submit a PR using our [Pull Request Template](.github/pull_request_template.md).
+- **📖 Developer Guide**: Please review [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup, code quality rules, and verification requirements.
 
 ---
 

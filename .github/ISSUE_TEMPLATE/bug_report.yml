@@ -1,0 +1,97 @@
+name: 🐛 Bug Report
+description: Report a bug, crash, or unexpected behavior in ProtoFS
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! ProtoFS is in early development, and your feedback helps make it better.
+        Please provide as much context as possible to help reproduce and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Clear steps to reproduce the behavior.
+      placeholder: |
+        1. Open ProtoFS
+        2. Go to '...'
+        3. Click on '....'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: What should have happened instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform / OS
+      description: Which operating system and platform are you running ProtoFS on?
+      options:
+        - Windows (x86_64)
+        - Linux (AppImage / .deb)
+        - macOS (Apple Silicon / Intel)
+        - Android (APK)
+        - Other (please specify in context)
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: ProtoFS Version / Tag
+      description: Version of ProtoFS you are using (e.g. v0.4.2, commit hash, or dev branch).
+      placeholder: v0.4.2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: auth-proxy-mode
+    attributes:
+      label: Connection Mode
+      description: Are you using any proxy or special network configuration?
+      options:
+        - Direct (No proxy)
+        - MTProto Proxy (Fake-TLS / DD)
+        - SOCKS5 Proxy
+        - HTTP CONNECT Proxy
+        - Other
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs & Output
+      description: Paste any relevant terminal logs, error toasts, or log contents from `%APPDATA%/ProtoFS/logs/protofs.log`.
+      render: shell
+      placeholder: |
+        Paste logs or stack traces here (ensure no passwords or private phone numbers are included)...
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or screen recordings about the problem.
+    validations:
+      required: false

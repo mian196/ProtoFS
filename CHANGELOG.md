@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 📝 Documentation & Community
+- **WIP Status Banner & Community Guidelines**:
+  - Updated [`README.md`](README.md) with an early-stage Work In Progress (WIP) status banner and guidelines for reporting bugs, proposing features, and submitting pull requests.
+- **GitHub Issue & Pull Request Templates**:
+  - Added structured GitHub Issue templates for bug reports ([`.github/ISSUE_TEMPLATE/bug_report.yml`](.github/ISSUE_TEMPLATE/bug_report.yml)) and feature requests ([`.github/ISSUE_TEMPLATE/feature_request.yml`](.github/ISSUE_TEMPLATE/feature_request.yml)).
+  - Added standardized Pull Request template ([`.github/pull_request_template.md`](.github/pull_request_template.md)).
 - **Comprehensive README & Feature Reference**:
   - Updated [`README.md`](README.md) with comprehensive architecture overview, embedded WebDAV drive mounting (`ProtoFS (X:)`), Master Key Vault / BIP-39 mnemonic recovery, pre-auth proxy subsystem with `LocalProxyBridge`, and updated CLI references.
   - Added clear Telegram non-affiliation disclaimer and terms of service notice.
