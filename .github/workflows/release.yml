@@ -233,6 +233,12 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Initialize Tauri Android Environment
+        run: npm run android:init -- --ci --skip-targets-install
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ env.NDK_HOME }}
+
       - name: Make Gradle Wrapper Executable
         run: chmod +x crates/protofs-tauri/gen/android/gradlew
 

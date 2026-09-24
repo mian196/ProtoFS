@@ -111,20 +111,10 @@ When addressing bugs, unexpected errors, or regression reports:
 - **Preserve Existing Code & Comments:** Never delete unrelated comments, docstrings, or working logic unless explicitly directed.
 - **Clickable Links:** Always provide clickable markdown links with line references (e.g., `[server.rs:L150-180](crates/protofs-core/src/webdav/server.rs#L150-L180)`).
 - **Maintain Changelog (`CHANGELOG.md`):** Keep [CHANGELOG.md](CHANGELOG.md) updated adhering to [Keep a Changelog](https://keepachangelog.com/) format (e.g., Added, Changed, Fixed, Security).
+  - **Codebase Changes Only:** Only log meaningful changes to the main codebase (core logic in `crates/`, frontend application features/fixes in `frontend/src/`, and public CLI/VFS APIs).
+  - **Exclude Meta & Non-Codebase Edits:** Do **NOT** add entries for CI/CD workflow adjustments (`.github/`), README or documentation edits, developer scripts, repo configurations, or internal tooling changes.
   - **Immutable Releases vs. Unreleased:** Any version section with a release date in its title (e.g. `## [0.4.0] - 2026-09-22`) is a released, immutable version and must **never** be edited. All new features, changes, fixes, and improvements must strictly be recorded under the `## [Unreleased]` section at the top of the file.
 - **No Scope Creep:** Keep modifications tightly scoped to the user's prompt.
 - **Do Not Commit Unprompted:** Propose changes and prepare artifacts first; only modify files or commit to the repo when instructed.
 
 ---
-
-## GSD Workflow Enforcement
-
-Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
-
-Use these entry points:
-
-- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd-debug` for investigation and bug fixing
-- `/gsd-execute-phase` for planned phase work
-
-Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
