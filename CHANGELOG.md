@@ -12,8 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 📝 Documentation & Community
 - **WIP Status Banner & Community Guidelines**:
   - Updated [`README.md`](README.md) with an early-stage Work In Progress (WIP) status banner and guidelines for reporting bugs, proposing features, and submitting pull requests.
-- **GitHub Issue & Pull Request Templates**:
+- **GitHub Issue, PR & Discussion Templates**:
   - Added structured GitHub Issue templates for bug reports ([`.github/ISSUE_TEMPLATE/bug_report.yml`](.github/ISSUE_TEMPLATE/bug_report.yml)) and feature requests ([`.github/ISSUE_TEMPLATE/feature_request.yml`](.github/ISSUE_TEMPLATE/feature_request.yml)).
+  - Added GitHub Discussion category templates for feature ideas ([`.github/DISCUSSION_TEMPLATE/ideas.yml`](.github/DISCUSSION_TEMPLATE/ideas.yml)), Q&A troubleshooting ([`.github/DISCUSSION_TEMPLATE/q-a.yml`](.github/DISCUSSION_TEMPLATE/q-a.yml)), and community show-and-tell ([`.github/DISCUSSION_TEMPLATE/show-and-tell.yml`](.github/DISCUSSION_TEMPLATE/show-and-tell.yml)).
   - Added standardized Pull Request template ([`.github/pull_request_template.md`](.github/pull_request_template.md)).
 - **Comprehensive README & Feature Reference**:
   - Updated [`README.md`](README.md) with comprehensive architecture overview, embedded WebDAV drive mounting (`ProtoFS (X:)`), Master Key Vault / BIP-39 mnemonic recovery, pre-auth proxy subsystem with `LocalProxyBridge`, and updated CLI references.

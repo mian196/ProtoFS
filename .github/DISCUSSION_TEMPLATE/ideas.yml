@@ -1,0 +1,35 @@
+name: 💡 Feature Idea or Proposal
+description: Share a new idea, workflow improvement, or feature proposal for community discussion
+title: "[Idea]: "
+labels: ["discussion", "idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing your idea! Discussions are a great place to brainstorm before creating formal issues or starting code implementation.
+
+  - type: textarea
+    id: idea-summary
+    attributes:
+      label: Idea / Proposal Summary
+      description: What is your idea and what problem or use case does it address?
+      placeholder: Describe the idea...
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: How It Could Work
+      description: Any specific thoughts on user experience, CLI commands, or implementation details?
+      placeholder: Share proposed workflows, mockups, or technical thoughts...
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or Similar Tools
+      description: Have you seen similar features in other tools or considered alternative approaches?
+    validations:
+      required: false

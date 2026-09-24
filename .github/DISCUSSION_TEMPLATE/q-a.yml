@@ -1,0 +1,45 @@
+name: ❓ Question & Troubleshooting
+description: Ask a question about setting up ProtoFS, proxies, WebDAV, or building from source
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask your question here! Community members and maintainers can help troubleshoot and provide answers.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question / Issue
+      description: What are you trying to do, and what question or difficulty do you have?
+      placeholder: Describe what you need help with...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category-topic
+    attributes:
+      label: Topic Area
+      description: Which area does your question relate to?
+      options:
+        - Telegram Auth / Login (QR / SMS / 2FA)
+        - Proxy Configuration (MTProto / SOCKS5 / HTTP)
+        - WebDAV Drive Mounting (Windows X: / Local WebDAV)
+        - Building from Source (Rust / Tauri / Android)
+        - Encryption & Key Recovery (BIP-39 / Passphrase)
+        - Sync Engine & File Transfers
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: OS / Environment & Details
+      description: Provide OS version, ProtoFS version, or logs if relevant (do NOT include passwords, auth tokens, or private phone numbers).
+      placeholder: |
+        OS: Windows 11 / Ubuntu 24.04 / macOS 14 / Android 14
+        ProtoFS Version: v0.4.2
+    validations:
+      required: false

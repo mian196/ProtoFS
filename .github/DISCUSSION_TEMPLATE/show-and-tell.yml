@@ -1,0 +1,26 @@
+name: 🙌 Show and Tell
+description: Share your ProtoFS setup, custom scripts, benchmarks, or storage workflows
+title: "[Show & Tell]: "
+labels: ["show-and-tell"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Show off your setup! We'd love to see how you use ProtoFS and what you're building.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What are you sharing?
+      description: Describe your setup, workflow, integration, or performance benchmark.
+      placeholder: Share what you've built or how you use ProtoFS...
+    validations:
+      required: true
+
+  - type: textarea
+    id: media-links
+    attributes:
+      label: Screenshots, Links, or Code Snippets
+      description: Add any images, configs (without credentials/secrets!), or repository links.
+    validations:
+      required: false
