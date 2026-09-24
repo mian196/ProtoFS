@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.4.2] - 2026-09-24
+
 ### 📝 Documentation & Community
 - **WIP Status Banner & Community Guidelines**:
   - Updated [`README.md`](README.md) with an early-stage Work In Progress (WIP) status banner and guidelines for reporting bugs, proposing features, and submitting pull requests.
@@ -22,10 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Contributor & Security Guidelines**:
   - Added [`CONTRIBUTING.md`](CONTRIBUTING.md) detailing development setup, code standards, modularity rules, and PR workflow.
   - Added [`SECURITY.md`](SECURITY.md) establishing supported version policy, private vulnerability reporting workflow, response SLAs, and core cryptographic invariants.
-
----
-
-## [0.4.2] - 2026-09-24
 
 ### 🚀 Added
 - **Automated Changelog Extraction in Release CI**:
