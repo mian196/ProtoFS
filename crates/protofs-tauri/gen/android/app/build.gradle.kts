@@ -15,27 +15,38 @@ val tauriProperties = Properties().apply {
 
 android {
     namespace = "com.protofs.app"
-    compileSdk = 35
+    compileSdk = 34
 
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "com.protofs.app"
-        minSdk = 26
-        targetSdk = 35
+        minSdk = 24
+        targetSdk = 34
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
-        versionName = tauriProperties.getProperty("tauri.android.versionName", "0.3.0")
+        versionName = tauriProperties.getProperty("tauri.android.versionName", "0.4.1")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+        }
+    }
+
     buildTypes {
         getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false
             packaging {
-                jniLibs.keepDebugSymbols.add("**/*.so")
+                jniLibs {
+                    keepDebugSymbols.add("**/*.so")
+                    useLegacyPackaging = true
+                }
             }
         }
         getByName("release") {
@@ -44,6 +55,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            packaging {
+                jniLibs {
+                    useLegacyPackaging = true
+                }
+            }
         }
     }
 

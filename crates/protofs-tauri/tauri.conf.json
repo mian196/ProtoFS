@@ -47,7 +47,7 @@
     "copyright": "Copyright © 2025-2026 ProtoFS Contributors",
     "category": "Utility",
     "android": {
-      "minSdkVersion": 26
+      "minSdkVersion": 24
     }
   }
 }
