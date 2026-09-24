@@ -248,9 +248,8 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Build Android Multi-ABI and Universal APKs
-        working-directory: crates/protofs-tauri/gen/android
-        run: ./gradlew assembleArm64Debug assembleArmDebug assembleUniversalDebug --stacktrace
+      - name: Build Android Debug APK
+        run: npm run android:build:debug -- --verbose
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ env.NDK_HOME }}
