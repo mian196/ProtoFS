@@ -336,6 +336,5 @@ jobs:
           name: ProtoFS ${{ steps.release_info.outputs.tag_name }}
           draft: ${{ github.event.inputs.draft || false }}
           prerelease: ${{ github.event.inputs.prerelease || false }}
-          body_path: ${{ hashFiles('release_notes.md') != '' && 'release_notes.md' || '' }}
-          generate_release_notes: ${{ hashFiles('release_notes.md') == '' }}
+          body_path: release_notes.md
           files: release-dist/*
