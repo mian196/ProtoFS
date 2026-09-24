@@ -271,12 +271,15 @@ pub async fn unmount_virtual_drive_command(
         .output();
     #[cfg(target_os = "linux")]
     {
-        let server = app.state::<AppState>().webdav_server.read().await;
+        let state = app.state::<AppState>();
+        let server = state.webdav_server.read().await;
+        let port = server.port().await;
+        drop(server);
         let _ = silent_command("gio")
             .args([
                 "mount",
                 "-u",
-                &format!("dav://127.0.0.1:{}/{}", server.port().await, drive_id),
+                &format!("dav://127.0.0.1:{}/{}", port, drive_id),
             ])
             .output();
     }
@@ -300,17 +303,17 @@ pub async fn unmount_virtual_drive_command(
 
 pub fn unmount_all_virtual_drives_cleanup(app: &tauri::AppHandle) {
     let mount_state = load_mount_state(app);
-    for (_drive_id, info) in mount_state.mounts {
+    for (_drive_id, _info) in mount_state.mounts {
         #[cfg(target_os = "windows")]
         {
-            let drive_arg = format!("{}:", info.drive_letter);
+            let drive_arg = format!("{}:", _info.drive_letter);
             let _ = silent_command("net")
                 .args(["use", &drive_arg, "/delete", "/y"])
                 .output();
             let _ = silent_command("subst").args([&drive_arg, "/D"]).output();
             let k = format!(
                 r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\DriveIcons\{}",
-                info.drive_letter
+                _info.drive_letter
             );
             let _ = silent_command("reg").args(["delete", &k, "/f"]).output();
         }

@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced `scripts/bump-version.js` to automatically verify and synchronize `frontend/src/utils/version.ts` alongside root `package.json`, `Cargo.toml`, `frontend/package.json`, and `tauri.conf.json`.
 
 ### 🐛 Fixed
+- **Linux and Cross-Platform Build**:
+  - Fixed Linux and cross-platform compilation errors and linter warnings.
 - **Real-Time Transfer Queue Tracking & Live Preview Synchronization**:
   - Fixed upload popup getting permanently stuck in `"uploading"` by synchronizing `transferId` across frontend [`useUploadManager.ts`](frontend/src/hooks/useUploadManager.ts) and Tauri backend [`transfers.rs`](crates/protofs-tauri/src/commands/transfers.rs).
   - Resolved event matching in [`useTransferListener.ts`](frontend/src/hooks/useTransferListener.ts) so completed and in-flight transfer progress events accurately match the active item by ID and name.

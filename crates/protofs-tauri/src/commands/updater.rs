@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+#[cfg(target_os = "windows")]
 use std::path::PathBuf;
 use tracing::{debug, warn};
 
@@ -142,126 +143,111 @@ fn select_matching_asset(
         return None;
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        match package_type {
-            PackageType::Portable => {
-                // Look for portable archive or standalone exe
-                if let Some(asset) = assets.iter().find(|a| {
-                    let n = a.name.to_lowercase();
-                    (n.contains("portable") || n.contains("standalone"))
-                        && (n.ends_with(".zip") || n.ends_with(".exe"))
-                }) {
-                    return Some((
-                        &asset.browser_download_url,
-                        Some(&asset.name),
-                        Some(asset.size),
-                    ));
-                }
-                // Fallback to any .zip
-                if let Some(asset) = assets
-                    .iter()
-                    .find(|a| a.name.to_lowercase().ends_with(".zip"))
-                {
-                    return Some((
-                        &asset.browser_download_url,
-                        Some(&asset.name),
-                        Some(asset.size),
-                    ));
-                }
+    match package_type {
+        PackageType::Portable => {
+            // Look for portable archive or standalone executable
+            if let Some(asset) = assets.iter().find(|a| {
+                let n = a.name.to_lowercase();
+                (n.contains("portable") || n.contains("standalone"))
+                    && (n.ends_with(".zip") || n.ends_with(".tar.gz") || n.ends_with(".exe"))
+            }) {
+                return Some((
+                    &asset.browser_download_url,
+                    Some(&asset.name),
+                    Some(asset.size),
+                ));
             }
-            PackageType::MsiInstaller => {
-                if let Some(asset) = assets
-                    .iter()
-                    .find(|a| a.name.to_lowercase().ends_with(".msi"))
-                {
-                    return Some((
-                        &asset.browser_download_url,
-                        Some(&asset.name),
-                        Some(asset.size),
-                    ));
-                }
-            }
-            _ => {
-                // Default Windows Setup (.exe or .msi)
-                if let Some(asset) = assets.iter().find(|a| {
-                    let n = a.name.to_lowercase();
-                    (n.contains("setup") || n.contains("installer") || n.ends_with(".exe"))
-                        && !n.contains("portable")
-                }) {
-                    return Some((
-                        &asset.browser_download_url,
-                        Some(&asset.name),
-                        Some(asset.size),
-                    ));
-                }
-                if let Some(asset) = assets
-                    .iter()
-                    .find(|a| a.name.to_lowercase().ends_with(".msi"))
-                {
-                    return Some((
-                        &asset.browser_download_url,
-                        Some(&asset.name),
-                        Some(asset.size),
-                    ));
-                }
+            // Fallback to any .zip or .tar.gz
+            if let Some(asset) = assets.iter().find(|a| {
+                let n = a.name.to_lowercase();
+                n.ends_with(".zip") || n.ends_with(".tar.gz")
+            }) {
+                return Some((
+                    &asset.browser_download_url,
+                    Some(&asset.name),
+                    Some(asset.size),
+                ));
             }
         }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        match package_type {
-            PackageType::LinuxAppImage => {
-                if let Some(asset) = assets
-                    .iter()
-                    .find(|a| a.name.to_lowercase().ends_with(".appimage"))
-                {
-                    return Some((
-                        &asset.browser_download_url,
-                        Some(&asset.name),
-                        Some(asset.size),
-                    ));
-                }
+        PackageType::NsisInstaller => {
+            if let Some(asset) = assets.iter().find(|a| {
+                let n = a.name.to_lowercase();
+                (n.contains("setup") || n.contains("installer") || n.ends_with(".exe"))
+                    && !n.contains("portable")
+            }) {
+                return Some((
+                    &asset.browser_download_url,
+                    Some(&asset.name),
+                    Some(asset.size),
+                ));
             }
-            PackageType::LinuxDeb => {
-                if let Some(asset) = assets
-                    .iter()
-                    .find(|a| a.name.to_lowercase().ends_with(".deb"))
-                {
-                    return Some((
-                        &asset.browser_download_url,
-                        Some(&asset.name),
-                        Some(asset.size),
-                    ));
-                }
-            }
-            _ => {
-                if let Some(asset) = assets.iter().find(|a| {
-                    let n = a.name.to_lowercase();
-                    n.ends_with(".appimage") || n.ends_with(".deb") || n.ends_with(".tar.gz")
-                }) {
-                    return Some((
-                        &asset.browser_download_url,
-                        Some(&asset.name),
-                        Some(asset.size),
-                    ));
-                }
+            if let Some(asset) = assets
+                .iter()
+                .find(|a| a.name.to_lowercase().ends_with(".msi"))
+            {
+                return Some((
+                    &asset.browser_download_url,
+                    Some(&asset.name),
+                    Some(asset.size),
+                ));
             }
         }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(asset) = assets
-            .iter()
-            .find(|a| a.name.to_lowercase().ends_with(".dmg"))
-        {
-            return Some((
-                &asset.browser_download_url,
-                Some(&asset.name),
-                Some(asset.size),
-            ));
+        PackageType::MsiInstaller => {
+            if let Some(asset) = assets
+                .iter()
+                .find(|a| a.name.to_lowercase().ends_with(".msi"))
+            {
+                return Some((
+                    &asset.browser_download_url,
+                    Some(&asset.name),
+                    Some(asset.size),
+                ));
+            }
+        }
+        PackageType::LinuxAppImage => {
+            if let Some(asset) = assets
+                .iter()
+                .find(|a| a.name.to_lowercase().ends_with(".appimage"))
+            {
+                return Some((
+                    &asset.browser_download_url,
+                    Some(&asset.name),
+                    Some(asset.size),
+                ));
+            }
+        }
+        PackageType::LinuxDeb => {
+            if let Some(asset) = assets
+                .iter()
+                .find(|a| a.name.to_lowercase().ends_with(".deb"))
+            {
+                return Some((
+                    &asset.browser_download_url,
+                    Some(&asset.name),
+                    Some(asset.size),
+                ));
+            }
+        }
+        PackageType::MacOsDmg => {
+            if let Some(asset) = assets
+                .iter()
+                .find(|a| a.name.to_lowercase().ends_with(".dmg"))
+            {
+                return Some((
+                    &asset.browser_download_url,
+                    Some(&asset.name),
+                    Some(asset.size),
+                ));
+            }
+        }
+        PackageType::Unknown => {
+            if let Some(asset) = assets.first() {
+                return Some((
+                    &asset.browser_download_url,
+                    Some(&asset.name),
+                    Some(asset.size),
+                ));
+            }
         }
     }
 
