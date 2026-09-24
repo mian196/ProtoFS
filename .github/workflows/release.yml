@@ -238,18 +238,52 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ env.NDK_HOME }}
 
-      - name: Collect APK Artifacts
+      - name: Collect Output APK Artifacts
         run: |
           mkdir -p dist-apk
-          find crates/protofs-tauri/gen/android/app/build/outputs/apk -name "*.apk" -exec cp {} "dist-apk/ProtoFS_v${{ steps.app_version.outputs.version }}_android.apk" \; || find . -name "*.apk" -not -path "*/node_modules/*" -exec cp {} "dist-apk/ProtoFS_v${{ steps.app_version.outputs.version }}_android.apk" \;
-          echo "--- APKs found ---"
-          ls -lh dist-apk/ || echo "No APKs found"
+          VERSION="${{ steps.app_version.outputs.version }}"
+          echo "Discovered APKs in build directory:"
+          find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk"
+          
+          # Copy universal APK to standard Android release name and universal tag
+          UNIVERSAL_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*universal*.apk" | head -n 1)
+          if [ -n "$UNIVERSAL_APK" ] && [ -f "$UNIVERSAL_APK" ]; then
+            cp "$UNIVERSAL_APK" "dist-apk/ProtoFS_v${VERSION}_universal.apk"
+            cp "$UNIVERSAL_APK" "dist-apk/ProtoFS_v${VERSION}_android.apk"
+          fi
+          
+          # Copy architecture-specific APKs
+          ARM64_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*arm64*.apk" | head -n 1)
+          if [ -n "$ARM64_APK" ] && [ -f "$ARM64_APK" ]; then
+            cp "$ARM64_APK" "dist-apk/ProtoFS_v${VERSION}_arm64-v8a.apk"
+          fi
+          
+          ARM_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f \( -name "*arm-*.apk" -o -name "*armeabi*.apk" \) | head -n 1)
+          if [ -n "$ARM_APK" ] && [ -f "$ARM_APK" ]; then
+            cp "$ARM_APK" "dist-apk/ProtoFS_v${VERSION}_armeabi-v7a.apk"
+          fi
 
-      - name: Upload Android APK Artifact
+          X86_64_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*x86_64*.apk" | head -n 1)
+          if [ -n "$X86_64_APK" ] && [ -f "$X86_64_APK" ]; then
+            cp "$X86_64_APK" "dist-apk/ProtoFS_v${VERSION}_x86_64.apk"
+          fi
+
+          # Fallback: if no specific APK was found, copy any APK
+          if [ ! -f "dist-apk/ProtoFS_v${VERSION}_android.apk" ]; then
+            ANY_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+            if [ -n "$ANY_APK" ] && [ -f "$ANY_APK" ]; then
+              cp "$ANY_APK" "dist-apk/ProtoFS_v${VERSION}_android.apk"
+            fi
+          fi
+
+          echo "=== Built APK Artifacts ==="
+          ls -lh dist-apk/
+
+      - name: Upload Android APK Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: protofs-android-apk
-          path: dist-apk/*
+          path: dist-apk/*.apk
           if-no-files-found: warn
 
   publish-release:
