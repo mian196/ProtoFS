@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Added
+- **Multi-ABI and Universal Android Release Workflow**:
+  - Configured Android Gradle ABI splits (`arm64-v8a`, `armeabi-v7a`) with `isUniversalApk = true` in [`build.gradle.kts`](crates/protofs-tauri/gen/android/app/build.gradle.kts#L31-L39).
+  - Streamlined GitHub Release packaging in [`.github/workflows/release.yml`](.github/workflows/release.yml#L257-L305) to bundle and publish standalone `ProtoFS_v${VERSION}_universal.apk`, `ProtoFS_v${VERSION}_arm64-v8a.apk`, and `ProtoFS_v${VERSION}_armv7.apk` release assets.
+
 ---
 
 ## [0.4.2] - 2026-09-24

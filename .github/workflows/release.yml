@@ -262,41 +262,32 @@ jobs:
           find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk"
 
           # 1. Universal APK
-          UNIVERSAL_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk/universal -type f -name "*.apk" | head -n 1)
-          if [ -z "$UNIVERSAL_APK" ]; then
-            UNIVERSAL_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*universal*.apk" | head -n 1)
-          fi
+          UNIVERSAL_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*universal*.apk" | head -n 1)
           if [ -n "$UNIVERSAL_APK" ] && [ -f "$UNIVERSAL_APK" ]; then
+            echo "Packaging Universal APK: $UNIVERSAL_APK"
             cp "$UNIVERSAL_APK" "dist-apk/ProtoFS_v${VERSION}_universal.apk"
-            cp "$UNIVERSAL_APK" "dist-apk/ProtoFS_v${VERSION}_android.apk"
           fi
 
           # 2. ARM64 (arm64-v8a) APK
-          ARM64_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk/arm64 -type f -name "*.apk" | head -n 1)
-          if [ -z "$ARM64_APK" ]; then
-            ARM64_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f \( -name "*arm64*.apk" -o -name "*aarch64*.apk" \) | head -n 1)
-          fi
+          ARM64_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f \( -name "*arm64-v8a*.apk" -o -name "*arm64*.apk" -o -name "*aarch64*.apk" \) ! -name "*universal*" | head -n 1)
           if [ -n "$ARM64_APK" ] && [ -f "$ARM64_APK" ]; then
+            echo "Packaging ARM64 APK: $ARM64_APK"
             cp "$ARM64_APK" "dist-apk/ProtoFS_v${VERSION}_arm64-v8a.apk"
-            cp "$ARM64_APK" "dist-apk/ProtoFS_v${VERSION}_arm64v8a.apk"
           fi
 
           # 3. ARMv7 (armeabi-v7a) APK
-          ARM7_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk/arm -type f -name "*.apk" | head -n 1)
-          if [ -z "$ARM7_APK" ]; then
-            ARM7_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f \( -name "*arm-*.apk" -o -name "*armeabi*.apk" -o -name "*armv7*.apk" \) | head -n 1)
-          fi
+          ARM7_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f \( -name "*armeabi-v7a*.apk" -o -name "*armv7*.apk" -o -name "*arm-*.apk" \) ! -name "*universal*" ! -name "*arm64*" | head -n 1)
           if [ -n "$ARM7_APK" ] && [ -f "$ARM7_APK" ]; then
+            echo "Packaging ARMv7 APK: $ARM7_APK"
             cp "$ARM7_APK" "dist-apk/ProtoFS_v${VERSION}_armv7.apk"
-            cp "$ARM7_APK" "dist-apk/ProtoFS_v${VERSION}_armeabi-v7a.apk"
           fi
 
-          # Fallback: if universal not found by name, copy first apk
+          # Fallback: if universal not found by name, use any available APK
           if [ ! -f "dist-apk/ProtoFS_v${VERSION}_universal.apk" ]; then
             ANY_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk" | head -n 1)
             if [ -n "$ANY_APK" ] && [ -f "$ANY_APK" ]; then
+              echo "Fallback Packaging: $ANY_APK -> Universal APK"
               cp "$ANY_APK" "dist-apk/ProtoFS_v${VERSION}_universal.apk"
-              cp "$ANY_APK" "dist-apk/ProtoFS_v${VERSION}_android.apk"
             fi
           fi
 
