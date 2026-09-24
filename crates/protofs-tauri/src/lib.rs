@@ -38,7 +38,7 @@ impl std::io::Write for AndroidLogWriter {
 }
 
 #[cfg(target_os = "android")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn Java_com_protofs_app_MainActivity_initNdkContext(
     env: *mut jni::sys::JNIEnv,
     _class: jni::sys::jclass,
