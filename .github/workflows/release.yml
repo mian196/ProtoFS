@@ -234,7 +234,7 @@ jobs:
         run: npm run build
 
       - name: Initialize Tauri Android Environment
-        run: npm run android:init -- --ci --skip-targets-install
+        run: npm run android:init
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ env.NDK_HOME }}

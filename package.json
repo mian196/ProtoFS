@@ -13,7 +13,7 @@
     "tauri": "node frontend/node_modules/@tauri-apps/cli/tauri.js",
     "android:build": "cd crates/protofs-tauri/gen/android && ./gradlew assembleArm64Release assembleArmRelease assembleUniversalRelease",
     "android:build:debug": "cd crates/protofs-tauri/gen/android && ./gradlew assembleArm64Debug assembleArmDebug assembleUniversalDebug",
-    "android:init": "node frontend/node_modules/@tauri-apps/cli/tauri.js android init --config crates/protofs-tauri/tauri.conf.json",
+    "android:init": "node scripts/init-android.js",
     "version:check": "node scripts/bump-version.js",
     "version:bump": "node scripts/bump-version.js",
     "test": "cargo test --workspace && npm --prefix frontend run lint"
