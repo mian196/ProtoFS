@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
-
 use serde::{Deserialize, Serialize};
 
-use super::common::{ensure_dir, get_protofs_mount_dir, silent_command};
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+use super::common::silent_command;
+use super::common::{ensure_dir, get_protofs_mount_dir};
 use crate::commands::CommandResponse;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

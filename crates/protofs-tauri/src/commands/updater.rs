@@ -93,6 +93,7 @@ pub fn detect_package_type() -> PackageType {
 
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
+        let _ = current_exe;
         PackageType::Unknown
     }
 }
