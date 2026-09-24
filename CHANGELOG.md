@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced `scripts/bump-version.js` to automatically verify and synchronize `frontend/src/utils/version.ts` alongside root `package.json`, `Cargo.toml`, `frontend/package.json`, and `tauri.conf.json`.
 
 ### 🐛 Fixed
+- **Android NDK Context Initialization for MTProto & DNS Resolution**:
+  - Resolved Telegram login code request failure on Android where requests were dropped immediately due to `ndk-context` panicking (`android context was not initialized`).
+  - Added JNI bridge `Java_com_protofs_app_MainActivity_initNdkContext` in [`crates/protofs-tauri/src/lib.rs`](crates/protofs-tauri/src/lib.rs) and invoked `initNdkContext(applicationContext)` in [`MainActivity.kt`](crates/protofs-tauri/gen/android/app/src/main/java/com/protofs/app/MainActivity.kt) on Android startup to initialize JavaVM and Context pointers for `hickory-resolver` / `ndk-context`.
 - **Android APK Build & CI Packaging**:
   - Fixed root Tauri CLI script bindings for Gradle tasks and streamlined Android APK CI release workflow.
 - **Linux and Cross-Platform Build**:

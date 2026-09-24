@@ -37,6 +37,29 @@ impl std::io::Write for AndroidLogWriter {
     }
 }
 
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub unsafe extern "C" fn Java_com_protofs_app_MainActivity_initNdkContext(
+    env: *mut jni::sys::JNIEnv,
+    _class: jni::sys::jclass,
+    context: jni::sys::jobject,
+) {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        let mut vm: *mut jni::sys::JavaVM = std::ptr::null_mut();
+        if unsafe { (**env).GetJavaVM.unwrap()(env, &mut vm) } == 0 {
+            let global_context = unsafe { (**env).NewGlobalRef.unwrap()(env, context) };
+            unsafe {
+                ndk_context::initialize_android_context(
+                    vm as *mut std::ffi::c_void,
+                    global_context as *mut std::ffi::c_void,
+                );
+            }
+            tracing::info!("Initialized ndk-context for Android");
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use tracing_subscriber::layer::SubscriberExt;

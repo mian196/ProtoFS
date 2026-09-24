@@ -32,6 +32,10 @@ ring = { workspace = true }
 zeroize = { workspace = true }
 
 
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-context = "0.1.1"
+jni = "0.21"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

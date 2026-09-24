@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 use super::common::silent_command;

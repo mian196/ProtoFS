@@ -3379,6 +3379,8 @@ version = "0.4.1"
 dependencies = [
  "base64 0.22.1",
  "chrono",
+ "jni 0.21.1",
+ "ndk-context",
  "protofs-core",
  "rand 0.8.8",
  "reqwest 0.12.28",
