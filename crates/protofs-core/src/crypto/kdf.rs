@@ -1,15 +1,12 @@
 use crate::error::{ProtoFsError, Result};
 use argon2::{Algorithm, Argon2, Params, Version};
-use rand::RngCore;
 use zeroize::Zeroizing;
 
 pub const SALT_LEN: usize = 16;
 pub const KEY_LEN: usize = 32; // 256 bits
 
 pub fn generate_salt() -> [u8; SALT_LEN] {
-    let mut salt = [0u8; SALT_LEN];
-    rand::thread_rng().fill_bytes(&mut salt);
-    salt
+    rand::random::<[u8; SALT_LEN]>()
 }
 
 pub fn derive_key(passphrase: &str, salt: &[u8]) -> Result<Zeroizing<[u8; KEY_LEN]>> {

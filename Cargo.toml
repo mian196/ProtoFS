@@ -44,6 +44,7 @@ aes = "0.9"
 ctr = "0.10"
 cipher = "0.5"
 crc32fast = "1.4"
+bip39 = { version = "2.1", default-features = false, features = ["std", "zeroize"] }
 
 # Telegram MTProto (Real Client via Codeberg)
 grammers-client = { git = "https://codeberg.org/Lonami/grammers.git", rev = "5e16253b2ff8cbea94e8fffdfeccc109217ba762" }

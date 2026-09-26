@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configured Android Gradle ABI splits (`arm64-v8a`, `armeabi-v7a`) with `isUniversalApk = true` in [`build.gradle.kts`](crates/protofs-tauri/gen/android/app/build.gradle.kts#L31-L39).
   - Streamlined GitHub Release packaging in [`.github/workflows/release.yml`](.github/workflows/release.yml#L257-L305) to bundle and publish standalone `ProtoFS_v${VERSION}_universal.apk`, `ProtoFS_v${VERSION}_arm64-v8a.apk`, and `ProtoFS_v${VERSION}_armv7.apk` release assets.
 
+### 🔧 Changed
+- **BIP-39 Mnemonic Crate Migration**:
+  - Migrated mnemonic encoding and recovery in [`bip39.rs`](crates/protofs-core/src/crypto/bip39.rs) to use the standard `bip39` crate (`v2.1`, with `zeroize` and `std` features).
+  - Removed raw static wordlist file `bip39_english.txt` from repository, eliminating runtime line-splitting and heap allocations during mnemonic generation and validation.
+
 ---
 
 ## [0.4.2] - 2026-09-24
