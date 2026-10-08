@@ -123,6 +123,21 @@ impl TelegramTransport for MockTelegramTransport {
     }
 
     async fn update_pinned_manifest(&self, channel_id: i64, manifest_bytes: &[u8]) -> Result<i32> {
+        let mut messages = self.messages.write().await;
+        let list = messages.entry(channel_id).or_default();
+
+        // If an existing pinned manifest message exists, edit it in place
+        if let Some(existing) = list
+            .iter_mut()
+            .find(|m| m.is_pinned && m.document_name.as_deref() == Some("manifest.json.zst"))
+        {
+            existing.document_size = Some(manifest_bytes.len() as u64);
+            existing.date = Utc::now();
+            let mut payloads = self.payloads.write().await;
+            payloads.insert((channel_id, existing.id), manifest_bytes.to_vec());
+            return Ok(existing.id);
+        }
+
         let mut next_id = self.next_msg_id.write().await;
         let msg_id = *next_id;
         *next_id += 1;
@@ -137,8 +152,6 @@ impl TelegramTransport for MockTelegramTransport {
             date: Utc::now(),
         };
 
-        let mut messages = self.messages.write().await;
-        let list = messages.entry(channel_id).or_default();
         // Unpin older manifests
         for m in list.iter_mut() {
             if m.document_name.as_deref() == Some("manifest.json.zst") {

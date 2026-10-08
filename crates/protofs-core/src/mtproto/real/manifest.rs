@@ -30,7 +30,115 @@ fn unpack_messages(res: tl::enums::messages::Messages) -> Vec<tl::enums::Message
 async fn fetch_candidate_messages(
     client: &Client,
     peer: &tl::enums::InputPeer,
+    input_channel: Option<&tl::types::InputChannel>,
 ) -> Vec<tl::enums::Message> {
+    let mut msgs = Vec::new();
+
+    // Strategy 1: Search for pinned messages in the channel
+    let pin_req = tl::functions::messages::Search {
+        peer: peer.clone(),
+        q: String::new(),
+        from_id: None,
+        saved_peer_id: None,
+        top_msg_id: None,
+        filter: tl::enums::MessagesFilter::InputMessagesFilterPinned,
+        min_date: 0,
+        max_date: 0,
+        offset_id: 0,
+        add_offset: 0,
+        limit: 50,
+        max_id: 0,
+        min_id: 0,
+        hash: 0,
+        saved_reaction: None,
+    };
+    if let Ok(res) = client.invoke(&pin_req).await {
+        msgs.extend(unpack_messages(res));
+    }
+
+    // Strategy 2: Query GetFullChannel for pinned_msg_id & early message IDs
+    if let Some(channel_peer) = input_channel {
+        let full_req = tl::functions::channels::GetFullChannel {
+            channel: tl::enums::InputChannel::Channel(channel_peer.clone()),
+        };
+        if let Ok(full_res) = client.invoke(&full_req).await {
+            let pinned_id_opt = match full_res {
+                tl::enums::messages::ChatFull::Full(cf) => match cf.full_chat {
+                    tl::enums::ChatFull::ChannelFull(c) => c.pinned_msg_id,
+                    _ => None,
+                },
+            };
+            if let Some(pinned_id) = pinned_id_opt {
+                let get_msg_req = tl::functions::channels::GetMessages {
+                    channel: tl::enums::InputChannel::Channel(channel_peer.clone()),
+                    id: vec![tl::enums::InputMessage::Id(tl::types::InputMessageId {
+                        id: pinned_id,
+                    })],
+                };
+                if let Ok(res) = client.invoke(&get_msg_req).await {
+                    msgs.extend(unpack_messages(res));
+                }
+            }
+        }
+
+        // Strategy 3: Check early messages (IDs 1 through 10) - message #2 is the manifest
+        let early_ids: Vec<tl::enums::InputMessage> = (1..=10)
+            .map(|id| tl::enums::InputMessage::Id(tl::types::InputMessageId { id }))
+            .collect();
+        let early_req = tl::functions::channels::GetMessages {
+            channel: tl::enums::InputChannel::Channel(channel_peer.clone()),
+            id: early_ids,
+        };
+        if let Ok(res) = client.invoke(&early_req).await {
+            msgs.extend(unpack_messages(res));
+        }
+    }
+
+    // Strategy 4: Search for hashtag/text "#protofs_manifest_v1" (InputMessagesFilterEmpty)
+    let text_search_req = tl::functions::messages::Search {
+        peer: peer.clone(),
+        q: "#protofs_manifest_v1".to_string(),
+        from_id: None,
+        saved_peer_id: None,
+        top_msg_id: None,
+        filter: tl::enums::MessagesFilter::InputMessagesFilterEmpty,
+        min_date: 0,
+        max_date: 0,
+        offset_id: 0,
+        add_offset: 0,
+        limit: 20,
+        max_id: 0,
+        min_id: 0,
+        hash: 0,
+        saved_reaction: None,
+    };
+    if let Ok(res) = client.invoke(&text_search_req).await {
+        msgs.extend(unpack_messages(res));
+    }
+
+    // Strategy 5: Search for document filename "manifest.json.zst" (InputMessagesFilterDocument)
+    let doc_search_req = tl::functions::messages::Search {
+        peer: peer.clone(),
+        q: "manifest.json.zst".to_string(),
+        from_id: None,
+        saved_peer_id: None,
+        top_msg_id: None,
+        filter: tl::enums::MessagesFilter::InputMessagesFilterDocument,
+        min_date: 0,
+        max_date: 0,
+        offset_id: 0,
+        add_offset: 0,
+        limit: 20,
+        max_id: 0,
+        min_id: 0,
+        hash: 0,
+        saved_reaction: None,
+    };
+    if let Ok(res) = client.invoke(&doc_search_req).await {
+        msgs.extend(unpack_messages(res));
+    }
+
+    // Strategy 6: Latest history
     let h_req = tl::functions::messages::GetHistory {
         peer: peer.clone(),
         offset_id: 0,
@@ -41,42 +149,10 @@ async fn fetch_candidate_messages(
         min_id: 0,
         hash: 0,
     };
-    let mut msgs = client
-        .invoke(&h_req)
-        .await
-        .map(unpack_messages)
-        .unwrap_or_default();
-
-    let has_manifest = msgs.iter().any(|m| match m {
-        tl::enums::Message::Message(msg) => is_manifest_message(msg),
-        _ => false,
-    });
-
-    if !has_manifest {
-        let s_req = tl::functions::messages::Search {
-            peer: peer.clone(),
-            q: "#protofs_manifest_v1".to_string(),
-            from_id: None,
-            saved_peer_id: None,
-            top_msg_id: None,
-            filter: tl::enums::MessagesFilter::InputMessagesFilterDocument,
-            min_date: 0,
-            max_date: 0,
-            offset_id: 0,
-            add_offset: 0,
-            limit: 10,
-            max_id: 0,
-            min_id: 0,
-            hash: 0,
-            saved_reaction: None,
-        };
-        if let Ok(res) = client.invoke(&s_req).await {
-            let search_msgs = unpack_messages(res);
-            if !search_msgs.is_empty() {
-                msgs.extend(search_msgs);
-            }
-        }
+    if let Ok(res) = client.invoke(&h_req).await {
+        msgs.extend(unpack_messages(res));
     }
+
     msgs
 }
 
@@ -90,12 +166,36 @@ impl RealTelegramTransport {
             channel_id: cid,
             access_hash,
         });
-        let candidates = fetch_candidate_messages(&self.client, &peer).await;
+        let input_channel = tl::types::InputChannel {
+            channel_id: cid,
+            access_hash,
+        };
+        let candidates = fetch_candidate_messages(&self.client, &peer, Some(&input_channel)).await;
 
+        let mut manifest_msgs = Vec::new();
         for msg in candidates {
             if let tl::enums::Message::Message(m) = msg
                 && is_manifest_message(&m)
-                && let Some(tl::enums::MessageMedia::Document(doc_media)) = m.media
+                && let Some(tl::enums::MessageMedia::Document(ref doc_media)) = m.media
+                && let Some(tl::enums::Document::Document(ref _doc)) = doc_media.document
+            {
+                manifest_msgs.push(m);
+            }
+        }
+
+        // Prefer pinned message first, otherwise sort by ID descending (latest snapshot)
+        manifest_msgs.sort_by(|a, b| {
+            if a.pinned && !b.pinned {
+                std::cmp::Ordering::Less
+            } else if !a.pinned && b.pinned {
+                std::cmp::Ordering::Greater
+            } else {
+                b.id.cmp(&a.id)
+            }
+        });
+
+        for m in manifest_msgs {
+            if let Some(tl::enums::MessageMedia::Document(doc_media)) = m.media
                 && let Some(tl::enums::Document::Document(doc)) = doc_media.document
             {
                 let location = tl::enums::InputFileLocation::InputDocumentFileLocation(
@@ -135,6 +235,10 @@ impl RealTelegramTransport {
             channel_id: cid,
             access_hash,
         });
+        let input_channel = tl::types::InputChannel {
+            channel_id: cid,
+            access_hash,
+        };
         let input_file = self
             .upload_bytes_to_telegram("manifest.json.zst", manifest_bytes)
             .await?;
@@ -158,24 +262,40 @@ impl RealTelegramTransport {
                 video_timestamp: None,
             });
 
-        let candidates = fetch_candidate_messages(&self.client, &input_peer).await;
-        let mut existing_ids = Vec::new();
+        let candidates =
+            fetch_candidate_messages(&self.client, &input_peer, Some(&input_channel)).await;
+        let mut manifest_ids = Vec::new();
+        let mut pinned_manifest_id = None;
+        let mut all_pinned_ids = Vec::new();
+
         for msg in &candidates {
-            if let tl::enums::Message::Message(m) = msg
-                && is_manifest_message(m)
-            {
-                existing_ids.push(m.id);
+            if let tl::enums::Message::Message(m) = msg {
+                if m.pinned {
+                    all_pinned_ids.push(m.id);
+                }
+                if is_manifest_message(m) {
+                    manifest_ids.push(m.id);
+                    if m.pinned && pinned_manifest_id.is_none() {
+                        pinned_manifest_id = Some(m.id);
+                    }
+                }
             }
         }
-        existing_ids.sort_unstable();
-        existing_ids.dedup();
+        manifest_ids.sort_unstable();
+        manifest_ids.dedup();
+        all_pinned_ids.sort_unstable();
+        all_pinned_ids.dedup();
 
-        if let Some(&primary_id) = existing_ids.last() {
+        // Choose primary manifest message:
+        // Prefer already pinned manifest if present; otherwise the earliest manifest message (e.g. msg #2, the second topmost message in channel)
+        let chosen_target_id = pinned_manifest_id.or_else(|| manifest_ids.first().copied());
+
+        if let Some(target_id) = chosen_target_id {
             let edit_req = tl::functions::messages::EditMessage {
                 no_webpage: true,
                 invert_media: false,
                 peer: input_peer.clone(),
-                id: primary_id,
+                id: target_id,
                 message: Some("#protofs_manifest_v1".to_string()),
                 media: Some(media.clone()),
                 reply_markup: None,
@@ -187,6 +307,7 @@ impl RealTelegramTransport {
             };
             match self.client.invoke(&edit_req).await {
                 Ok(_) => {
+                    // Ensure the target manifest message is pinned
                     let _ = self
                         .client
                         .invoke(&tl::functions::messages::UpdatePinnedMessage {
@@ -194,26 +315,45 @@ impl RealTelegramTransport {
                             unpin: false,
                             pm_oneside: false,
                             peer: input_peer.clone(),
-                            id: primary_id,
+                            id: target_id,
                         })
                         .await;
-                    for &dup_id in &existing_ids {
-                        if dup_id != primary_id {
+
+                    // Clean up: unpin any other pinned messages so only ONE pinned message exists
+                    for &other_pinned in &all_pinned_ids {
+                        if other_pinned != target_id {
+                            let _ = self
+                                .client
+                                .invoke(&tl::functions::messages::UpdatePinnedMessage {
+                                    silent: true,
+                                    unpin: true,
+                                    pm_oneside: false,
+                                    peer: input_peer.clone(),
+                                    id: other_pinned,
+                                })
+                                .await;
+                        }
+                    }
+
+                    // Delete duplicate manifest messages to prevent leftover duplicates
+                    for &dup_id in &manifest_ids {
+                        if dup_id != target_id {
                             let _ = self.do_delete_message(channel_id, dup_id).await;
                         }
                     }
-                    return Ok(primary_id);
+                    return Ok(target_id);
                 }
                 Err(e) => {
                     tracing::warn!(
                         "Failed to edit existing pinned manifest #{}: {}. Falling back to sending new message.",
-                        primary_id,
+                        target_id,
                         e
                     );
                 }
             }
         }
 
+        // Fallback: Send new manifest message
         let send_req = tl::functions::messages::SendMedia {
             silent: true,
             background: false,
@@ -245,18 +385,36 @@ impl RealTelegramTransport {
             ProtoFsError::Mtproto("Failed to extract message ID from send response".to_string())
         })?;
 
+        // Pin the new manifest message
         let _ = self
             .client
             .invoke(&tl::functions::messages::UpdatePinnedMessage {
                 silent: true,
                 unpin: false,
                 pm_oneside: false,
-                peer: input_peer,
+                peer: input_peer.clone(),
                 id: msg_id,
             })
             .await;
 
-        for &dup_id in &existing_ids {
+        // Unpin any other pinned messages
+        for &other_pinned in &all_pinned_ids {
+            if other_pinned != msg_id {
+                let _ = self
+                    .client
+                    .invoke(&tl::functions::messages::UpdatePinnedMessage {
+                        silent: true,
+                        unpin: true,
+                        pm_oneside: false,
+                        peer: input_peer.clone(),
+                        id: other_pinned,
+                    })
+                    .await;
+            }
+        }
+
+        // Delete any older duplicate manifest messages
+        for &dup_id in &manifest_ids {
             if dup_id != msg_id {
                 let _ = self.do_delete_message(channel_id, dup_id).await;
             }
