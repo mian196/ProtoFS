@@ -1,0 +1,374 @@
+name: Manual Build & Draft Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target platform/component to build'
+        required: true
+        type: choice
+        default: 'windows'
+        options:
+          - 'all'
+          - 'windows'
+          - 'linux'
+          - 'macos'
+          - 'android'
+          - 'desktop'
+      publish_draft:
+        description: 'Publish Draft GitHub Release with built binaries'
+        required: false
+        type: boolean
+        default: true
+      run_tests:
+        description: 'Run test suite before packaging'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 0
+
+jobs:
+  build-desktop:
+    name: Build Desktop (${{ matrix.platform }})
+    if: inputs.target == 'all' || inputs.target == 'desktop' || inputs.target == matrix.platform_key
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform_key: 'windows'
+            platform: 'windows-x86_64'
+            os: windows-latest
+            cli_bin: protofs-cli.exe
+            gui_bin: protofs-tauri.exe
+          - platform_key: 'linux'
+            platform: 'linux-x86_64'
+            os: ubuntu-latest
+            cli_bin: protofs-cli
+            gui_bin: protofs-tauri
+          - platform_key: 'macos'
+            platform: 'macos-x86_64'
+            os: macos-latest
+            cli_bin: protofs-cli
+            gui_bin: protofs-tauri
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache (Read-Only Restore)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+          save-if: false
+
+      - name: Install Linux dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci || npm install
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Run Workspace Tests
+        if: inputs.run_tests
+        run: cargo test --workspace --verbose
+
+      - name: Extract App Version
+        id: app_version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build Release Binaries (CLI & GUI)
+        run: |
+          cargo build --release -p protofs-cli
+          cargo build --release -p protofs-tauri
+
+      - name: Package CLI Binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item "target/release/${{ matrix.cli_bin }}" -Destination "protofs-cli-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.exe"
+
+      - name: Package CLI Binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist-cli
+          cp "target/release/${{ matrix.cli_bin }}" dist-cli/protofs-cli
+          tar -czf "protofs-cli-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.tar.gz" -C dist-cli protofs-cli
+
+      - name: Package Portable GUI Binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item "target/release/${{ matrix.gui_bin }}" -Destination "protofs-portable-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.exe"
+
+      - name: Package Portable GUI Binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist-gui
+          cp "target/release/${{ matrix.gui_bin }}" dist-gui/protofs
+          tar -czf "protofs-portable-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.tar.gz" -C dist-gui protofs
+
+      - name: Build Tauri Installers
+        run: npx --prefix frontend tauri build
+
+      - name: Collect Installer Artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "dist-installers" -Force
+          Get-ChildItem -Path "target/release/bundle" -Recurse -Include *.exe, *.msi | ForEach-Object {
+            Copy-Item $_.FullName -Destination "dist-installers/"
+          }
+
+      - name: Collect Installer Artifacts (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist-installers
+          find target/release/bundle -type f \( -name "*.AppImage" -o -name "*.deb" \) -exec cp {} dist-installers/ \;
+
+      - name: Collect Installer Artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dist-installers
+          find target/release/bundle -type f -name "*.dmg" -exec cp {} dist-installers/ \;
+
+      - name: Upload CLI Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: protofs-cli-${{ matrix.platform }}
+          path: protofs-cli-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.*
+          if-no-files-found: error
+
+      - name: Upload Portable GUI Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: protofs-portable-${{ matrix.platform }}
+          path: protofs-portable-v${{ steps.app_version.outputs.version }}-${{ matrix.platform }}.*
+          if-no-files-found: error
+
+      - name: Upload Installer Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: protofs-installers-${{ matrix.platform }}
+          path: dist-installers/*
+          if-no-files-found: warn
+
+  build-android:
+    name: Build Android APK
+    if: inputs.target == 'all' || inputs.target == 'android'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Android NDK and Build Tools
+        run: |
+          ANDROID_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "ANDROID_HOME=$ANDROID_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$ANDROID_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -f "$SDKMANAGER" ]; then
+            SDKMANAGER="sdkmanager"
+          fi
+          yes | $SDKMANAGER --licenses || true
+          yes | $SDKMANAGER "ndk;27.2.12479018" "build-tools;35.0.0" "platforms;android-35" "platforms;android-34"
+          echo "NDK_HOME=$ANDROID_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Rust Stable with Android Targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Rust Cache (Read-Only Restore)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+          save-if: false
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci || npm install
+
+      - name: Build Frontend Distribution
+        working-directory: frontend
+        run: npm run build
+
+      - name: Initialize Tauri Android Environment
+        run: npm run android:init
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ env.NDK_HOME }}
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x crates/protofs-tauri/gen/android/gradlew
+
+      - name: Extract App Version
+        id: app_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build Android Debug APK
+        run: npm run android:build:debug -- --verbose
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ env.NDK_HOME }}
+
+      - name: Collect Output APK Artifacts
+        run: |
+          mkdir -p dist-apk
+          VERSION="${{ steps.app_version.outputs.version }}"
+          echo "Discovered APKs in build directory:"
+          find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk"
+
+          # 1. Universal APK
+          UNIVERSAL_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f \( -name "*universal-universal*.apk" -o -name "*universal.apk" \) | head -n 1)
+          if [ -z "$UNIVERSAL_APK" ]; then
+            UNIVERSAL_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*universal*.apk" ! -name "*arm64*" ! -name "*armeabi*" ! -name "*x86*" | head -n 1)
+          fi
+          if [ -n "$UNIVERSAL_APK" ] && [ -f "$UNIVERSAL_APK" ]; then
+            echo "Packaging Universal APK: $UNIVERSAL_APK"
+            cp "$UNIVERSAL_APK" "dist-apk/ProtoFS_v${VERSION}_universal.apk"
+          fi
+
+          # 2. ARM64 (arm64-v8a) APK
+          ARM64_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f \( -name "*arm64-v8a*.apk" -o -name "*aarch64*.apk" \) | head -n 1)
+          if [ -n "$ARM64_APK" ] && [ -f "$ARM64_APK" ]; then
+            echo "Packaging ARM64 APK: $ARM64_APK"
+            cp "$ARM64_APK" "dist-apk/ProtoFS_v${VERSION}_arm64-v8a.apk"
+          fi
+
+          # 3. ARMv7 (armeabi-v7a) APK
+          ARM7_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f \( -name "*armeabi-v7a*.apk" -o -name "*armv7*.apk" \) | head -n 1)
+          if [ -n "$ARM7_APK" ] && [ -f "$ARM7_APK" ]; then
+            echo "Packaging ARMv7 APK: $ARM7_APK"
+            cp "$ARM7_APK" "dist-apk/ProtoFS_v${VERSION}_armv7.apk"
+          fi
+
+          # Fallback: if universal not found by name, use any available APK
+          if [ ! -f "dist-apk/ProtoFS_v${VERSION}_universal.apk" ]; then
+            ANY_APK=$(find crates/protofs-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+            if [ -n "$ANY_APK" ] && [ -f "$ANY_APK" ]; then
+              echo "Fallback Packaging: $ANY_APK -> Universal APK"
+              cp "$ANY_APK" "dist-apk/ProtoFS_v${VERSION}_universal.apk"
+            fi
+          fi
+
+          echo "=== Built APK Artifacts ==="
+          ls -lh dist-apk/
+
+      - name: Upload Android APK Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: protofs-android-apk
+          path: dist-apk/*.apk
+          if-no-files-found: warn
+
+  publish-draft-release:
+    name: Publish Draft GitHub Release
+    needs: [build-desktop, build-android]
+    if: always() && inputs.publish_draft && !cancelled() && (needs.build-desktop.result == 'success' || needs.build-android.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Flatten Artifact Files
+        run: |
+          mkdir -p release-dist
+          find release-artifacts -type f -exec cp {} release-dist/ \;
+          ls -lh release-dist/
+
+      - name: Determine Test Tag and Release Title
+        id: release_info
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA="${GITHUB_SHA::7}"
+          TAG_NAME="test-v${VERSION}-${SHORT_SHA}-${{ github.run_number }}"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Extract Release Notes from CHANGELOG
+        env:
+          VERSION: ${{ steps.release_info.outputs.version }}
+        run: python .github/scripts/generate_release_notes.py
+
+      - name: Create Draft Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag_name }}
+          name: "ProtoFS v${{ steps.release_info.outputs.version }} (Test Build #${{ github.run_number }})"
+          draft: true
+          prerelease: true
+          body_path: release_notes.md
+          files: release-dist/*
