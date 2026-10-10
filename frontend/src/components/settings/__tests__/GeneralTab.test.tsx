@@ -15,8 +15,8 @@ vi.mock('sonner', () => ({
 vi.mock('../../../api', () => ({
   api: {
     checkForUpdates: vi.fn().mockResolvedValue({
-      current_version: '0.4.2',
-      latest_version: '0.4.2',
+      current_version: '0.4.3',
+      latest_version: '0.4.3',
       update_available: false,
     }),
   },

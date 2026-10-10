@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.4.3] - 2026-10-10
+
 ### 🚀 Added
 - **Desktop System Tray Integration & Taskbar Hiding**:
   - Added desktop system tray icon with left-click show/hide toggle and right-click context menu (*Open ProtoFS*, *Exit ProtoFS*) via `tauri::tray` in [`crates/protofs-tauri/src/lib.rs`](crates/protofs-tauri/src/lib.rs).
