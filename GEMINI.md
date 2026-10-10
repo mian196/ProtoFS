@@ -85,9 +85,9 @@ When addressing bugs, unexpected errors, or regression reports:
 2. **Present Structured Solutions:**
    - Explain the trade-offs of the proposed solution.
    - When multiple paths exist, present a pros/cons comparison table.
-3. **Verify & Test:**
-   - Run unit/integration tests (`cargo test --workspace`, `npm --prefix frontend run lint`).
-   - Validate pre-commit requirements before finalizing changes.
+3. **Verify & Delegate:**
+   - Run permitted local pre-flight checks (`cargo fmt`, `cargo check --workspace`, `npm --prefix frontend run lint`).
+   - Offload test suite execution to GitHub Actions cloud runners via the Section 7 protocol.
 
 ---
 
@@ -96,13 +96,11 @@ When addressing bugs, unexpected errors, or regression reports:
 | Task                          | Command                                                    |
 | ----------------------------- | ---------------------------------------------------------- |
 | **Run Desktop App (Dev)**     | `npx --prefix frontend tauri dev` or `dev.ps1` / `dev.bat` |
-| **Check Rust Formatting**     | `cargo fmt --check`                                        |
 | **Auto-Format Rust Code**     | `cargo fmt`                                                |
-| **Rust Clippy (Strict)**      | `cargo clippy --workspace --all-targets -- -D warnings`    |
-| **Run Backend Tests**         | `cargo test --workspace`                                   |
+| **Fast Workspace Type Check** | `cargo check --workspace`                                  |
 | **Frontend Lint & Typecheck** | `npm --prefix frontend run lint`                           |
-| **Build Frontend**            | `npm --prefix frontend run build`                          |
 | **Run Pre-Commit Hooks**      | `pre-commit run --all-files`                               |
+| **Cloud CI Verification**     | `gh run list --branch <branch> --limit 1`                  |
 
 ---
 
@@ -116,5 +114,39 @@ When addressing bugs, unexpected errors, or regression reports:
   - **Immutable Releases vs. Unreleased:** Any version section with a release date in its title (e.g. `## [0.4.0] - 2026-09-22`) is a released, immutable version and must **never** be edited. All new features, changes, fixes, and improvements must strictly be recorded under the `## [Unreleased]` section at the top of the file.
 - **No Scope Creep:** Keep modifications tightly scoped to the user's prompt.
 - **Do Not Commit Unprompted:** Propose changes and prepare artifacts first; only modify files or commit to the repo when instructed.
+
+---
+
+## 7. Local Resource Boundaries & Cloud CI Delegation Directives
+
+### 7.1 Local Execution Boundaries
+1. **No Heavy Compilation on Local Hardware:**
+   - Under no circumstances execute `cargo test`, `cargo build`, or full binary linking on local hardware. All heavy compilation, full test suites, and packaging are strictly offloaded to GitHub Actions cloud runners.
+2. **Permitted Local Pre-Flight Checks:**
+   - `cargo fmt` (autoformatting)
+   - `cargo check --workspace` (fast syntax and type validation without binary linking or code generation)
+   - `npm --prefix frontend run lint` (frontend ESLint and TypeScript check)
+
+### 7.2 Autonomous Push, Monitor & Self-Healing Protocol
+When instructed to commit and verify changes:
+1. **Pre-Flight Check:** Run the permitted local checks from 7.1.
+2. **Commit & Push:** Commit using Conventional Commits (`feat(scope): ...`, `fix(scope): ...`) and push to `dev` or the active topic branch.
+3. **Cloud Monitoring via `gh` CLI:**
+   - Watch the cloud workflow run: `gh run list --branch <branch> --limit 1` and `gh run watch <run-id>`.
+4. **Autonomous Self-Healing on CI Failure:**
+   - If CI fails, fetch only the failed logs: `gh run view <run-id> --log-failed`.
+   - Diagnose compiler errors or test failures directly from the runner logs.
+   - Apply the required code fix locally.
+   - Amend the commit (`git commit --amend --no-edit`) and push with `git push --force-with-lease origin <branch>`.
+5. **Circuit Breaker (Quota Protection):**
+   - Maximum **3 retry iterations** per task. If CI fails 3 consecutive times, halt execution and report the exact runner logs to the user to prevent burning GitHub Actions minute quotas.
+
+### 7.3 Branching, Development & Merge Invariants
+1. **Default Development on `dev`:**
+   - All development, new features, and minor fixes must strictly be performed on the **`dev`** branch by default, unless the user explicitly directs work on a separate branch (e.g., `feat/new-feature`) or directly on `main`.
+2. **Branch Roles & Release Pipeline:**
+   - **`dev`:** Active integration branch for all ongoing development. Pushes automatically trigger cloud CI testing.
+   - **`main`:** Protected production branch. Updated exclusively via Pull Requests from `dev` once all CI checks are green. Triggers `release.yml` on tag pushes.
+   - **`feat/*`, `fix/*`:** Dedicated topic branches when requested by the user. Merged back into `dev` via Squash & Merge.
 
 ---
