@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🚀 Added
+- **Desktop System Tray Integration & Taskbar Hiding**:
+  - Added desktop system tray icon with left-click show/hide toggle and right-click context menu (*Open ProtoFS*, *Exit ProtoFS*) via `tauri::tray` in [`crates/protofs-tauri/src/lib.rs`](crates/protofs-tauri/src/lib.rs).
+  - Updated `minimize_window_command` in [`crates/protofs-tauri/src/commands/settings.rs`](crates/protofs-tauri/src/commands/settings.rs) to hide window completely to the notification area (system tray), removing the app from the taskbar just like qBittorrent/Telegram.
 - **Configurable Window Close Behavior & Action Prompt**:
   - Added interactive [`CloseAppModal`](frontend/src/components/modals/CloseAppModal.tsx) dialog when clicking the window close button (`X`), allowing users to choose between **Minimize to System Tray** (keeps background sync & active transfers running) and **Exit Application** (cleanly unmounts virtual drives and terminates).
   - Added a **"Remember my choice"** checkbox to persist the preference in [`useSettingsStore`](frontend/src/stores/useSettingsStore.ts) (`closeAction: 'prompt' | 'minimize' | 'exit'`).

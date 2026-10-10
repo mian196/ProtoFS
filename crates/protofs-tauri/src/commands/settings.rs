@@ -198,13 +198,14 @@ pub async fn purge_local_cache_command(
     }))
 }
 
-/// Minimizes the application window.
+/// Hides the application window to the system tray (removes from taskbar).
 #[tauri::command]
 pub async fn minimize_window_command(window: tauri::Window) -> Result<CommandResponse<()>, String> {
-    if let Err(e) = window.minimize() {
-        tracing::warn!("Failed to minimize window: {}", e);
+    if let Err(e) = window.hide() {
+        tracing::warn!("Failed to hide window to tray: {}", e);
         return Ok(CommandResponse::err(e.to_string()));
     }
+    tracing::info!("Application window hidden to system tray");
     Ok(CommandResponse::ok(()))
 }
 
