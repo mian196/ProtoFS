@@ -116,9 +116,15 @@ export const App: React.FC = () => {
 
   // Window Close Requested Event Listener (D-39)
   useEffect(() => {
-    let unlistenClose: (() => void) | null = null;
-    if (isTauri()) {
-      listen('protofs-close-requested', async () => {
+    if (!isTauri()) return;
+
+    let isHandlingClose = false;
+
+    const handleCloseRequest = async () => {
+      if (isHandlingClose) return;
+      isHandlingClose = true;
+
+      try {
         const action = useSettingsStore.getState().closeAction;
         if (action === 'minimize') {
           try {
@@ -136,13 +142,41 @@ export const App: React.FC = () => {
         } else {
           openModal('closeApp');
         }
-      }).then((unlisten) => {
-        unlistenClose = unlisten;
+      } finally {
+        setTimeout(() => {
+          isHandlingClose = false;
+        }, 500);
+      }
+    };
+
+    let unlistenCloseGlobal: (() => void) | null = null;
+    let unlistenCloseWindow: (() => void) | null = null;
+    let unlistenOnClose: (() => void) | null = null;
+
+    listen('protofs-close-requested', handleCloseRequest).then((unlisten) => {
+      unlistenCloseGlobal = unlisten;
+    });
+
+    try {
+      const appWindow = getCurrentWindow();
+      appWindow.listen('protofs-close-requested', handleCloseRequest).then((unlisten) => {
+        unlistenCloseWindow = unlisten;
       });
+
+      appWindow.onCloseRequested(async (event) => {
+        event.preventDefault();
+        await handleCloseRequest();
+      }).then((unlisten) => {
+        unlistenOnClose = unlisten;
+      });
+    } catch (err) {
+      console.warn('Failed to bind window close listeners:', err);
     }
 
     return () => {
-      if (unlistenClose) unlistenClose();
+      if (unlistenCloseGlobal) unlistenCloseGlobal();
+      if (unlistenCloseWindow) unlistenCloseWindow();
+      if (unlistenOnClose) unlistenOnClose();
     };
   }, [openModal]);
 

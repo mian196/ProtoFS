@@ -217,6 +217,7 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
+                let _ = window.app_handle().emit("protofs-close-requested", ());
                 let _ = window.emit("protofs-close-requested", ());
             }
             tauri::WindowEvent::Destroyed => {

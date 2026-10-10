@@ -80,7 +80,7 @@ This file defines the persistent instructions, architectural rules, code standar
 When addressing bugs, unexpected errors, or regression reports:
 
 1. **Investigate & Diagnose First:**
-   - Inspect log outputs, active trace events, and relevant code paths.
+   - Inspect log outputs (`%APPDATA%/ProtoFS/logs/protofs.log`), active trace events, and relevant code paths.
    - State the **root cause** clearly before suggesting changes.
 2. **Present Structured Solutions:**
    - Explain the trade-offs of the proposed solution.
