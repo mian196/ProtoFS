@@ -59,6 +59,21 @@ const filesToSync = [
       return match ? match[1] : null;
     },
   },
+  {
+    path: path.join(rootDir, 'README.md'),
+    type: 'md',
+    replace: (content, version) =>
+      content.replace(
+        /(https:\/\/img\.shields\.io\/badge\/Version-)[0-9A-Za-z.\-]+(-[a-z]+(?:\.svg)?)/m,
+        `$1${version}$2`
+      ),
+    extract: (content) => {
+      const match = content.match(
+        /https:\/\/img\.shields\.io\/badge\/Version-([0-9A-Za-z.\-]+)-[a-z]+(?:\.svg)?/m
+      );
+      return match ? match[1] : null;
+    },
+  },
 ];
 
 const targetVersion = process.argv[2];
@@ -74,7 +89,7 @@ if (!targetVersion) {
     if (file.type === 'json') {
       const json = JSON.parse(raw);
       ver = json[file.field];
-    } else if (file.type === 'toml' || file.type === 'ts') {
+    } else if (file.type === 'toml' || file.type === 'ts' || file.type === 'md') {
       ver = file.extract(raw);
     }
     const rel = path.relative(rootDir, file.path);
@@ -111,7 +126,7 @@ for (const file of filesToSync) {
     const json = JSON.parse(raw);
     json[file.field] = cleanVersion;
     updated = JSON.stringify(json, null, 2) + '\n';
-  } else if (file.type === 'toml' || file.type === 'ts') {
+  } else if (file.type === 'toml' || file.type === 'ts' || file.type === 'md') {
     updated = file.replace(raw, cleanVersion);
   }
 

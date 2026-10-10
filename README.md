@@ -5,7 +5,7 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-38B2AC?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.4.2-emerald.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-0.4.3-emerald.svg)](CHANGELOG.md)
 [![Status](https://img.shields.io/badge/Status-Work%20In%20Progress%20(WIP)-yellow.svg)](https://github.com/mian196/ProtoFS/issues)
 
 **ProtoFS** is a high-performance, cross-platform virtual file system and encrypted cloud storage client backed by Telegram MTProto channels. It provides zero-knowledge authenticated encryption, local SQLite WAL caching, fast-path Zstandard manifests, embedded WebDAV drive mounting, pre-auth proxy routing, bidirectional folder sync, and a modern Tauri 2.0 desktop & mobile interface.
