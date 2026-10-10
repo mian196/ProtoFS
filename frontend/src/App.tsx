@@ -128,8 +128,7 @@ export const App: React.FC = () => {
         const action = useSettingsStore.getState().closeAction;
         if (action === 'minimize') {
           try {
-            const appWindow = getCurrentWindow();
-            await appWindow.minimize();
+            await api.minimizeWindow();
           } catch (err) {
             console.warn('Failed to minimize window:', err);
           }

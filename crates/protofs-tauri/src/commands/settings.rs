@@ -198,6 +198,16 @@ pub async fn purge_local_cache_command(
     }))
 }
 
+/// Minimizes the application window.
+#[tauri::command]
+pub async fn minimize_window_command(window: tauri::Window) -> Result<CommandResponse<()>, String> {
+    if let Err(e) = window.minimize() {
+        tracing::warn!("Failed to minimize window: {}", e);
+        return Ok(CommandResponse::err(e.to_string()));
+    }
+    Ok(CommandResponse::ok(()))
+}
+
 /// Cleanly exits the application after unmounting virtual drives.
 #[tauri::command]
 pub async fn exit_app_command(app: tauri::AppHandle) -> Result<CommandResponse<()>, String> {

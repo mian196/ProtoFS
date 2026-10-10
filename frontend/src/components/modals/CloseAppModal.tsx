@@ -42,8 +42,7 @@ export const CloseAppModal: React.FC<CloseAppModalProps> = ({ isOpen, onClose })
 
       if (selectedAction === 'minimize') {
         if (isTauri()) {
-          const appWindow = getCurrentWindow();
-          await appWindow.minimize();
+          await api.minimizeWindow();
         }
       } else {
         if (isTauri()) {

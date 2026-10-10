@@ -156,6 +156,17 @@ export async function openPathInExplorer(path: string): Promise<boolean> {
   return false;
 }
 
+export async function minimizeWindow(): Promise<void> {
+  if (isTauri()) {
+    try {
+      await invokeCommand<void>('minimize_window_command');
+      return;
+    } catch (err) {
+      console.warn('Tauri minimize_window_command error:', err);
+    }
+  }
+}
+
 export async function exitApp(): Promise<void> {
   if (isTauri()) {
     try {
@@ -175,5 +186,7 @@ export const settingsApi = {
   setShellIntegration,
   getPendingUploads,
   openPathInExplorer,
+  minimizeWindow,
   exitApp,
 };
+

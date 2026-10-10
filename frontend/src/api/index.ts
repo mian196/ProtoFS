@@ -109,6 +109,7 @@ export class ProtoFsApi {
   setShellIntegration = settingsApi.setShellIntegration;
   getPendingUploads = settingsApi.getPendingUploads;
   openPathInExplorer = settingsApi.openPathInExplorer;
+  minimizeWindow = settingsApi.minimizeWindow;
   exitApp = settingsApi.exitApp;
 
   // P2P & Android SAF/WorkManager

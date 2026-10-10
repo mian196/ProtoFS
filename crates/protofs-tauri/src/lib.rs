@@ -226,6 +226,7 @@ pub fn run() {
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
+            commands::minimize_window_command,
             commands::exit_app_command,
             commands::login_send_code,
             commands::login_verify_code,

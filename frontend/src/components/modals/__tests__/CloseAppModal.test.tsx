@@ -15,6 +15,7 @@ vi.mock('sonner', () => ({
 vi.mock('../../../api', () => ({
   api: {
     exitApp: vi.fn().mockResolvedValue(undefined),
+    minimizeWindow: vi.fn().mockResolvedValue(undefined),
   },
 }));
 

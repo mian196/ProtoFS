@@ -39,7 +39,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
   return (
     <>
       <AuthModal
-        isOpen={(!isAuthLoading && !session) || activeModal === 'auth'}
+        isOpen={(!isAuthLoading && !session && activeModal !== 'closeApp') || activeModal === 'auth'}
         onClose={closeModal}
       />
       <AccountManagerModal
