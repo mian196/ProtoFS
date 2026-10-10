@@ -5,7 +5,6 @@ import { Button } from '../ui/Button';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { api } from '../../api';
 import { isTauri } from '../../api/client';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { toast } from 'sonner';
 
 interface CloseAppModalProps {
