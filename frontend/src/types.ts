@@ -440,3 +440,5 @@ export interface ParsedProxyResult {
   password?: string;
   rawLink?: string;
 }
+
+export type CloseAction = 'prompt' | 'minimize' | 'exit';

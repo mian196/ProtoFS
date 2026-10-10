@@ -28,6 +28,7 @@ export type ModalType =
   | 'clearCacheConfirm'
   | 'exportBackup'
   | 'importBackup'
+  | 'closeApp'
   | null;
 
 export interface ModalPayload {

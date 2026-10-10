@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { CloseAction } from '../types';
 
 export interface UserSettings {
   autoCleanupDeletedDrives: boolean;
@@ -7,6 +8,7 @@ export interface UserSettings {
   preferredDriveLetter: string;
   fastStreamingPlayback: boolean;
   closeToTray: boolean;
+  closeAction: CloseAction;
   notificationsEnabled: boolean;
   rateLimitAlerts: boolean;
   notificationSound: boolean;
@@ -31,6 +33,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   preferredDriveLetter: 'P',
   fastStreamingPlayback: true,
   closeToTray: true,
+  closeAction: 'prompt',
   notificationsEnabled: true,
   rateLimitAlerts: true,
   notificationSound: false,
@@ -46,7 +49,12 @@ function loadStoredSettings(): UserSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+        closeAction: parsed.closeAction || DEFAULT_SETTINGS.closeAction,
+      };
     }
   } catch (err) {
     console.warn('Failed to parse protofs_user_settings from localStorage:', err);

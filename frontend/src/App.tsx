@@ -27,6 +27,8 @@ import { useThemeStore } from './stores/useThemeStore';
 import { UpdateModal } from './components/settings/modals/UpdateModal';
 import { api } from './api';
 import { isTauri } from './api/client';
+import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { FileNode, FolderNode, VfsNode, UpdateInfo } from './types';
 import { Loader2, Trash2, RotateCcw } from 'lucide-react';
 import { toast, Toaster } from 'sonner';
@@ -111,6 +113,38 @@ export const App: React.FC = () => {
       if (updateTimer) clearTimeout(updateTimer);
     };
   }, [initSession]);
+
+  // Window Close Requested Event Listener (D-39)
+  useEffect(() => {
+    let unlistenClose: (() => void) | null = null;
+    if (isTauri()) {
+      listen('protofs-close-requested', async () => {
+        const action = useSettingsStore.getState().closeAction;
+        if (action === 'minimize') {
+          try {
+            const appWindow = getCurrentWindow();
+            await appWindow.minimize();
+          } catch (err) {
+            console.warn('Failed to minimize window:', err);
+          }
+        } else if (action === 'exit') {
+          try {
+            await api.exitApp();
+          } catch (err) {
+            console.warn('Failed to exit application:', err);
+          }
+        } else {
+          openModal('closeApp');
+        }
+      }).then((unlisten) => {
+        unlistenClose = unlisten;
+      });
+    }
+
+    return () => {
+      if (unlistenClose) unlistenClose();
+    };
+  }, [openModal]);
 
   useEffect(() => {
     if (session) {

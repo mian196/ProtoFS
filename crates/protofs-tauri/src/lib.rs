@@ -5,7 +5,7 @@ use protofs_core::cache::CacheDatabase;
 use protofs_core::mtproto::{DynamicTelegramTransport, TelegramAuthClient};
 use protofs_core::sync::SyncEngine;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
 
 #[cfg(target_os = "android")]
@@ -214,12 +214,18 @@ pub fn run() {
             app.manage(app_state);
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let _ = window.emit("protofs-close-requested", ());
+            }
+            tauri::WindowEvent::Destroyed => {
                 commands::unmount_all_virtual_drives_cleanup(window.app_handle());
             }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
+            commands::exit_app_command,
             commands::login_send_code,
             commands::login_verify_code,
             commands::login_verify_2fa,

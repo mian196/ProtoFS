@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🚀 Added
+- **Configurable Window Close Behavior & Action Prompt**:
+  - Added interactive [`CloseAppModal`](frontend/src/components/modals/CloseAppModal.tsx) dialog when clicking the window close button (`X`), allowing users to choose between **Minimize to System Tray** (keeps background sync & active transfers running) and **Exit Application** (cleanly unmounts virtual drives and terminates).
+  - Added a **"Remember my choice"** checkbox to persist the preference in [`useSettingsStore`](frontend/src/stores/useSettingsStore.ts) (`closeAction: 'prompt' | 'minimize' | 'exit'`).
+  - Added interactive 3-way toggle in **Settings -> General Tab** ([`GeneralTab.tsx`](frontend/src/components/settings/GeneralTab.tsx)) allowing users to update or reset their close behavior anytime between *Always Ask*, *Minimize to Tray*, and *Exit Application*.
+  - Added `exit_app_command` backend Tauri command in [`settings.rs`](crates/protofs-tauri/src/commands/settings.rs) to ensure graceful virtual drive unmounting and clean process exit.
 - **Multi-ABI and Universal Android Release Workflow**:
   - Configured Android Gradle ABI splits (`arm64-v8a`, `armeabi-v7a`) with `isUniversalApk = true` in [`build.gradle.kts`](crates/protofs-tauri/gen/android/app/build.gradle.kts#L31-L39).
   - Streamlined GitHub Release packaging in [`.github/workflows/release.yml`](.github/workflows/release.yml#L257-L305) to bundle and publish standalone `ProtoFS_v${VERSION}_universal.apk`, `ProtoFS_v${VERSION}_arm64-v8a.apk`, and `ProtoFS_v${VERSION}_armv7.apk` release assets.

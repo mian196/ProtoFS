@@ -197,3 +197,12 @@ pub async fn purge_local_cache_command(
         files_deleted,
     }))
 }
+
+/// Cleanly exits the application after unmounting virtual drives.
+#[tauri::command]
+pub async fn exit_app_command(app: tauri::AppHandle) -> Result<CommandResponse<()>, String> {
+    tracing::info!("Application exit requested: unmounting virtual drives and exiting");
+    super::unmount_all_virtual_drives_cleanup(&app);
+    app.exit(0);
+    Ok(CommandResponse::ok(()))
+}

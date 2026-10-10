@@ -17,6 +17,7 @@ import { RecoveryPhraseModal } from '../settings/modals/RecoveryPhraseModal';
 import { ClearCacheConfirmModal } from '../settings/modals/ClearCacheConfirmModal';
 import { ExportBackupModal } from '../settings/modals/ExportBackupModal';
 import { ImportBackupModal } from '../settings/modals/ImportBackupModal';
+import { CloseAppModal } from './CloseAppModal';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useModalStore } from '../../stores/useModalStore';
 import { useAuthStore } from '../../stores/useAuthStore';
@@ -99,6 +100,10 @@ export const AppModals: React.FC<AppModalsProps> = ({
       />
       <ImportBackupModal
         isOpen={activeModal === 'importBackup'}
+        onClose={closeModal}
+      />
+      <CloseAppModal
+        isOpen={activeModal === 'closeApp'}
         onClose={closeModal}
       />
       {conflictState && (

@@ -4,6 +4,9 @@ import {
   Moon,
   Monitor,
   RefreshCw,
+  HelpCircle,
+  Minimize2,
+  Power,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useThemeStore } from '../../stores/useThemeStore';
@@ -17,7 +20,7 @@ import { toast } from 'sonner';
 export const GeneralTab: React.FC = () => {
   const { theme, setTheme } = useThemeStore();
   const {
-    closeToTray,
+    closeAction,
     notificationsEnabled,
     rateLimitAlerts,
     notificationSound,
@@ -134,30 +137,87 @@ export const GeneralTab: React.FC = () => {
         </label>
       </div>
 
-      {/* 3. Window Close & System Tray (D-39) */}
+      {/* 3. Window Close Behavior (D-39) */}
       <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
-        <h4 className="text-base font-semibold text-slate-900 dark:text-slate-100 leading-tight">
-          Window Close & System Tray
-        </h4>
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={closeToTray}
-            onChange={(e) => {
-              updateSettings({ closeToTray: e.target.checked });
-              toast.success('Preference Saved', { description: 'Window close behavior updated.' });
+        <div>
+          <h4 className="text-base font-semibold text-slate-900 dark:text-slate-100 leading-tight">
+            Window Close Behavior
+          </h4>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-normal">
+            Choose what happens when you click the window close (&times;) button.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+          <button
+            type="button"
+            onClick={() => {
+              updateSettings({ closeAction: 'prompt' });
+              toast.success('Preference Saved', { description: 'ProtoFS will prompt before closing.' });
             }}
-            className="w-4 h-4 mt-0.5 rounded text-sky-600 focus:ring-sky-500 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
-          />
-          <div className="space-y-0.5">
-            <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-              Close window to system tray / taskbar
-            </span>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-normal">
-              When enabled, closing the window keeps ProtoFS running in the background. Left-click the tray icon to view running telemetry; right-click for options.
+            className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all cursor-pointer ${
+              closeAction === 'prompt'
+                ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-1 ring-sky-500/30'
+                : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <HelpCircle className="w-4 h-4 text-sky-500" />
+              <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                Always Ask
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+              Show a prompt dialog to choose between minimizing and exiting each time.
             </p>
-          </div>
-        </label>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              updateSettings({ closeAction: 'minimize', closeToTray: true });
+              toast.success('Preference Saved', { description: 'ProtoFS will minimize to tray on close.' });
+            }}
+            className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all cursor-pointer ${
+              closeAction === 'minimize'
+                ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-1 ring-sky-500/30'
+                : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <Minimize2 className="w-4 h-4 text-sky-500" />
+              <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                Minimize to Tray
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+              Keep ProtoFS running in background for active transfers and sync.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              updateSettings({ closeAction: 'exit', closeToTray: false });
+              toast.success('Preference Saved', { description: 'ProtoFS will exit completely on close.' });
+            }}
+            className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all cursor-pointer ${
+              closeAction === 'exit'
+                ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/30'
+                : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <Power className="w-4 h-4 text-rose-500" />
+              <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                Exit Application
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+              Completely shut down the application and disconnect virtual drives.
+            </p>
+          </button>
+        </div>
       </div>
 
       {/* 4. Notification Preferences (D-40) */}

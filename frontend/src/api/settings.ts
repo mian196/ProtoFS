@@ -156,6 +156,17 @@ export async function openPathInExplorer(path: string): Promise<boolean> {
   return false;
 }
 
+export async function exitApp(): Promise<void> {
+  if (isTauri()) {
+    try {
+      await invokeCommand<void>('exit_app_command');
+      return;
+    } catch (err) {
+      console.warn('Tauri exit_app_command error:', err);
+    }
+  }
+}
+
 export const settingsApi = {
   getStorageUsage,
   purgeLocalCache,
@@ -164,4 +175,5 @@ export const settingsApi = {
   setShellIntegration,
   getPendingUploads,
   openPathInExplorer,
+  exitApp,
 };
