@@ -2,6 +2,11 @@
 local-docs/
 research-repos/
 .planning/
+prototypes/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/release-version/
 
 # Build artifacts and caches
 target*/
