@@ -3,12 +3,15 @@ import {
   Database,
   Trash2,
   Download,
+  Upload,
   Terminal,
+  ShieldAlert,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { ClearCacheConfirmModal } from '../modals/ClearCacheConfirmModal';
 import { useDriveStore } from '../../stores/useDriveStore';
+import { useModalStore } from '../../stores/useModalStore';
 import { api } from '../../api';
 import { invokeCommand } from '../../api/client';
 import { toast } from 'sonner';
@@ -16,6 +19,7 @@ import type { ShellIntegrationStatus } from '../../types';
 
 export const AdvancedTab: React.FC = () => {
   const { activeDrive, exportManifest } = useDriveStore();
+  const { openModal } = useModalStore();
 
   const [metrics, setMetrics] = useState<{
     total_bytes: number;
@@ -73,9 +77,22 @@ export const AdvancedTab: React.FC = () => {
     }
     setIsExportingSnapshot(true);
     try {
-      await exportManifest(activeDrive.id, exportFormat === 'json' ? 'json' : 'csv');
+      const format = exportFormat === 'json' ? 'json' : 'csv';
+      const content = await exportManifest(activeDrive.id, format);
+      const ext = exportFormat === 'json' ? 'json' : 'csv';
+      const mime = exportFormat === 'json' ? 'application/json' : 'text/csv';
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `protofs-snapshot-${activeDrive.id}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
       toast.success('Snapshot Exported', {
-        description: `Offline file list snapshot saved as .${exportFormat === 'json' ? 'json' : 'db'}.`,
+        description: `Offline file list snapshot downloaded as .${ext}.`,
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -216,6 +233,39 @@ export const AdvancedTab: React.FC = () => {
             icon={<Download className="w-3.5 h-3.5" />}
           >
             Export Snapshot File
+          </Button>
+        </div>
+      </div>
+
+      {/* 3b. Encrypted System Backup & Restore */}
+      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-emerald-500" />
+            <h4 className="text-base font-semibold text-slate-900 dark:text-slate-100 leading-tight">
+              Encrypted System Backup (.protofs-backup)
+            </h4>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-normal">
+            Export or restore an Argon2id + AES-256-GCM encrypted archive of your vault configuration, drives, and proxies.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => openModal('importBackup')}
+            icon={<Upload className="w-3.5 h-3.5" />}
+          >
+            Restore Backup
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => openModal('exportBackup')}
+            icon={<Download className="w-3.5 h-3.5" />}
+          >
+            Export Backup
           </Button>
         </div>
       </div>

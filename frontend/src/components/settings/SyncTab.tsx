@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FolderSync,
   Camera,
   Plus,
   Play,
   FolderOpen,
+  RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -12,6 +14,7 @@ import { Badge } from '../ui/Badge';
 import { useDriveStore } from '../../stores/useDriveStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useModalStore } from '../../stores/useModalStore';
+import { useNativeStore } from '../../stores/useNativeStore';
 import { api } from '../../api';
 import { toast } from 'sonner';
 
@@ -24,10 +27,42 @@ export const SyncTab: React.FC = () => {
     updateSettings,
   } = useSettingsStore();
   const { openModal } = useModalStore();
+  const { syncPairs, loadSyncPairs } = useNativeStore();
 
   const [triggeringSync, setTriggeringSync] = useState(false);
+  const [syncingPairId, setSyncingPairId] = useState<string | null>(null);
   const [cameraPath, setCameraPath] = useState('C:\\Users\\Pictures\\Camera Roll');
   const [savingCamera, setSavingCamera] = useState(false);
+
+  useEffect(() => {
+    loadSyncPairs(activeDrive?.id);
+  }, [loadSyncPairs, activeDrive?.id]);
+
+  const handleSyncSinglePair = async (id: string) => {
+    setSyncingPairId(id);
+    try {
+      await api.triggerSync(id);
+      if (activeDrive) await loadSyncPairs(activeDrive.id);
+      toast.success('Folder Pair Synchronized');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error('Folder Sync Failed', { description: msg });
+    } finally {
+      setSyncingPairId(null);
+    }
+  };
+
+  const handleRemovePair = async (id: string) => {
+    if (!activeDrive) return;
+    try {
+      await api.removeSyncPair(id, activeDrive.id);
+      await loadSyncPairs(activeDrive.id);
+      toast.info('Folder Pair Removed');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error('Failed to remove sync pair', { description: msg });
+    }
+  };
 
   const handleTriggerSyncNow = async () => {
     setTriggeringSync(true);
@@ -93,15 +128,63 @@ export const SyncTab: React.FC = () => {
           </Button>
         </div>
 
-        <div className="p-6 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 text-center space-y-2">
-          <FolderSync className="w-8 h-8 mx-auto text-slate-400 opacity-60" />
-          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-            No Active Folder Pairs Configured
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto leading-normal">
-            Choose a local desktop folder and pair it with a cloud folder to keep files synchronized automatically.
-          </p>
-        </div>
+        {syncPairs.length === 0 ? (
+          <div className="p-6 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 text-center space-y-2">
+            <FolderSync className="w-8 h-8 mx-auto text-slate-400 opacity-60" />
+            <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+              No Active Folder Pairs Configured
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto leading-normal">
+              Choose a local desktop folder and pair it with a cloud folder to keep files synchronized automatically.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {syncPairs.map((pair) => (
+              <div
+                key={pair.id}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                      {pair.local_path}
+                    </span>
+                    <Badge variant={pair.status === 'error' ? 'rose' : 'emerald'} size="sm">
+                      {pair.status}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                    Drive: {pair.drive_id} • Remote: {pair.remote_folder_id} • {pair.file_count} synced
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleSyncSinglePair(pair.id)}
+                    disabled={syncingPairId === pair.id}
+                    icon={
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 ${syncingPairId === pair.id ? 'animate-spin' : ''}`}
+                      />
+                    }
+                  >
+                    Sync
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemovePair(pair.id)}
+                    className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                    title="Remove Folder Pair"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 2. Conflict Resolution Policy (D-31) */}

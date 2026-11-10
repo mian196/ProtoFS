@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚀 Added
+- **Cryptographic Node Proof Inspector Drawer**:
+  - Added [`NodeInspectorDrawer.tsx`](frontend/src/components/explorer/NodeInspectorDrawer.tsx) side panel displaying AES-256-GCM encryption status, Base64 IV, SHA-256 content digest, Telegram Message ID, and one-click copyable self-describing disaster recovery captions (`protofs:v1;parent:...`).
+- **Batch Selection Toolbar & Workstation Keyboard Shortcuts**:
+  - Added multi-select batch toolbar in [`App.tsx`](frontend/src/App.tsx) for regular directory views with bulk Download, Toggle Pin, Move, and Trash actions, plus `Ctrl+A`, `Delete`, `F2`, and `Backspace` keyboard navigation.
+- **Accessible Sortable & Responsive File Table**:
+  - Upgraded [`FileTable.tsx`](frontend/src/components/explorer/FileTable.tsx) and [`FileTableRow.tsx`](frontend/src/components/explorer/FileTableRow.tsx) with `aria-sort` column sorting (`Name`, `Size`, `Type`, `Modified` via `Intl.Collator`), sticky headers, and row/select-all checkboxes.
+- **Shared Link Import & Encrypted System Backup Triggers**:
+  - Added `protofs://share` link import tab in [`ShareLinkModal.tsx`](frontend/src/components/modals/ShareLinkModal.tsx) and Header quick-action button, and wired [`ExportBackupModal.tsx`](frontend/src/components/settings/modals/ExportBackupModal.tsx) and [`ImportBackupModal.tsx`](frontend/src/components/settings/modals/ImportBackupModal.tsx) into [`AdvancedTab.tsx`](frontend/src/components/settings/AdvancedTab.tsx).
+
+### 🐛 Fixed
+- **Fixed 12 Broken Frontend Buttons, Filters, and State Collisions**:
+  - Wired Sidebar category filters (`Videos`, `Images`, `Documents`, `Audio Tracks`, `Pinned in Cache`) and live item count badges in [`useVfsStore.ts`](frontend/src/stores/useVfsStore.ts) and [`Sidebar.tsx`](frontend/src/components/layout/Sidebar.tsx).
+  - Connected `Ctrl+K` / `/` search results to the main Explorer view in [`App.tsx`](frontend/src/App.tsx).
+  - Added `modalStack` in [`useModalStore.tsx`](frontend/src/stores/useModalStore.ts) so opening child modals (`driveManager`, `syncConfig`, `recoveryPhrase`, `exportBackup`, `importBackup`) from `SettingsModal` returns to `SettingsModal` upon close.
+  - Wired active folder sync pairs in [`SyncTab.tsx`](frontend/src/components/settings/SyncTab.tsx), file download for `Export Snapshot File` in [`AdvancedTab.tsx`](frontend/src/components/settings/AdvancedTab.tsx), failed transfer retry in [`TransferQueue.tsx`](frontend/src/components/transfers/TransferQueue.tsx), accurate cloud vs. LRU cache telemetry in [`StorageGauge.tsx`](frontend/src/components/telemetry/StorageGauge.tsx), and unified Light/Dark mode contrast across all explorer, drawer, and modal surfaces.
+
 ---
 
 ## [0.4.3] - 2026-10-10

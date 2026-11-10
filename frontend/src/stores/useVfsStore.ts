@@ -3,6 +3,8 @@ import { api } from '../api';
 import type { FileNode, FolderNode, SearchResult } from '../types';
 
 export type ViewMode = 'grid' | 'table';
+export type SortField = 'name' | 'size' | 'type' | 'date';
+export type SortDirection = 'ascending' | 'descending';
 export type FilterType =
   | 'all'
   | 'video'
@@ -20,9 +22,46 @@ export interface BreadcrumbItem {
   name: string;
 }
 
+export function matchesFileFilter(file: FileNode, filter: FilterType): boolean {
+  if (filter === 'trash') return Boolean(file.trashed);
+  if (file.trashed) return false;
+  if (filter === 'all') return true;
+  if (filter === 'pinned') return Boolean(file.pinned);
+  if (filter === 'doc') {
+    return ['doc', 'pdf', 'sheet', 'presentation'].includes(file.type);
+  }
+  return file.type === filter;
+}
+
+function computeDirectorySlice(
+  allFolders: FolderNode[],
+  allFiles: FileNode[],
+  targetParentId: string,
+  filterType: FilterType,
+): { folders: FolderNode[]; files: FileNode[] } {
+  if (filterType === 'trash') {
+    return {
+      folders: allFolders.filter((f) => Boolean(f.trashed)),
+      files: allFiles.filter((f) => Boolean(f.trashed)),
+    };
+  }
+  if (filterType === 'all') {
+    return {
+      folders: allFolders.filter((f) => f.parent_id === targetParentId && !f.trashed),
+      files: allFiles.filter((f) => f.parent_id === targetParentId && !f.trashed),
+    };
+  }
+  return {
+    folders: [],
+    files: allFiles.filter((f) => matchesFileFilter(f, filterType)),
+  };
+}
+
 interface VfsState {
   currentParentId: string;
   breadcrumbs: BreadcrumbItem[];
+  allFolders: FolderNode[];
+  allFiles: FileNode[];
   folders: FolderNode[];
   files: FileNode[];
   selectedIds: Set<string>;
@@ -30,6 +69,10 @@ interface VfsState {
   searchResults: SearchResult[] | null;
   filterType: FilterType;
   viewMode: ViewMode;
+  sortField: SortField;
+  sortDirection: SortDirection;
+  inspectorOpen: boolean;
+  mobileSidebarOpen: boolean;
   isLoading: boolean;
   error: string | null;
 
@@ -40,6 +83,9 @@ interface VfsState {
   navigateUp: () => void;
   setFilterType: (filter: FilterType) => void;
   setViewMode: (mode: ViewMode) => void;
+  setSort: (field: SortField) => void;
+  toggleInspector: (open?: boolean) => void;
+  setMobileSidebarOpen: (open: boolean) => void;
   setSearchQuery: (query: string) => void;
   performSearch: (driveId: string, query: string) => Promise<void>;
   clearSearch: () => void;
@@ -51,6 +97,8 @@ interface VfsState {
 export const useVfsStore = create<VfsState>((set, get) => ({
   currentParentId: 'root',
   breadcrumbs: [{ id: 'root', name: 'My Drive' }],
+  allFolders: [],
+  allFiles: [],
   folders: [],
   files: [],
   selectedIds: new Set<string>(),
@@ -58,6 +106,10 @@ export const useVfsStore = create<VfsState>((set, get) => ({
   searchResults: null,
   filterType: 'all',
   viewMode: 'grid',
+  sortField: 'name',
+  sortDirection: 'ascending',
+  inspectorOpen: false,
+  mobileSidebarOpen: false,
   isLoading: false,
   error: null,
 
@@ -66,18 +118,17 @@ export const useVfsStore = create<VfsState>((set, get) => ({
     set({ isLoading: true, error: null, currentParentId: targetParentId });
 
     try {
-      const isTrashView = get().filterType === 'trash';
       const { folders: allFolders, files: allFiles } = await api.loadDrive(driveId, 0);
-
-      const currentFolders = isTrashView
-        ? allFolders.filter((f) => f.trashed)
-        : allFolders.filter((f) => f.parent_id === targetParentId && !f.trashed);
-
-      const currentFiles = isTrashView
-        ? allFiles.filter((f) => f.trashed)
-        : allFiles.filter((f) => f.parent_id === targetParentId && !f.trashed);
+      const { folders: currentFolders, files: currentFiles } = computeDirectorySlice(
+        allFolders,
+        allFiles,
+        targetParentId,
+        get().filterType,
+      );
 
       set({
+        allFolders,
+        allFiles,
         folders: currentFolders,
         files: currentFiles,
         isLoading: false,
@@ -89,11 +140,15 @@ export const useVfsStore = create<VfsState>((set, get) => ({
   },
 
   navigateToFolder: (folderId: string, folderName: string) => {
-    const { breadcrumbs } = get();
+    const { breadcrumbs, allFolders, allFiles } = get();
     const newBreadcrumbs = [...breadcrumbs, { id: folderId, name: folderName }];
+    const slice = computeDirectorySlice(allFolders, allFiles, folderId, 'all');
     set({
       currentParentId: folderId,
       breadcrumbs: newBreadcrumbs,
+      filterType: 'all',
+      folders: slice.folders,
+      files: slice.files,
       selectedIds: new Set<string>(),
       searchQuery: '',
       searchResults: null,
@@ -101,13 +156,17 @@ export const useVfsStore = create<VfsState>((set, get) => ({
   },
 
   navigateToBreadcrumb: (index: number) => {
-    const { breadcrumbs } = get();
+    const { breadcrumbs, allFolders, allFiles } = get();
     if (index >= 0 && index < breadcrumbs.length) {
       const target = breadcrumbs[index];
       const newBreadcrumbs = breadcrumbs.slice(0, index + 1);
+      const slice = computeDirectorySlice(allFolders, allFiles, target.id, 'all');
       set({
         currentParentId: target.id,
         breadcrumbs: newBreadcrumbs,
+        filterType: 'all',
+        folders: slice.folders,
+        files: slice.files,
         selectedIds: new Set<string>(),
         searchQuery: '',
         searchResults: null,
@@ -116,13 +175,17 @@ export const useVfsStore = create<VfsState>((set, get) => ({
   },
 
   navigateUp: () => {
-    const { breadcrumbs } = get();
+    const { breadcrumbs, allFolders, allFiles } = get();
     if (breadcrumbs.length > 1) {
       const newBreadcrumbs = breadcrumbs.slice(0, -1);
       const parent = newBreadcrumbs[newBreadcrumbs.length - 1];
+      const slice = computeDirectorySlice(allFolders, allFiles, parent.id, 'all');
       set({
         currentParentId: parent.id,
         breadcrumbs: newBreadcrumbs,
+        filterType: 'all',
+        folders: slice.folders,
+        files: slice.files,
         selectedIds: new Set<string>(),
         searchQuery: '',
         searchResults: null,
@@ -131,10 +194,41 @@ export const useVfsStore = create<VfsState>((set, get) => ({
   },
 
   setFilterType: (filterType) => {
-    set({ filterType, selectedIds: new Set<string>() });
+    const { allFolders, allFiles, currentParentId } = get();
+    const slice = computeDirectorySlice(allFolders, allFiles, currentParentId, filterType);
+    set({
+      filterType,
+      folders: slice.folders,
+      files: slice.files,
+      selectedIds: new Set<string>(),
+      searchQuery: '',
+      searchResults: null,
+      mobileSidebarOpen: false,
+    });
   },
 
   setViewMode: (viewMode) => set({ viewMode }),
+
+  setSort: (field) => {
+    const { sortField, sortDirection } = get();
+    if (sortField === field) {
+      set({
+        sortDirection: sortDirection === 'ascending' ? 'descending' : 'ascending',
+      });
+    } else {
+      set({
+        sortField: field,
+        sortDirection: field === 'date' || field === 'size' ? 'descending' : 'ascending',
+      });
+    }
+  },
+
+  toggleInspector: (open) =>
+    set((state) => ({
+      inspectorOpen: open !== undefined ? open : !state.inspectorOpen,
+    })),
+
+  setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),
 
   setSearchQuery: (searchQuery) => set({ searchQuery }),
 

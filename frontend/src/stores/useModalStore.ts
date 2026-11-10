@@ -41,17 +41,58 @@ export interface ModalPayload {
   recoveryMode?: boolean;
 }
 
+interface ModalStackEntry {
+  activeModal: ModalType;
+  payload: ModalPayload;
+}
+
 interface ModalState {
   activeModal: ModalType;
   payload: ModalPayload;
+  modalStack: ModalStackEntry[];
   openModal: (type: ModalType, payload?: ModalPayload) => void;
   closeModal: () => void;
+  closeAllModals: () => void;
 }
 
 export const useModalStore = create<ModalState>((set) => ({
   activeModal: null,
   payload: {},
+  modalStack: [],
 
-  openModal: (activeModal, payload = {}) => set({ activeModal, payload }),
-  closeModal: () => set({ activeModal: null, payload: {} }),
+  openModal: (activeModal, payload = {}) =>
+    set((state) => {
+      if (activeModal === null) {
+        return { activeModal: null, payload: {}, modalStack: [] };
+      }
+      const shouldPush =
+        state.activeModal !== null && state.activeModal !== activeModal;
+      return {
+        activeModal,
+        payload,
+        modalStack: shouldPush
+          ? [
+              ...state.modalStack,
+              { activeModal: state.activeModal, payload: state.payload },
+            ]
+          : state.modalStack,
+      };
+    }),
+
+  closeModal: () =>
+    set((state) => {
+      if (state.modalStack.length > 0) {
+        const nextStack = state.modalStack.slice(0, -1);
+        const previous = state.modalStack[state.modalStack.length - 1];
+        return {
+          activeModal: previous.activeModal,
+          payload: previous.payload,
+          modalStack: nextStack,
+        };
+      }
+      return { activeModal: null, payload: {}, modalStack: [] };
+    }),
+
+  closeAllModals: () =>
+    set({ activeModal: null, payload: {}, modalStack: [] }),
 }));
